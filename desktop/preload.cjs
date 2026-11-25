@@ -32,6 +32,10 @@ contextBridge.exposeInMainWorld('sonoraNative', Object.freeze({
       Number.isInteger(velocity) && velocity >= 0 && velocity <= 127 && typeof on === 'boolean'
     ? ipcRenderer.invoke('native-midi:send-note', channel, pitch, velocity, on)
     : Promise.resolve({ ok: false, error: 'Параметры MIDI-ноты некорректны' }),
+  sendMidiRealtime: (status, count = 1) => [0xF8, 0xFA, 0xFB, 0xFC].includes(status) &&
+      Number.isInteger(count) && count >= 1 && count <= (status === 0xF8 ? 96 : 1)
+    ? ipcRenderer.invoke('native-midi:send-realtime', status, count)
+    : Promise.resolve({ ok: false, error: 'Параметры MIDI clock некорректны' }),
   audioStatus: () => ipcRenderer.invoke('native-audio:status'),
   startTestTone: deviceIndex => {
     if (!validDeviceIndex(deviceIndex)) return Promise.resolve({ ok: false, error: 'Недопустимый номер устройства' });
