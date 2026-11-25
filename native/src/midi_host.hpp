@@ -136,6 +136,33 @@ public:
         }
     }
 
+    [[nodiscard]] bool sendRealtime(const unsigned int status, const unsigned int count, std::string& error) {
+        error.clear();
+        const bool clock = status == 0xF8U;
+        if ((!clock && status != 0xFAU && status != 0xFBU && status != 0xFCU) ||
+            count < 1U || count > (clock ? 96U : 1U)) {
+            error = "Unsupported MIDI realtime message or repeat count";
+            return false;
+        }
+        if (!output_ || !output_->isPortOpen()) {
+            error = "No MIDI output device is connected";
+            return false;
+        }
+        const unsigned char message = static_cast<unsigned char>(status);
+        try {
+            for (unsigned int index = 0; index < count; ++index) output_->sendMessage(&message, 1);
+            return true;
+        } catch (const std::exception& exception) {
+            error = exception.what();
+            closeOutput();
+            return false;
+        } catch (...) {
+            error = "MIDI realtime output failed";
+            closeOutput();
+            return false;
+        }
+    }
+
     [[nodiscard]] std::vector<Event> readEvents(const std::size_t maximum = EventQueue::kMaxBatch) {
         return events_.drain(maximum);
     }
