@@ -97,12 +97,16 @@ test('preload exposes bounded MIDI input and output commands', async () => {
   await api.closeMidiInput();
   await api.openMidiOutput(1);
   await api.sendMidiNote(15, 127, 100, true);
+  await api.sendMidiRealtime(0xF8, 24);
+  await api.sendMidiRealtime(0xFA);
   await api.closeMidiOutput();
   assert.deepEqual(calls.map(call => call[0]), [
     'native-midi:devices', 'native-midi:open-input', 'native-midi:read', 'native-midi:close-input',
-    'native-midi:open-output', 'native-midi:send-note', 'native-midi:close-output',
+    'native-midi:open-output', 'native-midi:send-note', 'native-midi:send-realtime', 'native-midi:send-realtime', 'native-midi:close-output',
   ]);
   assert.deepEqual(calls[5].slice(1), [15, 127, 100, true]);
+  assert.deepEqual(calls[6].slice(1), [0xF8, 24]);
+  assert.deepEqual(calls[7].slice(1), [0xFA, 1]);
 });
 
 test('preload rejects invalid MIDI ports and notes before IPC', async () => {
@@ -113,5 +117,8 @@ test('preload rejects invalid MIDI ports and notes before IPC', async () => {
   assert.equal((await api.sendMidiNote(0, 128, 100, true)).ok, false);
   assert.equal((await api.sendMidiNote(0, 60, 128, true)).ok, false);
   assert.equal((await api.sendMidiNote(0, 60, 100, 1)).ok, false);
+  assert.equal((await api.sendMidiRealtime(0xF9, 1)).ok, false);
+  assert.equal((await api.sendMidiRealtime(0xF8, 97)).ok, false);
+  assert.equal((await api.sendMidiRealtime(0xFA, 2)).ok, false);
   assert.equal(calls.length, 0);
 });
