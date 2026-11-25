@@ -166,6 +166,18 @@ try {
   await evaluate("(() => { const start=document.querySelector('#waveEditorStart'); start.value='0.250'; start.dispatchEvent(new Event('input',{bubbles:true})); })()");
   const waveformEditorSelection = await evaluate("(()=>({start:document.querySelector('#waveEditorStartValue')?.value,end:document.querySelector('#waveEditorEndValue')?.value,canvas:document.querySelector('#waveEditorCanvas')?.width}))()");
   assert.deepEqual(waveformEditorSelection,{start:'0.250 с',end:'2.000 с',canvas:1400},'waveform editor exposes a source selection and cached overview');
+  await evaluate("document.querySelector('#waveEditorPreview').click()");
+  await waitUntil(
+    () => evaluate("document.querySelector('#waveEditorPreview')?.getAttribute('aria-pressed')"),
+    value => value === 'true',
+    'waveform editor starts auditioning the selected range',
+  );
+  await evaluate("document.querySelector('#waveEditorPreview').click()");
+  await waitUntil(
+    () => evaluate("document.querySelector('#waveEditorPreview')?.getAttribute('aria-pressed')"),
+    value => value === 'false',
+    'waveform editor stops audition on demand',
+  );
   await evaluate("document.querySelector('#waveEditorSave').click()");
   const waveformOffset = await waitUntil(
     () => evaluate("Number(document.querySelector('#clipOffset')?.value)"),
