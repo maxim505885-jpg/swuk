@@ -3256,9 +3256,10 @@ function startMidiInputPolling() {
     if (response?.ok) {
       const events = response.events || [];
       const eventBeats = new Array(events.length);
+      const pollBeat = getRecordingStartBeat();
       let trailingSeconds = 0;
       for (let index = events.length - 1; index >= 0; index--) {
-        eventBeats[index] = getRecordingStartBeat() - trailingSeconds / beatSeconds();
+        eventBeats[index] = pollBeat - trailingSeconds / beatSeconds();
         const delta = Number(events[index]?.deltaSeconds);
         if (index > 0 && Number.isFinite(delta) && delta > 0) trailingSeconds += delta;
       }
