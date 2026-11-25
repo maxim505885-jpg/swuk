@@ -12,7 +12,11 @@ set(SMTG_ENABLE_VSTGUI_SUPPORT OFF CACHE BOOL "" FORCE)
 add_subdirectory("${SONORA_VST3_SDK_ROOT}" "${CMAKE_BINARY_DIR}/vst3sdk")
 
 set(SONORA_NATIVE_ROOT "${CMAKE_CURRENT_LIST_DIR}/..")
-add_executable(sonora-vst3-host "${SONORA_NATIVE_ROOT}/src/vst3_host_helper.cpp")
+add_executable(sonora-vst3-host
+    "${SONORA_NATIVE_ROOT}/src/vst3_host_helper.cpp"
+    "${SONORA_VST3_SDK_ROOT}/public.sdk/source/vst/hosting/module_win32.cpp"
+    "${SONORA_VST3_SDK_ROOT}/public.sdk/source/vst/hosting/plugprovider.cpp"
+)
 target_include_directories(sonora-vst3-host PRIVATE "${SONORA_NATIVE_ROOT}/src")
 target_compile_features(sonora-vst3-host PRIVATE cxx_std_20)
 target_compile_definitions(sonora-vst3-host PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
