@@ -400,7 +400,7 @@
       "preconditions": "An unprocessed audio clip is selected in Arrangement.",
       "scenario": "Open the editor; move start and end markers with pointer and keyboard range controls; audition and stop the selected range; apply the crop; verify clip timing, save/open, undo and redo. Confirm processed clips show a safe read-only explanation.",
       "expectedState": "Waveform overview stays responsive for long sources, markers cannot cross or leave source bounds, the saved crop updates offset/trim and timeline length, and undo/redo restores each state. Audition plays only the current source selection, stops on demand, and stops when the selection changes or the dialog closes.",
-      "observedResult": "Windows Electron UI smoke passed in run #45638352980: opened the dialog, moved the start range, applied a 2-second WAV crop and verified undo/redo. Manual visual, screen-reader and DPI acceptance remains pending.",
+      "observedResult": "Windows Electron UI smoke passed in run #45638352980 for crop/undo/redo; updated audition controls also passed in run #45641845715 on product code commit 458c244a2dd1db3133aa13e80859a9ae2fff930a. Manual visual, screen-reader and DPI acceptance remains pending.",
       "status": "WARNING",
       "limitations": [
         "Automated smoke uses a generated disposable source and exercises the keyboard-operable range input; canvas pointer dragging has not been manually inspected.",
@@ -415,7 +415,7 @@
       "preconditions": "Waveform editor is open for a clip with an available decoded audio buffer.",
       "scenario": "Start audition, verify pressed/label state, stop on demand, change range during playback and close the dialog; inspect failures with unavailable audio output.",
       "expectedState": "Only the selected source interval is played; audition controls reflect playback state and preview is stopped on range changes and dialog close.",
-      "observedResult": "Electron UI smoke now starts and stops a disposable generated WAV selection and asserts the accessible pressed state; awaiting Windows CI result.",
+      "observedResult": "Windows release gate run #45641845715 passed on product code commit 458c244a2dd1db3133aa13e80859a9ae2fff930a: Electron UI smoke started and stopped a generated WAV selection and asserted the accessible pressed state. Manual hardware listening remains unverified.",
       "status": "WARNING",
       "limitations": [
         "Smoke asserts preview control lifecycle, not audible hardware output or sound quality.",
