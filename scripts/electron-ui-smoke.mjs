@@ -152,6 +152,30 @@ try {
     count => count === 1,
     'redo restores the imported clip after no-op selection',
   );
+  const clipWidthAtDefaultZoom = await evaluate("parseFloat(document.querySelector('.track-lane .clip').style.width)");
+  await evaluate("(() => { const input=document.querySelector('#zoomInput'); input.value='150'; input.dispatchEvent(new Event('input',{bubbles:true})); })()");
+  const clipWidthZoomedIn = await waitUntil(
+    () => evaluate("parseFloat(document.querySelector('.track-lane .clip')?.style.width)"),
+    width => width > clipWidthAtDefaultZoom,
+    'Arrangement zoom-in expands clip geometry',
+  );
+  await evaluate("(() => { const input=document.querySelector('#zoomInput'); input.value='70'; input.dispatchEvent(new Event('input',{bubbles:true})); })()");
+  await waitUntil(
+    () => evaluate("parseFloat(document.querySelector('.track-lane .clip')?.style.width)"),
+    width => width > 0 && width < clipWidthAtDefaultZoom,
+    'Arrangement zoom-out contracts clip geometry',
+  );
+  await evaluate("(() => { const input=document.querySelector('#zoomInput'); input.value='106'; input.dispatchEvent(new Event('input',{bubbles:true})); })()");
+  const zoomRulerPoint = await evaluate("(() => { const scroll=document.querySelector('#timelineScroll'); scroll.scrollLeft=80; const ruler=document.querySelector('#barRuler').getBoundingClientRect(); const beat=5.5; return {x:ruler.left+106*beat/4,y:ruler.top+ruler.height/2,beat}; })()");
+  await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: zoomRulerPoint.x, y: zoomRulerPoint.y, button: 'left' });
+  await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: zoomRulerPoint.x, y: zoomRulerPoint.y, button: 'left' });
+  const playheadAtDefaultZoom = await evaluate("parseFloat(document.querySelector('#playheadLine').style.left)");
+  assert.ok(Math.abs(playheadAtDefaultZoom - zoomRulerPoint.beat * 106 / 4) < .5, 'ruler pointer maps to the same beat after horizontal scrolling');
+  await evaluate("(() => { const input=document.querySelector('#zoomInput'); input.value='150'; input.dispatchEvent(new Event('input',{bubbles:true})); })()");
+  const playheadAtZoomedIn = await evaluate("parseFloat(document.querySelector('#playheadLine').style.left)");
+  assert.ok(Math.abs(playheadAtZoomedIn - zoomRulerPoint.beat * 150 / 4) < .5, 'zoom preserves the playhead beat');
+  await evaluate("(() => { const input=document.querySelector('#zoomInput'); input.value='106'; input.dispatchEvent(new Event('input',{bubbles:true})); document.querySelector('#timelineScroll').scrollLeft=0; })()");
+  assert.ok(clipWidthZoomedIn > clipWidthAtDefaultZoom, 'Arrangement geometry scales from beat units');
   await evaluate("(() => { const rate = document.querySelector('#clipRate'); rate.value = '1.5'; rate.dispatchEvent(new Event('input', { bubbles: true })); })()");
   const rulerPoint = await evaluate(`(() => {
     const ruler = document.querySelector('#barRuler'), bounds = ruler.getBoundingClientRect();
