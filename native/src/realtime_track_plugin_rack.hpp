@@ -10,6 +10,7 @@
 #include <filesystem>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace sonora::plugin {
 
@@ -29,6 +30,8 @@ struct TrackPluginStatus {
 // channels stay phase-aligned before the bus/master sum.
 class RealtimeTrackPluginRack final {
 public:
+    RealtimeTrackPluginRack() : bypassDelay_(kMaxTracks) {}
+
     static constexpr std::size_t kMaxTracks = 128;
     static constexpr std::uint64_t kPipelineLatencyFrames = 4ULL * kPluginAudioBlockFrames;
 
@@ -162,7 +165,7 @@ private:
 
     std::array<std::unique_ptr<RealtimeClapInsert>, kMaxTracks> clap_{};
     std::array<std::unique_ptr<RealtimeVst3Insert>, kMaxTracks> vst3_{};
-    std::array<DelayLine, kMaxTracks> bypassDelay_{};
+    std::vector<DelayLine> bypassDelay_;
     std::size_t activeCount_{};
     std::uint64_t timelineStart_{};
     std::uint64_t framesSinceReset_{};
