@@ -64,6 +64,9 @@ test('native gain automation rejects malformed clips and unsafe frame ranges', (
   assert.equal(flattenGainAutomation([{ startBeat: 0, lengthBeats: 4, points: [{ beat: 0, value: 1 }] }], .8, 120), null);
   assert.equal(flattenGainAutomation([{ startBeat: Number.MAX_VALUE, lengthBeats: 4, points: [{ beat: 0, value: 1 }, { beat: 4, value: 1 }] }], .8, 120), null);
   assert.deepEqual(flattenGainAutomation([], .8, 120), []);
+  const pan = flattenGainAutomation([{ startBeat: 0, lengthBeats: 4, points: [{ beat: 0, value: -1 }, { beat: 4, value: 1 }] }], 0, 120, 48_000, -1, 1);
+  assert.deepEqual(pan?.map(point => point.value), [-1, 1]);
+  assert.equal(flattenGainAutomation([{ startBeat: 0, lengthBeats: 4, points: [{ beat: 0, value: -1.1 }, { beat: 4, value: 1 }] }], 0, 120, 48_000, -1, 1), null);
 });
 
 test('splitting a MIDI clip partitions events and cuts notes crossing the boundary', () => {
