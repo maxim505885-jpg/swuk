@@ -58,3 +58,12 @@ The current local build uses Zig 0.17.1 targeting `x86_64-windows-gnu` and CMake
 
 
 The helper also serves one real-time stereo master insert over the versioned shared-memory transport. `RealtimeClapInsert` adds a fixed 512-frame delay (10.67 ms at 48 kHz) so the WASAPI callback can poll processed blocks without waiting; it retains dry blocks for fallback when processing is late or the child exits. Activation, child monitoring and shutdown run outside the callback. The desktop mixer selects a local `.clap` file, reports helper health, and can replace or remove the effect while playback is stopped. This first insert is master-only and session-only. Saved plug-in state, per-track slots, plug-in windows, parameter automation and VST3 are not implemented. `npm run native:clap:test` now includes a bridge test that verifies the helper gain result through the fixed-latency insert.
+
+
+## VST3 hosting SDK build gate
+
+The pinned Steinberg VST3 SDK is initialized in CI with only its required hosting dependencies
+(`base`, `cmake`, `pluginterfaces`, and `public.sdk`). The Windows release build compiles
+the SDK's `sdk_hosting` target with plugin examples, hosting examples, and VSTGUI disabled.
+This verifies the SDK toolchain and dependency pin before the SONORA VST3 helper is implemented.
+It does **not** mean that VST3 effects can already be loaded or processed by the application.
