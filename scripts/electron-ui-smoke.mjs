@@ -197,7 +197,26 @@ try {
   await waitUntil(()=>evaluate("document.querySelectorAll('.track-lane .clip').length"),count=>count===5,'project audio and slices after reopening');
   await waitUntil(()=>evaluate("document.querySelector('.marker-line span')?.textContent"),name=>name==='QA Marker','marker after reopening');
   assert.deepEqual(exceptions,[], 'markers and project save/open must not throw renderer exceptions');
-  console.log('Electron UI smoke passed: EQ, split/slicing, undo/redo and marker project round-trip');
+  await evaluate(`(() => {
+    window.__qaWavBlob=null;window.__qaWavDownload=null;
+    window.__qaOriginalCreate=URL.createObjectURL;window.__qaOriginalAnchorClick=HTMLAnchorElement.prototype.click;
+    URL.createObjectURL=blob=>{if(blob.type==='audio/wav')window.__qaWavBlob=blob;return 'blob:qa-export';};
+    HTMLAnchorElement.prototype.click=function(){if(this.download?.toLowerCase().endsWith('.wav'))window.__qaWavDownload=this.download;};
+    document.querySelector('#exportBtn').click();return true;
+  })()`);
+  assert.equal(await waitUntil(()=>evaluate("Boolean(window.__qaWavBlob && window.__qaWavDownload)"),Boolean,'rendered WAV export'),true);
+  await evaluate(`(() => { URL.createObjectURL=window.__qaOriginalCreate;HTMLAnchorElement.prototype.click=window.__qaOriginalAnchorClick; })()`);
+  const wav = await evaluate(`window.__qaWavBlob.arrayBuffer().then(buffer=>{
+    const view=new DataView(buffer),text=(offset,length)=>String.fromCharCode(...new Uint8Array(buffer,offset,length));
+    return {type:window.__qaWavBlob.type,filename:window.__qaWavDownload,size:buffer.byteLength,riff:text(0,4),riffSize:view.getUint32(4,true),wave:text(8,4),format:view.getUint16(20,true),channels:view.getUint16(22,true),sampleRate:view.getUint32(24,true),byteRate:view.getUint32(28,true),blockAlign:view.getUint16(32,true),bitsPerSample:view.getUint16(34,true),data:text(36,4),dataSize:view.getUint32(40,true)};
+  })`);
+  assert.equal(wav.type,'audio/wav');assert.ok(wav.filename.toLowerCase().endsWith('.wav'));
+  assert.deepEqual({riff:wav.riff,wave:wav.wave,format:wav.format,channels:wav.channels,sampleRate:wav.sampleRate,byteRate:wav.byteRate,blockAlign:wav.blockAlign,bitsPerSample:wav.bitsPerSample,data:wav.data},{riff:'RIFF',wave:'WAVE',format:1,channels:2,sampleRate:44100,byteRate:176400,blockAlign:4,bitsPerSample:16,data:'data'});
+  assert.ok(wav.dataSize>0&&wav.dataSize%4===0,'stereo PCM data has complete frames');
+  assert.equal(wav.size,44+wav.dataSize,'WAV data length matches its RIFF payload');
+  assert.equal(wav.riffSize,wav.size-8,'RIFF length matches the encoded file');
+  assert.deepEqual(exceptions,[], 'WAV export must not throw renderer exceptions');
+  console.log('Electron UI smoke passed: EQ, split/slicing, undo/redo, save/open and PCM WAV export');
 } finally {
   if (socket && socket.readyState < WebSocket.CLOSING) socket.close();
   if (child.exitCode === null) {
