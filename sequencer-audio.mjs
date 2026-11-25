@@ -26,9 +26,12 @@ export function instrumentWaveAt(instrument, phase, waveform = 'preset') {
   return Math.sin(cycle * Math.PI * 2);
 }
 
-export function renderSequencedClip(clip, { instrument = 'soft-keys', synthSettings: rawSynthSettings, bpm = 120, sampleRate = 48000, createDrumSample } = {}) {
+export function renderSequencedClip(clip, { instrument = 'soft-keys', synthSettings: rawSynthSettings, bpm = 120, sampleRate = 48000, createDrumSample, samplerBuffer = null, samplerSampleRate = sampleRate, samplerRootNote = 60 } = {}) {
   if (!clip || (clip.kind !== 'drums' && clip.kind !== 'midi') || !Number.isFinite(bpm) || bpm < 40 || bpm > 240 ||
       !Number.isInteger(sampleRate) || sampleRate < 8000 || sampleRate > 192000) return null;
+  if (instrument === 'sampler' && (!(samplerBuffer instanceof Float32Array) || samplerBuffer.length === 0 ||
+      samplerBuffer.length > sampleRate * 120 || !Number.isInteger(samplerSampleRate) || samplerSampleRate < 8000 || samplerSampleRate > 192000 ||
+      !Number.isInteger(samplerRootNote) || samplerRootNote < 0 || samplerRootNote > 127)) return null;
   const secondsPerBeat = 60 / bpm, clipSeconds = clip.lengthBeats * secondsPerBeat;
   if (!Number.isFinite(clipSeconds) || clipSeconds <= 0 || clipSeconds > 120) return null;
   const events = [];
@@ -91,7 +94,14 @@ export function renderSequencedClip(clip, { instrument = 'soft-keys', synthSetti
       if (releaseTime > 0) envelope = releaseStartLevel * (.0001 / releaseStartLevel) ** clamp(releaseTime / event.release, 0, 1);
       else if (time < attack) envelope = .0001 * (Math.max(.0001, volume) / .0001) ** (time / attack);
       else envelope = volume;
-      const sourceSample = instrumentWaveAt(instrument, time * frequency, synthSettings.waveform);
+      let sourceSample;
+      if (instrument === 'sampler') {
+        const sourcePosition = time * samplerSampleRate * 2 ** ((event.note - samplerRootNote + synthSettings.detuneCents / 100) / 12);
+        const sourceIndex = Math.floor(sourcePosition), fraction = sourcePosition - sourceIndex;
+        sourceSample = sourceIndex < samplerBuffer.length
+          ? samplerBuffer[sourceIndex] * (1 - fraction) + (samplerBuffer[sourceIndex + 1] ?? 0) * fraction
+          : 0;
+      } else sourceSample = instrumentWaveAt(instrument, time * frequency, synthSettings.waveform);
       filterState += filterCoefficient * (sourceSample - filterState);
       output[firstFrame + frame] += filterState * envelope;
     }

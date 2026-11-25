@@ -1,6 +1,6 @@
 import { beatFromRulerPointer, flattenGainAutomation, normalizeLoopRange, normalizeTrackName, projectRenderDurationSeconds, sampleAutomation, splitAudioClip, splitSequencerEvents, wrapLoopBeat } from './arrangement-core.mjs?v=7';
-import { instrumentWaveAt, normalizeSynthSettings, renderSequencedClip as renderSequencedPcm } from './sequencer-audio.mjs?v=3';
-import { createProjectDocument, PROJECT_LIMITS, validateProjectDocument } from './project-io.mjs?v=3';
+import { instrumentWaveAt, normalizeSynthSettings, renderSequencedClip as renderSequencedPcm } from './sequencer-audio.mjs?v=4';
+import { createProjectDocument, PROJECT_LIMITS, validateProjectDocument } from './project-io.mjs?v=4';
 import { normalizeTheme, readTheme, THEMES, THEME_KEY } from './theme-core.mjs';
 import { analyzeMeter, presentMeter } from './audio-meter.mjs?v=1';
 import { sampleWaveformPeaks } from './waveform-core.mjs?v=2';
@@ -52,6 +52,7 @@ const INSTRUMENTS = [
   { id: 'soft-keys', name: 'Мягкие клавиши', category: 'Клавишные', detail: 'Синус с тихой октавой' },
   { id: 'bass', name: 'Пульсирующий бас', category: 'Струнные', detail: 'Моно-синтезатор' },
   { id: 'pad', name: 'Тёплая подложка', category: 'Синтезаторы', detail: 'Медленная атака' },
+  { id: 'sampler', name: 'Сэмплер', category: 'Сэмплы', detail: 'Импортированный WAV с высотой ноты' },
 ];
 const INSTRUMENT_PRESETS = [
   { id: 'preset-soft-keys', name: 'Мягкая клавиша', instrument: 'soft-keys', category: 'Клавишные', detail: 'Нежная атака · полный спектр', synthSettings: { waveform: 'preset', cutoffHz: 9600, attackMs: 22, releaseMs: 180, detuneCents: 0 } },
@@ -517,15 +518,27 @@ function playBuffer(buffer, at, options = {}) {
   return source;
 }
 
-function previewNote(instrument = 'soft-keys', note = 60, rawSettings = null) {
+function previewNote(instrument = 'soft-keys', note = 60, rawSettings = null, samplerBuffer = null, samplerRootNote = 60) {
+  if (instrument === 'sampler' && !samplerBuffer) return null;
   const settings = normalizeSynthSettings(rawSettings, instrument), attack = settings.attackMs / 1000, release = settings.releaseMs / 1000;
   const context = getAudioContext(), when = context.currentTime + .02, gain = context.createGain();
   gain.gain.setValueAtTime(.0001, when); gain.gain.exponentialRampToValueAtTime(.2, when + attack); gain.gain.exponentialRampToValueAtTime(.0001, when + Math.max(.08, attack + release));
   gain.connect(context.destination);
-  const oscillators = createInstrumentSources(context, gain, when, note, instrument, settings);
+  const oscillators = instrument === 'sampler'
+    ? [createSamplerSource(context, gain, when, note, samplerBuffer, samplerRootNote, settings)]
+    : createInstrumentSources(context, gain, when, note, instrument, settings);
   const durationSeconds = Math.max(.1, attack + release + .03);
-  for (const osc of oscillators) osc.stop(when + durationSeconds);
-  return { durationSeconds, stop: () => oscillators.forEach(osc => { try { osc.stop(); } catch {} }) };
+  for (const source of oscillators) source.stop(when + durationSeconds);
+  return { durationSeconds, stop: () => oscillators.forEach(source => { try { source.stop(); } catch {} }) };
+}
+
+function createSamplerSource(context, destination, when, note, buffer, rootNote = 60, settings = {}) {
+  const source = context.createBufferSource();
+  source.buffer = buffer;
+  source.playbackRate.setValueAtTime(2 ** ((note - rootNote + (settings.detuneCents || 0) / 100) / 12), when);
+  source.connect(destination);
+  source.start(when);
+  return source;
 }
 
 function createInstrumentSources(context, destination, when, note, instrument, rawSettings = null) {
@@ -1392,7 +1405,7 @@ ${track.effects?.compressor ? `<div class="inspector-eq-controls inspector-compr
       });
       control.addEventListener('change', restartProjectPlaybackIfActive);
     }
-    $('#inspectorPreviewSynthBtn', host).addEventListener('click', () => previewNote(track.instrument, 60, track.synthSettings));
+    $('#inspectorPreviewSynthBtn', host).addEventListener('click', () => previewNote(track.instrument, 60, track.synthSettings, state.assets.get(track.samplerAssetId)?.buffer, track.samplerRootNote ?? 60));
   }
 
   const openEditor = $('#inspectorOpenEditorBtn', host);
@@ -1414,8 +1427,13 @@ ${track.effects?.compressor ? `<div class="inspector-eq-controls inspector-compr
 function renderInstrumentEditor(body, track) {
   const settings = track.synthSettings = normalizeSynthSettings(track.synthSettings, track.instrument);
   const options = INSTRUMENTS.map(item => `<option value="${item.id}"${item.id === track.instrument ? ' selected' : ''}>${escapeHtml(item.name)}</option>`).join('');
-  body.innerHTML = `<section class="synth-editor" aria-label="Настройки встроенного синтезатора">
-    <div class="synth-header"><div><strong></strong><small>Встроенный осциллятор · локальная обработка</small></div><button class="button quiet compact" id="previewSynthBtn">▶ Прослушать ноту</button></div>
+  body.innerHTML = `<section class="synth-editor" data-instrument="${escapeHtml(track.instrument || 'soft-keys')}" aria-label="Настройки инструмента">
+    <div class="synth-header"><div><strong></strong><small>${track.instrument === 'sampler' ? 'Сэмплер · локальный WAV' : 'Встроенный осциллятор · локальная обработка'}</small></div><button class="button quiet compact" id="previewSynthBtn">▶ Прослушать ноту</button></div>
+    <div class="sampler-controls">
+      <label class="synth-control"><span>АУДИОФАЙЛ</span><select id="samplerAsset" aria-label="Аудиофайл сэмплера"><option value="">Выберите импортированный WAV…</option>${[...state.assets.values()].filter(asset => asset.type === 'audio').map(asset => `<option value="${escapeHtml(asset.id)}"${asset.id === track.samplerAssetId ? ' selected' : ''}>${escapeHtml(asset.name)}</option>`).join('')}</select></label>
+      <label class="synth-control"><span>ВЫСОТА ИСХОДНОЙ НОТЫ</span><input id="samplerRootNote" type="number" min="0" max="127" step="1" value="${Number.isInteger(track.samplerRootNote) ? track.samplerRootNote : 60}" aria-label="Номер исходной MIDI-ноты" /></label>
+      <p class="field-help">Импортируйте WAV через браузер проекта, выберите его здесь и укажите ноту, на которой сэмпл звучит без транспонирования.</p>
+    </div>
     <div class="synth-controls">
       <label class="synth-control"><span>ИНСТРУМЕНТ</span><select id="synthInstrument" aria-label="Инструмент">${options}</select></label>
       <label class="synth-control"><span>ФОРМА ВОЛНЫ</span><select data-synth="waveform" aria-label="Форма волны"><option value="preset">Фирменная</option><option value="sine">Синус</option><option value="triangle">Треугольник</option><option value="sawtooth">Пила</option><option value="square">Прямоугольник</option></select></label>
@@ -1445,7 +1463,15 @@ function renderInstrumentEditor(body, track) {
     });
     control.addEventListener('change', restartProjectPlaybackIfActive);
   }
-  $('#previewSynthBtn', body).addEventListener('click', () => previewNote(track.instrument, 60, track.synthSettings));
+  $('#samplerAsset', body).addEventListener('change', event => {
+    recordUndo(); track.samplerAssetId = event.target.value || null; markProjectDirty(); restartProjectPlaybackIfActive(); renderEditor();
+  });
+  $('#samplerRootNote', body).addEventListener('focus', recordUndo, { once: true });
+  $('#samplerRootNote', body).addEventListener('change', event => {
+    const value = Number(event.target.value); if (!Number.isInteger(value) || value < 0 || value > 127) { event.target.value = track.samplerRootNote ?? 60; return; }
+    track.samplerRootNote = value; markProjectDirty(); restartProjectPlaybackIfActive();
+  });
+  $('#previewSynthBtn', body).addEventListener('click', () => previewNote(track.instrument, 60, track.synthSettings, state.assets.get(track.samplerAssetId)?.buffer, track.samplerRootNote ?? 60));
 }
 
 function updateSynthOutput(root, key, value) {
@@ -1935,7 +1961,7 @@ function scheduleProject(context, fromBeat = 0, destination = context.destinatio
         for (const note of clip.notes || []) {
           const beat = clip.startBeat + note.beat, endBeat = beat + note.length; if (endBeat <= fromBeat) continue;
           const when = now + Math.max(0, beat - fromBeat) * secondsPerBeat, duration = Math.max(.03, (endBeat - Math.max(fromBeat, beat)) * secondsPerBeat);
-          scheduleNote(context, trackGain, when, duration, note.note, track.instrument || 'soft-keys', note.velocity, track.synthSettings);
+          scheduleNote(context, trackGain, when, duration, note.note, track.instrument || 'soft-keys', note.velocity, track.synthSettings, state.assets.get(track.samplerAssetId)?.buffer, track.samplerRootNote ?? 60);
         }
       } else {
         const useRendered = Boolean(clip.renderedAssetId && !clip.bypassProcessing);
@@ -2036,7 +2062,8 @@ function createReverbImpulse(context) {
   return impulse;
 }
 
-function scheduleNote(context, destination, when, duration, note, instrument, velocity = .72, rawSettings = null) {
+function scheduleNote(context, destination, when, duration, note, instrument, velocity = .72, rawSettings = null, samplerBuffer = null, samplerRootNote = 60) {
+  if (instrument === 'sampler' && !samplerBuffer) return;
   const gain = context.createGain(), settings = normalizeSynthSettings(rawSettings, instrument);
   const attack = settings.attackMs / 1000, release = settings.releaseMs / 1000;
   const volume = .18 * clamp(Number.isFinite(velocity) ? velocity : .72, 0, 1);
@@ -2050,8 +2077,10 @@ function scheduleNote(context, destination, when, duration, note, instrument, ve
   if (releaseStart > when + attackEnd) gain.gain.setValueAtTime(Math.max(.0001, volume), releaseStart);
   gain.gain.exponentialRampToValueAtTime(.0001, releaseEnd);
   gain.connect(destination);
-  const oscillators = createInstrumentSources(context, gain, when, note, instrument, settings);
-  for (const osc of oscillators) { osc.stop(releaseEnd + .03); scheduledNodes.push(osc); }
+  const voices = instrument === 'sampler'
+    ? [createSamplerSource(context, gain, when, note, samplerBuffer, samplerRootNote, settings)]
+    : createInstrumentSources(context, gain, when, note, instrument, settings);
+  for (const voice of voices) { voice.stop(releaseEnd + .03); scheduledNodes.push(voice); }
 }
 
 function playbackTick() {
@@ -2228,6 +2257,8 @@ function buildNativeProjectPlan() {
           const context = getAudioContext();
           const pcm = renderSequencedPcm(clip, {
             instrument: track.instrument || 'soft-keys', synthSettings: track.synthSettings, bpm: state.tempo, sampleRate: context.sampleRate,
+            samplerBuffer: state.assets.get(track.samplerAssetId)?.buffer?.getChannelData(0) || null,
+            samplerSampleRate: state.assets.get(track.samplerAssetId)?.buffer?.sampleRate || context.sampleRate, samplerRootNote: track.samplerRootNote ?? 60,
             createDrumSample: kind => createSampleBuffer(kind, context).getChannelData(0),
           });
           if (!pcm) return null;

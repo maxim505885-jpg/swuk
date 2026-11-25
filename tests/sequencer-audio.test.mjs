@@ -69,3 +69,14 @@ test('sequencer renderer rejects malformed or unbounded patterns', () => {
   const denseNotes = Array.from({ length: 50 }, () => ({ beat: 0, length: 20, note: 60, velocity: .5 }));
   assert.equal(renderSequencedClip({ kind: 'midi', lengthBeats: 240, notes: denseNotes }, { bpm: 120 }), null);
 });
+test('sampler MIDI notes transpose an imported mono source from its root key', () => {
+  const source = Float32Array.from({ length: 600 }, (_, index) => index / 600);
+  const clip = { kind: 'midi', lengthBeats: 1, notes: [{ beat: 0, length: .5, note: 60, velocity: 1 }] };
+  const root = renderSequencedClip(clip, { instrument: 'sampler', samplerBuffer: source, samplerSampleRate: 8000, samplerRootNote: 60, sampleRate: 8000, bpm: 120, synthSettings: { attackMs: 1, releaseMs: 10 } });
+  const octave = renderSequencedClip({ ...clip, notes: [{ ...clip.notes[0], note: 72 }] }, { instrument: 'sampler', samplerBuffer: source, samplerSampleRate: 8000, samplerRootNote: 60, sampleRate: 8000, bpm: 120, synthSettings: { attackMs: 1, releaseMs: 10 } });
+  assert.ok(Math.abs(root[100] - octave[50]) < .002, 'one octave up consumes source samples twice as fast');
+  assert.ok(root[100] > 0 && root.length === 4000, 'root key plays the source at its original rate');
+  assert.equal(renderSequencedClip(clip, { instrument: 'sampler', sampleRate: 8000, bpm: 120 }), null, 'sampler requires a source sample');
+  assert.equal(renderSequencedClip(clip, { instrument: 'sampler', samplerBuffer: source, samplerSampleRate: 8000, samplerRootNote: 128, sampleRate: 8000, bpm: 120 }), null, 'sampler root key is bounded');
+});
+
