@@ -484,8 +484,9 @@ try {
   await evaluate("document.querySelector('.piano-cell:not(:disabled)').click()");
   await waitUntil(() => evaluate("Boolean(document.querySelector('#generatePianoChord'))"), Boolean, 'Piano Roll chord control');
   await evaluate("document.querySelector('#generatePianoChord').click()");
-  const pianoNoteCount = await waitUntil(() => evaluate("document.querySelectorAll('.piano-note').length"), count => count === 4, 'generated major triad in Piano Roll');
-  assert.equal(pianoNoteCount, 4, 'major chord adds the two missing pitches alongside its selected root');
+  const chordSnapshot = await evaluate("(() => ({notes:[...document.querySelectorAll('.piano-note')].map(note=>note.getAttribute('aria-label')),toast:document.querySelector('#toast')?.textContent}))()");
+  console.log('Piano Roll chord smoke:', JSON.stringify(chordSnapshot));
+  assert.equal(chordSnapshot.notes.length, 4, 'major chord adds the two missing pitches alongside its selected root');
   assert.deepEqual(exceptions, [], 'Piano Roll chord generation must not throw renderer exceptions');
   console.log(`Electron UI smoke passed: Piano Roll chord generator, sampler editor, probability/ratchet controls, 128-clip Arrangement, zoom, spectrum analyzer, EQ, compressor, limiter, split/slicing, undo/redo, project round-trip, WAV export and loop selection`);
 } finally {
