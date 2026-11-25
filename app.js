@@ -825,7 +825,14 @@ function createClipElement(clip, track) {
   $('.clip-header span', el).textContent = clip.name;
   if (clip.kind === 'drums') {
     const preview = document.createElement('div'); preview.className = 'pattern-preview';
-    for (let i = 0; i < 16; i++) { const bar = document.createElement('i'); bar.style.height = `${5 + ((clip.steps || []).reduce((n, row) => n + row.hits.filter(hit => hit === i).length, 0) * 4)}px`; preview.append(bar); }
+    for (let i = 0; i < 16; i++) {
+      const bar = document.createElement('i');
+      const hits = (clip.steps || []).reduce((total, row, rowIndex) => {
+        const { probability, ratchets } = normalizeDrumRowSettings(row);
+        return total + row.hits.filter(hit => hit === i && drumHitOccurs(clip.id, rowIndex, hit, probability)).length * ratchets;
+      }, 0);
+      bar.style.height = `${5 + hits * 4}px`; preview.append(bar);
+    }
     el.append(preview);
   } else if (clip.kind === 'midi') {
     const preview = document.createElement('div'); preview.className = 'pattern-preview';
