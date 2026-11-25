@@ -490,6 +490,6 @@ int main() {
     testCaptureRingReportsBackpressureAndHonorsFrameLimit();
     testCaptureRecorderWritesFinalizedPcmWave();
     testSpectrumAnalyzerFindsToneAndResets();
-    std::cout << "23 native audio core tests passed\n";
+    std::cout << "24 native audio core tests passed\n";
     return EXIT_SUCCESS;
 }
