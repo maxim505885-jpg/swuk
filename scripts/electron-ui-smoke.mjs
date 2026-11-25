@@ -472,11 +472,39 @@ try {
   assert.deepEqual(perStepControls, { step: '1', chance: '0.25', repeat: '3' }, 'selected step probability and ratchets can override row defaults');
   const patternSwitch = await evaluate("(() => { const picker=document.querySelector('#rackPatternSelect');picker.value='qa-drum-pattern-b';picker.dispatchEvent(new Event('change',{bubbles:true}));return {count:picker.options.length,selected:document.querySelector('#rackPatternSelect').value,firstHit:document.querySelector('.step-cell.active')?.getAttribute('aria-label')}; })()");
   assert.deepEqual(patternSwitch, { count: 2, selected: 'qa-drum-pattern-b', firstHit: 'Kick, шаг 3, такт 1' }, 'pattern picker loads the selected clip into the step grid');
-  const secondBar = await evaluate("(() => { const bar=document.querySelector('#stepBarSelect');bar.value='2';bar.dispatchEvent(new Event('change',{bubbles:true}));return {length:document.querySelector('#stepLengthSelect').value,bar:bar.value,step:document.querySelector('#stepEditStep').value,firstHit:document.querySelector('.step-cell.active')?.getAttribute('aria-label')}; })()");
-  assert.deepEqual(secondBar, { length: '2', bar: '2', step: '1', firstHit: 'Kick, шаг 1, такт 2' }, 'bar navigation displays and edits steps from the second bar');
+  const secondBar = await evaluate("(() => { const bar=document.querySelector('#stepBarSelect');bar.value='2';bar.dispatchEvent(new Event('change',{bubbles:true}));return {length:document.querySelector('#stepLengthSelect').value,maxLength:document.querySelector('#stepLengthSelect').options[document.querySelector('#stepLengthSelect').options.length-1].value,bar:bar.value,step:document.querySelector('#stepEditStep').value,firstHit:document.querySelector('.step-cell.active')?.getAttribute('aria-label')}; })()");
+  assert.deepEqual(secondBar, { length: '2', maxLength: '60', bar: '2', step: '1', firstHit: 'Kick, шаг 1, такт 2' }, 'bar navigation displays and edits steps from the second bar');
+  const lowTempoBounds = await evaluate("(() => { const tempo=document.querySelector('#tempoInput');tempo.value='40';tempo.dispatchEvent(new Event('change',{bubbles:true}));const length=document.querySelector('#stepLengthSelect');return {maxLength:length.options[length.options.length-1].value,noticeHidden:document.querySelector('#stepLengthNotice').hidden}; })()");
+  assert.deepEqual(lowTempoBounds, { maxLength: '20', noticeHidden: true }, 'pattern length options adapt to the current render duration at low BPM');
+  await evaluate("(() => { const tempo=document.querySelector('#tempoInput');tempo.value='120';tempo.dispatchEvent(new Event('change',{bubbles:true})); })()");
   await evaluate("document.querySelector('#createPatternBtn').click()");
   const createdPattern = await waitUntil(() => evaluate("(() => { const picker=document.querySelector('#rackPatternSelect');return picker?{count:picker.options.length,selected:picker.value,name:picker.options[picker.selectedIndex]?.textContent}:null; })()"), value => value?.count === 3, 'new sequencer pattern added');
   assert.match(createdPattern.name, /Ритм 3/, 'new pattern receives a distinct name and becomes active');
+  const legacyDrumProject = structuredClone(largeProject);
+  legacyDrumProject.tracks.forEach(track => { track.clips = []; });
+  legacyDrumProject.tracks.push({
+    id: 'qa-legacy-drum-track', name: 'QA legacy drums', type: 'drums', volume: .8, pan: 0, mute: false, solo: false,
+    clips: [{ id: 'qa-legacy-drum-pattern', name: 'Legacy 128-bar pattern', kind: 'drums', startBeat: 0, lengthBeats: 512,
+      steps: [{ name: 'Kick', kind: 'kick', velocity: .8, probability: 1, ratchets: 1, hits: [2032] }] }],
+  });
+  legacyDrumProject.selectedTrackId = 'qa-legacy-drum-track';
+  legacyDrumProject.selectedClipId = 'qa-legacy-drum-pattern';
+  const legacyDrumProjectText = JSON.stringify(legacyDrumProject);
+  await evaluate("(() => { const previous=window.confirm; window.confirm=()=>true; document.querySelector('#newProjectBtn').click(); window.confirm=previous; })()");
+  await waitUntil(() => evaluate("document.querySelectorAll('.track-lane .clip').length"), count => count === 0, 'empty Arrangement before loading a legacy over-limit drum pattern');
+  await evaluate(`(() => { const file=new File([${JSON.stringify(legacyDrumProjectText)}],'qa-legacy-drum-pattern.sonora',{type:'application/json'}),transfer=new DataTransfer();transfer.items.add(file);const input=document.querySelector('#projectFile');input.files=transfer.files;input.dispatchEvent(new Event('change',{bubbles:true}));return true; })()`);
+  await waitUntil(() => evaluate("Boolean(document.querySelector('[data-track=\\\"qa-legacy-drum-track\\\"]'))"), Boolean, 'loaded legacy drum pattern');
+  await waitUntil(() => evaluate("document.querySelector('#inspectorOpenEditorBtn')?.textContent"), text => text?.includes('секвенсор'), 'legacy sequencer track inspector');
+  await evaluate("document.querySelector('#inspectorOpenEditorBtn').click()");
+  const legacyWarning = await waitUntil(() => evaluate("(() => { const length=document.querySelector('#stepLengthSelect'),page=document.querySelector('#stepBarSelect');return {current:length.value,currentDisabled:length.selectedOptions[0]?.disabled,pageCount:page.options.length,pageLast:page.options[page.options.length-1]?.value,warningVisible:!document.querySelector('#stepLengthNotice').hidden}; })()"), value => value?.warningVisible, 'over-limit legacy pattern warning');
+  assert.deepEqual(legacyWarning, { current: '128', currentDisabled: true, pageCount: 128, pageLast: '128', warningVisible: true }, 'legacy patterns remain navigable and display their over-limit state');
+  await evaluate("(() => { const bar=document.querySelector('#stepBarSelect');bar.value='128';bar.dispatchEvent(new Event('change',{bubbles:true}));document.querySelector('.step-cell.active')?.click(); })()");
+  const trimmedLegacy = await waitUntil(() => evaluate("(() => ({length:document.querySelector('#stepLengthSelect').value,length60Disabled:document.querySelector('#stepLengthSelect').querySelector('option[value=\\\"60\\\"]')?.disabled,warningHidden:document.querySelector('#stepLengthNotice').hidden,remainingHits:document.querySelectorAll('.step-cell.active').length}))()"), value => value?.length60Disabled === false, 'remove the legacy tail hit to enable a safe length');
+  assert.deepEqual(trimmedLegacy, { length: '128', length60Disabled: false, warningHidden: false, remainingHits: 0 }, 'legacy tail hits can be removed before choosing a renderable length');
+  await evaluate("(() => { const length=document.querySelector('#stepLengthSelect');length.value='60';length.dispatchEvent(new Event('change',{bubbles:true})); })()");
+  const recoveredLegacy = await waitUntil(() => evaluate("(() => ({length:document.querySelector('#stepLengthSelect').value,warningHidden:document.querySelector('#stepLengthNotice').hidden}))()"), value => value?.length === '60' && value?.warningHidden, 'shorten the cleaned legacy pattern to its renderable length');
+  assert.deepEqual(recoveredLegacy, { length: '60', warningHidden: true }, 'legacy over-limit patterns can be recovered through enabled UI controls');
+  assert.deepEqual(exceptions, [], 'legacy pattern recovery must not throw renderer exceptions');
   assert.deepEqual(exceptions, [], 'step sequencer rendering and controls must not throw renderer exceptions');
   const pianoProject = structuredClone(largeProject);
   pianoProject.tracks.forEach(track => { track.clips = []; });
