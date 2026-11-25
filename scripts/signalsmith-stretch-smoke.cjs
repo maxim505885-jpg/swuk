@@ -20,7 +20,7 @@ async function run() {
       const extension = file.slice(file.lastIndexOf('.'));
       response.writeHead(200, {
         'Content-Type': mimeTypes[extension] || 'application/octet-stream',
-        'Content-Security-Policy': "default-src 'self'; script-src 'self'; worker-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-src 'none'",
+        'Content-Security-Policy': "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-src 'none'",
         'X-Content-Type-Options': 'nosniff',
       }).end(body);
     } catch {
