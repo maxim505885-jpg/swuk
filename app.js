@@ -8,6 +8,7 @@ import { moveWaveWindowEdge, normalizeWaveWindow, waveWindowSecondsAtX } from '.
 import { resolveRecordingStartBeat } from './recording-core.mjs?v=1';
 import { decodeMidiNoteEvent } from './midi-message-core.mjs?v=1';
 import { createMidiTake, finishMidiTake, recordMidiNoteEvent } from './midi-recording-core.mjs?v=1';
+import { buildMidiPlaybackEvents, midiEventsCrossed } from './midi-playback-core.mjs?v=1';
 import { detectTransientFrames } from './transient-core.mjs?v=1';
 import { clampMidiPitch, generateChordPitches, midiOctaveStart, quantizeMidiNotes, shiftMidiOctave } from './midi-edit-core.mjs?v=3';
 import { normalizeClipFades } from './clip-fade-core.mjs?v=1';
@@ -110,7 +111,14 @@ let midiInputConnected = false;
 let midiOutputConnected = false;
 let midiInputDeviceIndex = 0;
 let midiOutputDeviceIndex = 0;
+let midiOutputPlaybackEnabled = false;
+try { midiOutputPlaybackEnabled = localStorage.getItem('sonora-midi-output-playback') === 'true'; } catch {}
 let midiInputPollTimer = 0;
+let midiOutputPollTimer = 0;
+let midiOutputLastBeat = null;
+let midiOutputScheduleRevision = -1;
+let midiOutputEvents = [];
+const midiOutputActiveNotes = new Map();
 let midiTestOffTimer = 0;
 const midiPreviewVoices = new Map();
 let midiRecordingArmed = false;
@@ -2224,8 +2232,70 @@ function updatePosition() {
   if (followPlayhead && state.playing) { const scroll = $('#timelineScroll'); const x = beatsToPx(state.playheadBeat); if (x > scroll.scrollLeft + scroll.clientWidth - 100) scroll.scrollLeft = x - 100; }
 }
 
-function updateTransport() { $('#playBtn').classList.toggle('is-playing', state.playing); $('#playBtn').innerHTML = state.playing ? '<span>Ⅱ</span>' : '<span>▶</span>'; $('#playBtn').setAttribute('aria-label', state.playing ? 'Приостановить воспроизведение' : 'Воспроизвести'); $('#playBtn').setAttribute('aria-pressed', String(state.playing)); $('#recordBtn').classList.toggle('recording', state.recording); $('#recordBtn').setAttribute('aria-label', state.recording ? 'Остановить запись' : 'Запись с микрофона'); $('#recordBtn').setAttribute('aria-pressed', String(state.recording)); const engineNote = $('#mixerEngineNote'); if (engineNote) engineNote.textContent = nativePlaybackPending ? 'Подготовка native-аудиодвижка…' : nativePlaybackActive ? 'WASAPI · нативный аудиомикшер' : state.playing && state.tracks.some(track => track.clips.some(clip => clip.kind === 'automation')) ? 'Web Audio · автоматизация громкости' : 'Звук обрабатывается в браузере'; }
+function updateTransport() { $('#playBtn').classList.toggle('is-playing', state.playing); $('#playBtn').innerHTML = state.playing ? '<span>Ⅱ</span>' : '<span>▶</span>'; $('#playBtn').setAttribute('aria-label', state.playing ? 'Приостановить воспроизведение' : 'Воспроизвести'); $('#playBtn').setAttribute('aria-pressed', String(state.playing)); $('#recordBtn').classList.toggle('recording', state.recording); $('#recordBtn').setAttribute('aria-label', state.recording ? 'Остановить запись' : 'Запись с микрофона'); $('#recordBtn').setAttribute('aria-pressed', String(state.recording)); const engineNote = $('#mixerEngineNote'); if (engineNote) engineNote.textContent = nativePlaybackPending ? 'Подготовка native-аудиодвижка…' : nativePlaybackActive ? 'WASAPI · нативный аудиомикшер' : state.playing && state.tracks.some(track => track.clips.some(clip => clip.kind === 'automation')) ? 'Web Audio · автоматизация громкости' : 'Звук обрабатывается в браузере'; syncMidiOutputPlayback(); }
 
+function syncMidiOutputPlayback() {
+  if (midiOutputConnected && midiOutputPlaybackEnabled && state.playing) {
+    if (!midiOutputPollTimer) startMidiOutputScheduler();
+  } else if (midiOutputPollTimer || midiOutputActiveNotes.size) stopMidiOutputScheduler();
+}
+function startMidiOutputScheduler() {
+  if (midiOutputPollTimer || !midiOutputConnected || !midiOutputPlaybackEnabled || !state.playing) return;
+  midiOutputLastBeat = getRecordingStartBeat() - 1e-6;
+  midiOutputScheduleRevision = -1;
+  const tick = async () => {
+    midiOutputPollTimer = 0;
+    if (!midiOutputConnected || !midiOutputPlaybackEnabled || !state.playing) { stopMidiOutputScheduler(); return; }
+    if (midiOutputScheduleRevision !== nativeGraphRevision) {
+      midiOutputEvents = buildMidiPlaybackEvents(state.tracks);
+      midiOutputScheduleRevision = nativeGraphRevision;
+    }
+    const currentBeat = getRecordingStartBeat();
+    let crossed = [];
+    if (Number.isFinite(currentBeat) && Number.isFinite(midiOutputLastBeat)) {
+      if (currentBeat >= midiOutputLastBeat) crossed = midiEventsCrossed(midiOutputEvents, midiOutputLastBeat, currentBeat);
+      else if (state.loop && state.loopEndBeat > state.loopStartBeat) {
+        crossed = midiEventsCrossed(midiOutputEvents, midiOutputLastBeat, state.loopEndBeat);
+        stopExternalMidiNotes();
+        crossed.push(...midiEventsCrossed(midiOutputEvents, state.loopStartBeat - 1e-6, currentBeat));
+      }
+    }
+    for (const event of crossed) {
+      if (!midiOutputConnected || !state.playing) break;
+      const key = `0:${event.pitch}`;
+      if (event.type === 'noteon') {
+        const count = midiOutputActiveNotes.get(key) || 0;
+        midiOutputActiveNotes.set(key, count + 1);
+        if (count === 0) {
+          const result = await window.sonoraNative.sendMidiNote(0, event.pitch, event.velocity, true).catch(error => ({ ok: false, error: error.message }));
+          if (!result?.ok) { midiOutputConnected = false; stopMidiOutputScheduler(); const status = $('#midiInputStatus'); if (status) status.textContent = result?.error || 'MIDI-выход отключился.'; break; }
+        }
+      } else {
+        const count = midiOutputActiveNotes.get(key) || 0;
+        if (count <= 1) {
+          midiOutputActiveNotes.delete(key);
+          if (count) await window.sonoraNative.sendMidiNote(0, event.pitch, 0, false).catch(() => {});
+        } else midiOutputActiveNotes.set(key, count - 1);
+      }
+    }
+    midiOutputLastBeat = currentBeat;
+    if (midiOutputConnected && midiOutputPlaybackEnabled && state.playing) midiOutputPollTimer = window.setTimeout(tick, 15);
+  };
+  midiOutputPollTimer = window.setTimeout(tick, 0);
+}
+function stopExternalMidiNotes() {
+  for (const [key, count] of midiOutputActiveNotes) {
+    if (!count) continue;
+    const pitch = Number(key.split(':')[1]);
+    window.sonoraNative?.sendMidiNote(0, pitch, 0, false).catch(() => {});
+  }
+  midiOutputActiveNotes.clear();
+}
+function stopMidiOutputScheduler() {
+  if (midiOutputPollTimer) { clearTimeout(midiOutputPollTimer); midiOutputPollTimer = 0; }
+  midiOutputLastBeat = null;
+  stopExternalMidiNotes();
+}
 function scheduleProject(context, fromBeat = 0, destination = context.destination, includeMuted = false) {
   const now = context.currentTime, secondsPerBeat = beatSeconds();
   const hasSolo = state.tracks.some(track => track.solo) || state.buses.some(bus => bus.solo);
@@ -3154,6 +3224,12 @@ async function nativeMidiSettings() {
   if (!outputs.length) { const option = document.createElement('option'); option.value = ''; option.textContent = 'MIDI-выходы не найдены'; outputSelect.append(option); outputSelect.disabled = true; }
   outputRow.append(outputSelect); panel.append(outputRow);
 
+  const outputPlaybackRow = document.createElement('label'); outputPlaybackRow.className = 'device-row';
+  const outputPlaybackLabel = document.createElement('span'); outputPlaybackLabel.textContent = 'Воспроизводить MIDI-клипы на этом устройстве';
+  const outputPlaybackInput = document.createElement('input'); outputPlaybackInput.type = 'checkbox'; outputPlaybackInput.id = 'midiOutputPlaybackEnabled';
+  outputPlaybackInput.checked = midiOutputPlaybackEnabled; outputPlaybackInput.disabled = !midiOutputConnected;
+  outputPlaybackRow.append(outputPlaybackLabel, outputPlaybackInput); panel.append(outputPlaybackRow);
+
   const controls = document.createElement('div'); controls.className = 'native-engine-actions';
   const inputButton = document.createElement('button'); inputButton.type = 'button'; inputButton.className = 'button quiet';
   inputButton.textContent = midiInputConnected ? 'Отключить MIDI-вход' : 'Подключить MIDI-вход'; inputButton.disabled = !inputs.length && !midiInputConnected;
@@ -3167,7 +3243,7 @@ async function nativeMidiSettings() {
   controls.append(inputButton, outputButton, testButton, midiRecordButton); panel.append(controls);
 
   const note = document.createElement('p'); note.className = 'native-engine-note';
-  note.textContent = 'Вход играет выбранный инструмент для предпрослушивания. Выберите дорожку инструмента, подключите MIDI-вход и включите запись, чтобы сохранить ноты и velocity в новой партии. MIDI clock пока не поддерживается.';
+  note.textContent = 'Вход играет выбранный инструмент и записывает ноты в MIDI-клип. Включите отправку MIDI-клипов для внешнего воспроизведения. MIDI clock и синхронизация с внешним устройством пока не поддерживаются.';
   panel.append(note);
   const updateStatus = message => {
     const currentInput = midiInputConnected ? initial.inputName || inputs.find(device => device.index === midiInputDeviceIndex)?.name || 'подключён' : 'не подключён';
@@ -3175,6 +3251,13 @@ async function nativeMidiSettings() {
     status.textContent = message || `Вход: ${currentInput}. Выход: ${currentOutput}. MIDI-устройства работают через Windows MIDI.`;
   };
   updateStatus(initial?.ok ? '' : initial?.error || 'Не удалось получить список MIDI-устройств.');
+  syncMidiOutputPlayback();
+  outputPlaybackInput.onchange = () => {
+    midiOutputPlaybackEnabled = outputPlaybackInput.checked;
+    try { localStorage.setItem('sonora-midi-output-playback', String(midiOutputPlaybackEnabled)); } catch {}
+    syncMidiOutputPlayback();
+    updateStatus(midiOutputPlaybackEnabled ? 'Воспроизведение MIDI-клипов включено.' : 'Воспроизведение MIDI-клипов выключено.');
+  };
   midiRecordButton.onclick = () => {
     if (midiRecordingArmed) {
       finishMidiRecording();
@@ -3210,6 +3293,7 @@ async function nativeMidiSettings() {
   outputButton.onclick = async () => {
     outputButton.disabled = true;
     if (midiOutputConnected) {
+      stopMidiOutputScheduler();
       if (midiTestOffTimer) { clearTimeout(midiTestOffTimer); midiTestOffTimer = 0; await window.sonoraNative.sendMidiNote(0, 60, 0, false).catch(() => {}); }
       const response = await window.sonoraNative.closeMidiOutput().catch(error => ({ ok: false, error: error.message }));
       midiOutputConnected = false;
@@ -3221,6 +3305,9 @@ async function nativeMidiSettings() {
     }
     outputButton.textContent = midiOutputConnected ? 'Отключить MIDI-выход' : 'Подключить MIDI-выход';
     testButton.disabled = !midiOutputConnected;
+    outputPlaybackInput.disabled = !midiOutputConnected;
+    if (!midiOutputConnected) outputPlaybackInput.checked = false;
+    syncMidiOutputPlayback();
     outputButton.disabled = !outputs.length;
   };
   testButton.onclick = async () => {
