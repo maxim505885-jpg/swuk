@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <memory>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -68,6 +69,46 @@ public:
 
     [[nodiscard]] bool isActive() const noexcept { return activeCount_ != 0; }
     [[nodiscard]] std::size_t activeCount() const noexcept { return activeCount_; }
+
+    // Rebind plugin instances to stable channel IDs after a project graph is
+    // rebuilt. Removed tracks release their helper; reordered tracks keep it.
+    void reconcileTrackIds(const std::span<const std::string> trackIds) {
+        std::array<std::unique_ptr<RealtimeClapInsert>, kMaxTracks> nextClap{};
+        std::array<std::unique_ptr<RealtimeVst3Insert>, kMaxTracks> nextVst3{};
+        std::array<std::string, kMaxTracks> nextIds{};
+        std::array<bool, kMaxTracks> claimed{};
+        const auto boundedCount = std::min(trackIds.size(), kMaxTracks);
+        for (std::size_t i = 0; i < boundedCount; ++i) nextIds[i] = trackIds[i];
+
+        for (std::size_t oldIndex = 0; oldIndex < kMaxTracks; ++oldIndex) {
+            if (!clap_[oldIndex] && !vst3_[oldIndex]) continue;
+            std::size_t nextIndex = kMaxTracks;
+            const auto& stableId = trackIds_[oldIndex];
+            if (!stableId.empty()) {
+                for (std::size_t candidate = 0; candidate < boundedCount; ++candidate) {
+                    if (!claimed[candidate] && trackIds[candidate] == stableId) {
+                        nextIndex = candidate;
+                        break;
+                    }
+                }
+            }
+            if (nextIndex == kMaxTracks) {
+                if (clap_[oldIndex]) clap_[oldIndex]->stop();
+                if (vst3_[oldIndex]) vst3_[oldIndex]->stop();
+                continue;
+            }
+            claimed[nextIndex] = true;
+            nextClap[nextIndex] = std::move(clap_[oldIndex]);
+            nextVst3[nextIndex] = std::move(vst3_[oldIndex]);
+        }
+        clap_ = std::move(nextClap);
+        vst3_ = std::move(nextVst3);
+        trackIds_ = std::move(nextIds);
+        activeCount_ = 0;
+        for (std::size_t i = 0; i < kMaxTracks; ++i)
+            if (clap_[i] || vst3_[i]) ++activeCount_;
+        reset(timelineStart_);
+    }
 
     [[nodiscard]] TrackPluginStatus status(const std::size_t trackIndex) const noexcept {
         if (trackIndex >= kMaxTracks) return {};
@@ -165,6 +206,7 @@ private:
 
     std::array<std::unique_ptr<RealtimeClapInsert>, kMaxTracks> clap_{};
     std::array<std::unique_ptr<RealtimeVst3Insert>, kMaxTracks> vst3_{};
+    std::array<std::string, kMaxTracks> trackIds_{};
     std::vector<DelayLine> bypassDelay_;
     std::size_t activeCount_{};
     std::uint64_t timelineStart_{};
