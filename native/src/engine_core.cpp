@@ -386,6 +386,128 @@ bool renderMixBlock(
     return true;
 }
 
+static bool renderRoutedMixBlock(
+    float* output,
+    const std::size_t frameCount,
+    const double outputSampleRate,
+    const std::uint64_t firstProjectFrame,
+    const ProjectMixView& project,
+    ProjectMixState* state,
+    float* trackPeaks,
+    const std::size_t trackPeakCount) noexcept {
+    if (state == nullptr || !state->usesRouting || state->maxBlockFrames == 0 ||
+        frameCount > state->maxBlockFrames || state->routedChannels.size() != project.trackCount ||
+        (trackPeaks != nullptr && trackPeakCount < project.trackCount) ||
+        (trackPeaks == nullptr && trackPeakCount != 0)) {
+        return false;
+    }
+
+    const auto busIndexFor = [&](const std::size_t trackIndex) noexcept -> std::size_t {
+        const auto busIndex = project.tracks[trackIndex].outputBusIndex;
+        if (project.tracks[trackIndex].isBus || busIndex < -1) return project.trackCount;
+        if (busIndex == -1) return project.trackCount;
+        const auto target = static_cast<std::size_t>(busIndex);
+        if (target >= project.trackCount || !project.tracks[target].isBus || project.tracks[target].outputBusIndex != -1) {
+            return project.trackCount;
+        }
+        return target;
+    };
+
+    bool anySolo = false;
+    for (std::size_t index = 0; index < project.trackCount; ++index) {
+        const auto& track = project.tracks[index];
+        if (track.isBus) {
+            if (track.outputBusIndex != -1) return false;
+        } else if (track.outputBusIndex >= 0 && busIndexFor(index) == project.trackCount) {
+            return false;
+        }
+        anySolo = anySolo || track.solo;
+        const auto& channel = state->routedChannels[index];
+        if (!channel.runtime || channel.outputScratch.size() < state->maxBlockFrames * 2 ||
+            (track.isBus && (channel.busInputScratch.size() < state->maxBlockFrames * 2 || channel.clips.size() != 1)) ||
+            (!track.isBus && !channel.busInputScratch.empty())) {
+            return false;
+        }
+    }
+
+    std::fill_n(output, frameCount * 2, 0.0F);
+    if (trackPeaks != nullptr) std::fill_n(trackPeaks, project.trackCount, 0.0F);
+    for (std::size_t index = 0; index < project.trackCount; ++index) {
+        if (project.tracks[index].isBus) {
+            auto& channel = state->routedChannels[index];
+            std::fill_n(channel.busInputScratch.data(), frameCount * 2, 0.0F);
+        }
+    }
+
+    for (std::size_t trackIndex = 0; trackIndex < project.trackCount; ++trackIndex) {
+        const auto& track = project.tracks[trackIndex];
+        if (track.isBus) continue;
+        const auto busIndex = busIndexFor(trackIndex);
+        const bool soloedDestination = busIndex < project.trackCount && project.tracks[busIndex].solo;
+        if (track.mute || (anySolo && !track.solo && !soloedDestination)) continue;
+
+        auto& channel = state->routedChannels[trackIndex];
+        float peak = 0.0F;
+        const ProjectMixView isolated{&channel.settings, 1, channel.clips.data(), channel.clips.size(), 1.0F};
+        if (!renderMixBlock(channel.outputScratch.data(), frameCount, outputSampleRate, firstProjectFrame,
+                isolated, channel.runtime.get(), trackPeaks != nullptr ? &peak : nullptr, trackPeaks != nullptr ? 1 : 0)) {
+            return false;
+        }
+        if (trackPeaks != nullptr) trackPeaks[trackIndex] = peak;
+
+        float* const destination = busIndex < project.trackCount
+            ? state->routedChannels[busIndex].busInputScratch.data()
+            : output;
+        for (std::size_t sampleIndex = 0; sampleIndex < frameCount * 2; ++sampleIndex) {
+            destination[sampleIndex] += channel.outputScratch[sampleIndex];
+        }
+    }
+
+    for (std::size_t busIndex = 0; busIndex < project.trackCount; ++busIndex) {
+        const auto& bus = project.tracks[busIndex];
+        if (!bus.isBus) continue;
+        if (bus.mute || (anySolo && !bus.solo && [&]() noexcept {
+                for (std::size_t trackIndex = 0; trackIndex < project.trackCount; ++trackIndex) {
+                    if (!project.tracks[trackIndex].isBus && project.tracks[trackIndex].solo &&
+                        busIndexFor(trackIndex) == busIndex) return false;
+                }
+                return true;
+            }())) {
+            continue;
+        }
+
+        auto& channel = state->routedChannels[busIndex];
+        channel.busInputView.frameCount = state->maxBlockFrames;
+        auto& inputClip = channel.clips.front();
+        inputClip.source = &channel.busInputView;
+        inputClip.trackIndex = 0;
+        inputClip.startFrame = firstProjectFrame;
+        inputClip.sourceOffsetFrame = 0;
+        inputClip.durationFrames = frameCount;
+        inputClip.playbackRate = 1.0;
+        inputClip.gain = 1.0F;
+        inputClip.pan = 0.0F;
+        inputClip.fadeInFrames = 0;
+        inputClip.fadeOutFrames = 0;
+
+        float peak = 0.0F;
+        const ProjectMixView isolated{&channel.settings, 1, channel.clips.data(), channel.clips.size(), 1.0F};
+        if (!renderMixBlock(channel.outputScratch.data(), frameCount, outputSampleRate, firstProjectFrame,
+                isolated, channel.runtime.get(), trackPeaks != nullptr ? &peak : nullptr, trackPeaks != nullptr ? 1 : 0)) {
+            return false;
+        }
+        if (trackPeaks != nullptr) trackPeaks[busIndex] = peak;
+        for (std::size_t sampleIndex = 0; sampleIndex < frameCount * 2; ++sampleIndex) {
+            output[sampleIndex] += channel.outputScratch[sampleIndex];
+        }
+    }
+
+    for (std::size_t sampleIndex = 0; sampleIndex < frameCount * 2; ++sampleIndex) {
+        output[sampleIndex] *= project.masterGain;
+    }
+    return true;
+}
+
 bool configureProjectMixState(ProjectMixState& state, const ProjectMixView& project) noexcept {
     try {
         constexpr std::size_t kMaxBlockFrames = 8192;
