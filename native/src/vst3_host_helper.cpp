@@ -27,7 +27,6 @@ using sonora::plugin::HostStatus;
 using sonora::plugin::SharedTransport;
 constexpr std::uint32_t kChannels = 2;
 constexpr std::uint32_t kFrames = sonora::plugin::kPluginAudioBlockFrames;
-constexpr std::uint32_t kSamples = kChannels * kFrames;
 
 class Vst3StereoEffect final {
 public:
@@ -40,7 +39,7 @@ public:
         auto factory = module_->getFactory();
         const auto classes = factory.classInfos();
         const auto selected = std::find_if(classes.begin(), classes.end(), [](const auto& info) {
-            return info.category() == Steinberg::Vst::kVstAudioEffectClass;
+            return info.category() == kVstAudioEffectClass;
         });
         if (selected == classes.end()) {
             error = "The VST3 bundle contains no audio-effect class";
@@ -131,10 +130,10 @@ public:
         processData_.numSamples = static_cast<Steinberg::int32>(block.frameCount);
         processData_.processContext = &processContext_;
         processContext_ = {};
-        processContext_.state = Steinberg::Vst::ProcessContext::kPlaying;
+        processContext_.state = Steinberg::Vst::ProcessContext::kPlaying | Steinberg::Vst::ProcessContext::kContTimeValid;
         processContext_.sampleRate = 48'000.0;
         processContext_.projectTimeSamples = static_cast<Steinberg::Vst::TSamples>(block.projectFrame);
-        processContext_.continuousTimeSamples = static_cast<Steinberg::Vst::TSamples>(block.steadyTime);
+        processContext_.continousTimeSamples = static_cast<Steinberg::Vst::TSamples>(block.steadyTime);
 
         if (processor_->process(processData_) != Steinberg::kResultOk) return false;
         output = block;
