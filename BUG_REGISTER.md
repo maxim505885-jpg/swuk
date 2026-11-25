@@ -16,7 +16,7 @@
 |---|---|---|---|
 | SON-QA-001 | Чистая установка/запуск Windows 11 | NOT TESTED | CI использует windows-latest; установщик не подписан и локально не установлен. |
 | SON-QA-002 | Слышимый WASAPI output и физическая запись input | NOT TESTED | Native smoke проходит цифровую тишину; физический device loop не выполнялся. |
-| SON-QA-003 | Длинный soak приложения, Electron/UI memory, latency/underruns и нагрузка на реальных исходниках | NOT RUN | Native mixer benchmark (run #45629167866) теперь входит в release gate, но не измеряет полное приложение или реальную проектную сессию; `qa:stability` и аппаратный тест не запускались. |
+| SON-QA-003 | Длинный soak приложения, Electron/UI memory, latency/underruns и нагрузка на реальных исходниках | NOT RUN | Native mixer benchmark входит в release gate (полный gate #45630452982; метрики benchmark #45629167866), но измеряет только C++ микшер; `qa:stability`, полное приложение, реальная проектная сессия и аппаратный тест не проверялись. |
 | SON-QA-004 | Полный визуальный и accessibility аудит по темам/viewport/DPI | PARTIAL | Есть точечный UI smoke; полный осмотр и набор screenshot evidence не приложены. |
 
 ## Не дефекты, а незавершённая область ТЗ
