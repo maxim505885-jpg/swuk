@@ -2328,7 +2328,7 @@ async function loadTrackRealtimePlugin(trackId, format) {
   plugin.loading = true;
   trackPluginStates.set(trackId, plugin);
   trackPluginOperationActive = true;
-  refreshTrackPluginControls(); refreshMasterClapControls(); refreshMasterVst3Controls();
+  updateTransport();
   try {
     const selection = await inspect();
     if (!selection?.ok) {
@@ -2356,7 +2356,7 @@ async function loadTrackRealtimePlugin(trackId, format) {
     trackPluginOperationActive = false;
     if (state.tracks.some(track => track.id === trackId)) trackPluginStates.set(trackId, plugin);
     else { clearInterval(plugin.statusTimer); trackPluginStates.delete(trackId); }
-    refreshTrackPluginControls(); refreshMasterClapControls(); refreshMasterVst3Controls();
+    updateTransport();
   }
 }
 
@@ -2368,7 +2368,7 @@ async function unloadTrackRealtimePlugin(trackId) {
   const trackIndex = state.tracks.findIndex(track => track.id === trackId);
   if (!plugin?.selectionToken || trackIndex < 0 || !window.sonoraNative?.unloadTrackPlugin) return;
   plugin.loading = true; trackPluginOperationActive = true;
-  refreshTrackPluginControls(); refreshMasterClapControls(); refreshMasterVst3Controls();
+  updateTransport();
   try {
     const result = await window.sonoraNative.unloadTrackPlugin(trackIndex);
     if (!result?.ok) throw new Error(result?.error || 'Не удалось снять эффект с дорожки');
@@ -2379,7 +2379,7 @@ async function unloadTrackRealtimePlugin(trackId) {
     showToast(error.message || 'Не удалось снять эффект с дорожки');
   } finally {
     trackPluginOperationActive = false;
-    refreshTrackPluginControls(); refreshMasterClapControls(); refreshMasterVst3Controls();
+    updateTransport();
   }
 }
 
@@ -2406,7 +2406,7 @@ async function loadMasterClapEffect() {
   if (!window.sonoraNative?.inspectClapEffect || !window.sonoraNative?.loadRealtimeClapEffect) {
     showToast('Realtime CLAP доступен в настольной версии SONORA'); return;
   }
-  masterClapLoading = true; refreshMasterClapControls(); refreshMasterVst3Controls();
+  masterClapLoading = true; updateTransport();
   try {
     const selection = await window.sonoraNative.inspectClapEffect();
     if (!selection.ok) {
@@ -2430,7 +2430,7 @@ async function loadMasterClapEffect() {
   } catch (error) {
     showToast(error.message || 'Не удалось загрузить CLAP-эффект');
   } finally {
-    masterClapLoading = false; refreshMasterClapControls(); refreshMasterVst3Controls();
+    masterClapLoading = false; updateTransport();
   }
 }
 
@@ -2478,7 +2478,7 @@ async function loadMasterVst3Effect() {
   if (!window.sonoraNative?.inspectVst3Effect || !window.sonoraNative?.loadRealtimeVst3Effect) {
     showToast('Realtime VST3 доступен в настольной версии SONORA'); return;
   }
-  masterVst3Loading = true; refreshMasterVst3Controls(); refreshMasterClapControls();
+  masterVst3Loading = true; updateTransport();
   try {
     const selection = await window.sonoraNative.inspectVst3Effect();
     if (!selection.ok) {
@@ -2500,7 +2500,7 @@ async function loadMasterVst3Effect() {
   } catch (error) {
     showToast(error.message || 'Не удалось загрузить VST3-эффект');
   } finally {
-    masterVst3Loading = false; refreshMasterVst3Controls(); refreshMasterClapControls();
+    masterVst3Loading = false; updateTransport();
   }
 }
 
@@ -2555,7 +2555,7 @@ function updatePosition() {
   if (followPlayhead && state.playing) { const scroll = $('#timelineScroll'); const x = beatsToPx(state.playheadBeat); if (x > scroll.scrollLeft + scroll.clientWidth - 100) scroll.scrollLeft = x - 100; }
 }
 
-function updateTransport() { $('#playBtn').classList.toggle('is-playing', state.playing); $('#playBtn').innerHTML = state.playing ? '<span>Ⅱ</span>' : '<span>▶</span>'; $('#playBtn').setAttribute('aria-label', state.playing ? 'Приостановить воспроизведение' : 'Воспроизвести'); $('#playBtn').setAttribute('aria-pressed', String(state.playing)); $('#recordBtn').classList.toggle('recording', state.recording); $('#recordBtn').setAttribute('aria-label', state.recording ? 'Остановить запись' : 'Запись с микрофона'); $('#recordBtn').setAttribute('aria-pressed', String(state.recording)); const engineNote = $('#mixerEngineNote'); if (engineNote) engineNote.textContent = nativePlaybackPending ? 'Подготовка native-аудиодвижка…' : nativePlaybackActive ? 'WASAPI · нативный аудиомикшер' : state.playing && state.tracks.some(track => track.clips.some(clip => clip.kind === 'automation')) ? 'Web Audio · автоматизация громкости' : 'Звук обрабатывается в браузере'; refreshMasterClapControls(); refreshMasterVst3Controls(); refreshTrackPluginControls(); syncMidiOutputPlayback(); }
+function updateTransport() { const playButton = $('#playBtn'); playButton.classList.toggle('is-playing', state.playing); playButton.innerHTML = state.playing ? '<span>Ⅱ</span>' : '<span>▶</span>'; playButton.setAttribute('aria-label', state.playing ? 'Приостановить воспроизведение' : 'Воспроизвести'); playButton.setAttribute('aria-pressed', String(state.playing)); const pluginBusy = nativePlaybackPending || trackPluginOperationActive || masterClapLoading || masterVst3Loading; playButton.disabled = pluginBusy; playButton.setAttribute('aria-busy', String(pluginBusy)); $('#recordBtn').classList.toggle('recording', state.recording); $('#recordBtn').setAttribute('aria-label', state.recording ? 'Остановить запись' : 'Запись с микрофона'); $('#recordBtn').setAttribute('aria-pressed', String(state.recording)); const engineNote = $('#mixerEngineNote'); if (engineNote) engineNote.textContent = nativePlaybackPending ? 'Подготовка native-аудиодвижка…' : nativePlaybackActive ? 'WASAPI · нативный аудиомикшер' : state.playing && state.tracks.some(track => track.clips.some(clip => clip.kind === 'automation')) ? 'Web Audio · автоматизация громкости' : 'Звук обрабатывается в браузере'; refreshMasterClapControls(); refreshMasterVst3Controls(); refreshTrackPluginControls(); syncMidiOutputPlayback(); }
 
 function syncMidiOutputPlayback() {
   if (midiOutputConnected && midiOutputPlaybackEnabled && state.playing) {
@@ -3076,7 +3076,7 @@ async function prepareNativeProject(plan) {
 
 async function play() {
   if (state.playing) { pausePlayback(); return; }
-  if (nativePlaybackPending) return;
+  if (nativePlaybackPending || trackPluginOperationActive || masterClapLoading || masterVst3Loading) return;
   if (state.loop && (state.playheadBeat < state.loopStartBeat || state.playheadBeat >= state.loopEndBeat)) state.playheadBeat = state.loopStartBeat;
   lastMetronomeBeat = -1;
   const nativePlan = buildNativeProjectPlan();
