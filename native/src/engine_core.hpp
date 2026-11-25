@@ -82,6 +82,7 @@ struct TrackMixSettings {
     float compressorReleaseMs{120.0F};
     float compressorMakeupDb{};
     std::vector<AutomationPoint> gainAutomation;
+    std::vector<AutomationPoint> panAutomation;
     bool equalizer{};
     float equalizerFrequencyHz{1000.0F};
     float equalizerGainDb{};
@@ -116,6 +117,7 @@ struct ProjectMixState {
     struct TrackState {
         std::vector<float> delayBuffer;
         std::vector<float> gainAutomationValues;
+        std::vector<float> panAutomationValues;
         std::size_t delayPosition{};
         std::vector<float> reverbBuffer;
         std::array<std::size_t, 4> reverbLengths{};
