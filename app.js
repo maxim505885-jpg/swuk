@@ -1100,23 +1100,36 @@ function renderEditor() {
     const clip = selected.clip?.kind === 'drums' && selected.track?.id === track?.id ? selected.clip : patterns[0];
     if (!clip) { body.innerHTML = '<div class="empty-editor"><div class="empty-editor-copy"><strong>Соберите ритм по шагам</strong><p>Каждая ячейка — шестнадцатая доля. Готовый ритм можно услышать и изменить на шкале.</p></div><button class="quick-chip" id="emptyPatternBtn">Создать ритм-партию</button></div>'; $('#emptyPatternBtn')?.addEventListener('click', createDrumPattern); return; }
     const patternPicker = patterns.length > 1 ? '<label>ПАТТЕРН<select id="rackPatternSelect" aria-label="Выбранный ритм-паттерн"></select></label>' : '';
-    body.innerHTML = '<div class="step-editor-controls">' + patternPicker + '<label>ШАГ<select id="stepEditStep" aria-label="Выбранный шаг"></select></label><label>ДОРОЖКА<select id="stepEditRow" aria-label="Дорожка шага"></select></label><label>ШАНС<select id="stepEditProbability" aria-label="Вероятность выбранного шага"><option value="">Как в дорожке</option></select></label><label>ПОВТОРЫ<select id="stepEditRatchets" aria-label="Повторы выбранного шага"><option value="">Как в дорожке</option></select></label></div><div class="step-grid" id="stepGrid"></div>'; const grid = $('#stepGrid');
+    body.innerHTML = '<div class="step-editor-controls">' + patternPicker + '<label>ТАКТЫ<select id="stepLengthSelect" aria-label="Длина паттерна в тактах"></select></label><label>ТАКТ<select id="stepBarSelect" aria-label="Редактируемый такт"></select></label><label>ШАГ<select id="stepEditStep" aria-label="Выбранный шаг"></select></label><label>ДОРОЖКА<select id="stepEditRow" aria-label="Дорожка шага"></select></label><label>ШАНС<select id="stepEditProbability" aria-label="Вероятность выбранного шага"><option value="">Как в дорожке</option></select></label><label>ПОВТОРЫ<select id="stepEditRatchets" aria-label="Повторы выбранного шага"><option value="">Как в дорожке</option></select></label></div><div class="step-grid" id="stepGrid"></div>'; const grid = $('#stepGrid');
     const patternSelect = $('#rackPatternSelect');
     if (patternSelect) {
       for (const [index, pattern] of patterns.entries()) patternSelect.append(new Option((index + 1) + '. ' + pattern.name + ' · такт ' + (Math.floor(pattern.startBeat / 4) + 1), pattern.id));
       patternSelect.value = clip.id;
       patternSelect.addEventListener('change', () => { state.selectedClipId = patternSelect.value; state.selectedTrackId = track.id; renderAll(); });
     }
-    const stepRowSelect = $('#stepEditRow'), stepNumber = $('#stepEditStep'), stepProbability = $('#stepEditProbability'), stepRatchets = $('#stepEditRatchets');
+    const stepRowSelect = $('#stepEditRow'), stepNumber = $('#stepEditStep'), stepProbability = $('#stepEditProbability'), stepRatchets = $('#stepEditRatchets'), stepLength = $('#stepLengthSelect'), stepBar = $('#stepBarSelect');
     for (const [index, row] of clip.steps.entries()) stepRowSelect.append(new Option(row.name, String(index)));
     for (let index = 0; index < 16; index++) stepNumber.append(new Option(String(index + 1), String(index + 1)));
     stepProbability.insertAdjacentHTML('beforeend', Array.from({ length: 21 }, (_, index) => { const value = index / 20; return '<option value="' + value.toFixed(2) + '">' + (index * 5) + '%</option>'; }).join(''));
     stepRatchets.insertAdjacentHTML('beforeend', Array.from({ length: 8 }, (_, index) => '<option value="' + (index + 1) + '">' + (index + 1) + '×</option>').join(''));
-    let selectedRowIndex = 0, selectedStep = clip.steps[0]?.hits[0] ?? 0;
+    let selectedRowIndex = 0, selectedStep = clip.steps[0]?.hits[0] ?? 0, barIndex = Math.floor((clip.steps[0]?.hits[0] ?? 0) / 16);
+    const pageStart = () => barIndex * 16;
+    const requiredBars = () => Math.max(1, ...clip.steps.map(row => Math.ceil(((row.hits.length ? Math.max(...row.hits) : -1) + 1) / 16)));
+    const updatePageControls = () => {
+      const lengthBars = Math.max(1, Math.ceil(clip.lengthBeats / 4)), maxBars = Math.min(128, Math.max(8, lengthBars, requiredBars()));
+      stepLength.innerHTML = ''; stepBar.innerHTML = '';
+      for (let index = 1; index <= maxBars; index++) {
+        const lengthOption = new Option(String(index), String(index)); lengthOption.disabled = index < requiredBars(); stepLength.append(lengthOption);
+        if (index <= lengthBars) stepBar.append(new Option(String(index), String(index)));
+      }
+      stepLength.value = String(lengthBars);
+      if (barIndex >= lengthBars) barIndex = lengthBars - 1;
+      stepBar.value = String(barIndex + 1);
+    };
     const updateStepControls = () => {
       const row = clip.steps[selectedRowIndex]; if (!row) return;
       const override = row.stepOverrides?.[String(selectedStep)] || {};
-      stepRowSelect.value = String(selectedRowIndex); stepNumber.value = String(selectedStep + 1);
+      stepRowSelect.value = String(selectedRowIndex); stepNumber.value = String(selectedStep - pageStart() + 1);
       stepProbability.value = override.probability === undefined ? '' : String(override.probability);
       stepRatchets.value = override.ratchets === undefined ? '' : String(override.ratchets);
     };
@@ -1130,13 +1143,18 @@ function renderEditor() {
       if (!Object.keys(row.stepOverrides).length) delete row.stepOverrides;
       markProjectDirty(); restartProjectPlaybackIfActive(); renderTimeline();
     };
-    stepRowSelect.addEventListener('change', () => { selectedRowIndex = Number(stepRowSelect.value); updateStepControls(); });
-    stepNumber.addEventListener('change', () => { selectedStep = Number(stepNumber.value) - 1; grid.querySelectorAll('.selected-step').forEach(selected => selected.classList.remove('selected-step')); const selectedCell = grid.querySelectorAll('.step-cell')[selectedStep]; selectedCell?.classList.add('selected-step'); updateStepControls(); });
+    stepRowSelect.addEventListener('change', () => { selectedRowIndex = Number(stepRowSelect.value); updateStepControls(); renderStepGrid(); });
+    stepLength.addEventListener('focus', recordUndo, { once: true });
+    stepLength.addEventListener('change', () => { clip.lengthBeats = Number(stepLength.value) * 4; barIndex = Math.min(barIndex, Number(stepLength.value) - 1); selectedStep = pageStart(); updatePageControls(); updateStepControls(); renderStepGrid(); markProjectDirty(); restartProjectPlaybackIfActive(); renderTimeline(); });
+    stepBar.addEventListener('change', () => { barIndex = Number(stepBar.value) - 1; selectedStep = pageStart(); updateStepControls(); renderStepGrid(); });
+    stepNumber.addEventListener('change', () => { selectedStep = pageStart() + Number(stepNumber.value) - 1; updateStepControls(); renderStepGrid(); });
     stepProbability.addEventListener('focus', recordUndo, { once: true });
     stepProbability.addEventListener('change', () => updateStepOverride('probability', stepProbability.value));
     stepRatchets.addEventListener('focus', recordUndo, { once: true });
     stepRatchets.addEventListener('change', () => updateStepOverride('ratchets', stepRatchets.value));
-    for (const [rowIndex, row] of clip.steps.entries()) {
+    const renderStepGrid = () => {
+      grid.innerHTML = '';
+      for (const [rowIndex, row] of clip.steps.entries()) {
       row.velocity = clamp(Number(row.velocity ?? .78), 0, 1);
       const rowSettings = normalizeDrumRowSettings(row);
       const label = document.createElement('label'); label.className = 'step-label';
@@ -1157,14 +1175,20 @@ function renderEditor() {
       probability.addEventListener('change', restartProjectPlaybackIfActive);
       ratchets.addEventListener('change', () => { row.ratchets = Number(ratchets.value); markProjectDirty(); restartProjectPlaybackIfActive(); });
       grid.append(label);
-      for (let step = 0; step < 16; step++) {
-        const active = row.hits.includes(step), cell = document.createElement('button'); cell.className = `step-cell ${active ? 'active' : ''}`;
-        cell.setAttribute('aria-label', `${row.name}, шаг ${step + 1}`); cell.setAttribute('aria-pressed', String(active));
+      for (let localStep = 0; localStep < 16; localStep++) {
+        const step = pageStart() + localStep, active = row.hits.includes(step), cell = document.createElement('button');
+        cell.className = 'step-cell ' + (active ? 'active ' : '') + (rowIndex === selectedRowIndex && step === selectedStep ? 'selected-step' : '');
+        cell.dataset.rowIndex = String(rowIndex); cell.dataset.stepIndex = String(step);
+        cell.setAttribute('aria-label', row.name + ', шаг ' + (localStep + 1) + ', такт ' + (barIndex + 1)); cell.setAttribute('aria-pressed', String(active));
         cell.addEventListener('click', () => { const adding = !row.hits.includes(step); if (adding && !canAddEvents(1)) return; recordUndo(); row.hits = adding ? [...row.hits, step].sort((a, b) => a - b) : row.hits.filter(hit => hit !== step); selectedRowIndex = rowIndex; selectedStep = step; updateStepControls(); grid.querySelectorAll('.selected-step').forEach(selected => selected.classList.remove('selected-step')); cell.classList.add('selected-step'); const enabled = row.hits.includes(step); cell.classList.toggle('active', enabled); cell.setAttribute('aria-pressed', String(enabled)); renderTimeline(); });
         grid.append(cell);
       }
-    }
+      }
+    };
+
+    updatePageControls();
     updateStepControls();
+    renderStepGrid();
     return;
   }
   if (state.view === 'piano') {
