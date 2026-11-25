@@ -73,6 +73,9 @@ struct TrackMixSettings {
     bool reverb{};
     bool delay{};
     bool compressor{};
+    bool limiter{};
+    float limiterCeilingDb{-1.0F};
+    float limiterReleaseMs{80.0F};
     float compressorThresholdDb{-18.0F};
     float compressorRatio{4.0F};
     float compressorAttackMs{10.0F};
@@ -125,6 +128,8 @@ struct ProjectMixState {
         bool delay{};
         bool compressor{};
         float compressorEnvelope{1.0F};
+        bool limiter{};
+        float limiterEnvelope{1.0F};
     };
 
     std::vector<TrackState> tracks;

@@ -85,11 +85,13 @@ bool renderMixBlock(
                 !std::isfinite(track.compressorRatio) || track.compressorRatio < 1.0F || track.compressorRatio > 20.0F ||
                 !std::isfinite(track.compressorAttackMs) || track.compressorAttackMs < 0.1F || track.compressorAttackMs > 100.0F ||
                 !std::isfinite(track.compressorReleaseMs) || track.compressorReleaseMs < 10.0F || track.compressorReleaseMs > 1000.0F ||
-                !std::isfinite(track.compressorMakeupDb) || track.compressorMakeupDb < 0.0F || track.compressorMakeupDb > 24.0F))) {
+                !std::isfinite(track.compressorMakeupDb) || track.compressorMakeupDb < 0.0F || track.compressorMakeupDb > 24.0F)) ||
+            (track.limiter && (!std::isfinite(track.limiterCeilingDb) || track.limiterCeilingDb < -24.0F || track.limiterCeilingDb > 0.0F ||
+                !std::isfinite(track.limiterReleaseMs) || track.limiterReleaseMs < 10.0F || track.limiterReleaseMs > 500.0F))) {
             return false;
         }
         anySolo = anySolo || track.solo;
-        hasEffects = hasEffects || track.reverb || track.delay || track.equalizer || track.compressor;
+        hasEffects = hasEffects || track.reverb || track.delay || track.equalizer || track.compressor || track.limiter;
         hasAutomation = hasAutomation || !track.gainAutomation.empty();
         if (track.gainAutomation.size() > 8192) return false;
         std::uint64_t previousFrame = 0;
@@ -251,7 +253,7 @@ bool renderMixBlock(
     if (hasEffects) {
         for (std::size_t trackIndex = 0; trackIndex < project.trackCount; ++trackIndex) {
             const auto& track = project.tracks[trackIndex];
-            if (!track.reverb && !track.delay && !track.equalizer && !track.compressor) continue;
+            if (!track.reverb && !track.delay && !track.equalizer && !track.compressor && !track.limiter) continue;
             const auto slot = static_cast<std::size_t>(state->effectSlots[trackIndex]);
             const auto& trackState = state->tracks[trackIndex];
             float* const input = collectTrackPeaks
@@ -264,6 +266,9 @@ bool renderMixBlock(
             const float compressorReleaseCoefficient = track.compressor
                 ? std::exp(-1.0F / static_cast<float>(outputSampleRate * track.compressorReleaseMs * 0.001)) : 0.0F;
             const float compressorMakeupGain = track.compressor ? std::exp2(track.compressorMakeupDb / 6.020599913F) : 1.0F;
+            const float limiterReleaseCoefficient = track.limiter
+                ? std::exp(-1.0F / static_cast<float>(outputSampleRate * track.limiterReleaseMs * 0.001)) : 0.0F;
+            const float limiterCeiling = track.limiter ? std::exp2(track.limiterCeilingDb / 6.020599913F) : 1.0F;
             for (std::size_t frame = 0; frame < frameCount; ++frame) {
                 float left = input[frame * 2];
                 float right = input[frame * 2 + 1];
@@ -328,6 +333,14 @@ bool renderMixBlock(
                     left *= mutableTrackState.compressorEnvelope * compressorMakeupGain;
                     right *= mutableTrackState.compressorEnvelope * compressorMakeupGain;
                 }
+                if (track.limiter) {
+                    const float detector = std::max(std::abs(left), std::abs(right));
+                    const float targetGain = std::min(1.0F, limiterCeiling / std::max(detector, 1.0e-9F));
+                    if (targetGain < mutableTrackState.limiterEnvelope) mutableTrackState.limiterEnvelope = targetGain;
+                    else mutableTrackState.limiterEnvelope = limiterReleaseCoefficient * mutableTrackState.limiterEnvelope + (1.0F - limiterReleaseCoefficient) * targetGain;
+                    left *= mutableTrackState.limiterEnvelope;
+                    right *= mutableTrackState.limiterEnvelope;
+                }
                 if (collectTrackPeaks) {
                     input[frame * 2] = left;
                     input[frame * 2 + 1] = right;
@@ -342,7 +355,7 @@ bool renderMixBlock(
     if (collectTrackPeaks) {
         for (std::size_t trackIndex = 0; trackIndex < project.trackCount; ++trackIndex) {
             const auto& track = project.tracks[trackIndex];
-            if (track.reverb || track.delay || track.equalizer || track.compressor) continue;
+            if (track.reverb || track.delay || track.equalizer || track.compressor || track.limiter) continue;
             const float* const input = state->meterScratch.data() + trackIndex * state->maxBlockFrames * 2;
             float peak = 0.0F;
             for (std::size_t frame = 0; frame < frameCount; ++frame) {
@@ -376,12 +389,16 @@ bool configureProjectMixState(ProjectMixState& state, const ProjectMixView& proj
                 !std::isfinite(settings.compressorAttackMs) || settings.compressorAttackMs < 0.1F || settings.compressorAttackMs > 100.0F ||
                 !std::isfinite(settings.compressorReleaseMs) || settings.compressorReleaseMs < 10.0F || settings.compressorReleaseMs > 1000.0F ||
                 !std::isfinite(settings.compressorMakeupDb) || settings.compressorMakeupDb < 0.0F || settings.compressorMakeupDb > 24.0F)) return false;
+            if (settings.limiter && (!std::isfinite(settings.limiterCeilingDb) || settings.limiterCeilingDb < -24.0F || settings.limiterCeilingDb > 0.0F ||
+                !std::isfinite(settings.limiterReleaseMs) || settings.limiterReleaseMs < 10.0F || settings.limiterReleaseMs > 500.0F)) return false;
             auto& trackState = prepared.tracks[index];
             trackState.reverb = settings.reverb;
             trackState.delay = settings.delay;
             trackState.equalizer = settings.equalizer;
             trackState.compressor = settings.compressor;
             trackState.compressorEnvelope = 1.0F;
+            trackState.limiter = settings.limiter;
+            trackState.limiterEnvelope = 1.0F;
             if (settings.equalizer) {
                 for (std::size_t bandIndex = 0; bandIndex < kEqualizerBandCount; ++bandIndex) {
                     const auto& band = settings.equalizerBands[bandIndex];
@@ -399,7 +416,7 @@ bool configureProjectMixState(ProjectMixState& state, const ProjectMixView& proj
                 }
             }
             if (!settings.gainAutomation.empty()) trackState.gainAutomationValues.assign(prepared.maxBlockFrames, settings.gain);
-            if (!settings.reverb && !settings.delay && !settings.equalizer && !settings.compressor) continue;
+            if (!settings.reverb && !settings.delay && !settings.equalizer && !settings.compressor && !settings.limiter) continue;
             prepared.effectSlots[index] = static_cast<int>(effectCount++);
             if (settings.reverb) {
                 trackState.reverbLengths = kReverbLengths;
@@ -423,6 +440,7 @@ void resetProjectMixState(ProjectMixState& state) noexcept {
         track.delayPosition = 0;
         std::fill(track.gainAutomationValues.begin(), track.gainAutomationValues.end(), 0.0F);
         std::fill(track.reverbBuffer.begin(), track.reverbBuffer.end(), 0.0F);
+        track.limiterEnvelope = 1.0F;
         for (auto& band : track.equalizerZ1) band.fill(0.0F);
         for (auto& band : track.equalizerZ2) band.fill(0.0F);
         track.reverbPositions.fill(0);
