@@ -45,6 +45,12 @@ public:
         return result;
     }
 
+    void clear() noexcept {
+        readIndex_.store(0, std::memory_order_relaxed);
+        writeIndex_.store(0, std::memory_order_relaxed);
+        dropped_.store(0, std::memory_order_relaxed);
+    }
+
     [[nodiscard]] std::uint64_t takeDroppedCount() noexcept {
         return dropped_.exchange(0, std::memory_order_relaxed);
     }

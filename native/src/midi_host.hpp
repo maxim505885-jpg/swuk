@@ -1,9 +1,8 @@
 #pragma once
 
 #include "RtMidi.h"
+#include "midi_event_queue.hpp"
 
-#include <array>
-#include <atomic>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -20,16 +19,8 @@ struct Port {
     std::string name;
 };
 
-struct Event {
-    std::array<unsigned char, 3> bytes{};
-    unsigned char size{};
-    double deltaSeconds{};
-};
-
 class Host final {
 public:
-    static constexpr std::size_t kQueueCapacity = 1024;
-    static constexpr std::size_t kMaxBatch = 256;
 
     Host() = default;
     ~Host() { closeInput(); closeOutput(); }
@@ -58,7 +49,7 @@ public:
                 return false;
             }
             const auto name = input->getPortName(index);
-            resetQueue();
+            events_.clear();
             input->ignoreTypes(true, false, true);
             input->setCallback(&Host::receive, this);
             input->openPort(index, "SONORA Studio MIDI Input");
@@ -145,22 +136,12 @@ public:
         }
     }
 
-    [[nodiscard]] std::vector<Event> readEvents(const std::size_t maximum = kMaxBatch) {
-        std::vector<Event> events;
-        events.reserve(maximum < kMaxBatch ? maximum : kMaxBatch);
-        const auto limit = maximum < kMaxBatch ? maximum : kMaxBatch;
-        while (events.size() < limit) {
-            const auto read = readIndex_.load(std::memory_order_relaxed);
-            const auto write = writeIndex_.load(std::memory_order_acquire);
-            if (read == write) break;
-            events.push_back(queue_[read % kQueueCapacity]);
-            readIndex_.store(read + 1, std::memory_order_release);
-        }
-        return events;
+    [[nodiscard]] std::vector<Event> readEvents(const std::size_t maximum = EventQueue::kMaxBatch) {
+        return events_.drain(maximum);
     }
 
     [[nodiscard]] std::uint64_t takeDroppedCount() noexcept {
-        return droppedEvents_.exchange(0, std::memory_order_relaxed);
+        return events_.takeDroppedCount();
     }
 
     [[nodiscard]] bool inputOpen() const noexcept { return input_ && input_->isPortOpen(); }
@@ -180,37 +161,21 @@ private:
         return ports;
     }
 
-    void resetQueue() noexcept {
-        readIndex_.store(0, std::memory_order_relaxed);
-        writeIndex_.store(0, std::memory_order_relaxed);
-        droppedEvents_.store(0, std::memory_order_relaxed);
-    }
-
     static void receive(const double deltaSeconds, std::vector<unsigned char>* message, void* userData) noexcept {
         auto* const host = static_cast<Host*>(userData);
         if (host == nullptr || message == nullptr || message->empty()) return;
-        const auto write = host->writeIndex_.load(std::memory_order_relaxed);
-        const auto read = host->readIndex_.load(std::memory_order_acquire);
-        if (write - read >= kQueueCapacity) {
-            host->droppedEvents_.fetch_add(1, std::memory_order_relaxed);
-            return;
-        }
         Event event{};
         event.size = static_cast<unsigned char>(message->size() < event.bytes.size() ? message->size() : event.bytes.size());
         for (std::size_t index = 0; index < event.size; ++index) event.bytes[index] = (*message)[index];
         event.deltaSeconds = std::isfinite(deltaSeconds) && deltaSeconds >= 0.0 ? deltaSeconds : 0.0;
-        host->queue_[write % kQueueCapacity] = event;
-        host->writeIndex_.store(write + 1, std::memory_order_release);
+        (void)host->events_.push(event);
     }
 
     std::unique_ptr<rt::midi::RtMidiIn> input_;
     std::unique_ptr<rt::midi::RtMidiOut> output_;
     std::string inputPortName_;
     std::string outputPortName_;
-    std::array<Event, kQueueCapacity> queue_{};
-    std::atomic<std::uint32_t> readIndex_{};
-    std::atomic<std::uint32_t> writeIndex_{};
-    std::atomic<std::uint64_t> droppedEvents_{};
+    EventQueue events_;
 };
 
 } // namespace sonora::midi

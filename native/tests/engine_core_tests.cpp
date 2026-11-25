@@ -2,6 +2,7 @@
 #include "capture_ring.hpp"
 #include "capture_wav_recorder.hpp"
 #include "spectrum_analyzer.hpp"
+#include "midi_event_queue.hpp"
 
 #include <array>
 #include <chrono>
@@ -525,6 +526,33 @@ void testSpectrumAnalyzerFindsToneAndResets() {
 
 } // namespace
 
+void testMidiEventQueuePreservesOrderAndBoundedReads() {
+    sonora::midi::EventQueue queue;
+    sonora::midi::Event first{}; first.bytes = {0x90, 60, 100}; first.size = 3; first.deltaSeconds = 0.01;
+    sonora::midi::Event second{}; second.bytes = {0x80, 60, 0}; second.size = 3; second.deltaSeconds = 0.12;
+    require(queue.push(first) && queue.push(second), "MIDI queue accepts events while capacity remains");
+    const auto firstBatch = queue.drain(1);
+    require(firstBatch.size() == 1 && firstBatch[0].bytes[1] == 60 && firstBatch[0].bytes[0] == 0x90,
+        "MIDI queue drains events in order and respects a smaller batch size");
+    const auto secondBatch = queue.drain();
+    require(secondBatch.size() == 1 && secondBatch[0].bytes[0] == 0x80,
+        "MIDI queue retains later events for the next poll");
+}
+
+void testMidiEventQueueDropsNewestOnOverflowAndCountsLoss() {
+    sonora::midi::EventQueue queue;
+    sonora::midi::Event event{}; event.bytes = {0x90, 60, 100}; event.size = 3;
+    for (std::size_t index = 0; index < sonora::midi::EventQueue::kCapacity; ++index) {
+        require(queue.push(event), "MIDI queue accepts events up to its fixed capacity");
+    }
+    require(!queue.push(event), "MIDI queue rejects a new event instead of overwriting unread data");
+    require(queue.takeDroppedCount() == 1 && queue.takeDroppedCount() == 0, "MIDI queue reports dropped events once");
+    std::size_t drained = 0;
+    while (drained < sonora::midi::EventQueue::kCapacity) drained += queue.drain().size();
+    require(drained == sonora::midi::EventQueue::kCapacity, "MIDI queue drains the complete bounded backlog in batches");
+    require(queue.push(event), "MIDI queue resumes after the consumer makes room");
+}
+
 void testMixerBusRoutingAndSolo() {
     const float sample[]{1.0F};
     const sonora::audio::PcmSourceView source{sample,1,1,48'000.0};
@@ -601,6 +629,8 @@ int main() {
     testSpectrumAnalyzerFindsToneAndResets();
     testMixerBusRoutingAndSolo();
     testMixerBusDelayTailContinuesAcrossBlocks();
-    std::cout << "28 native audio core tests passed\n";
+    testMidiEventQueuePreservesOrderAndBoundedReads();
+    testMidiEventQueueDropsNewestOnOverflowAndCountsLoss();
+    std::cout << "30 native audio core tests passed\n";
     return EXIT_SUCCESS;
 }
