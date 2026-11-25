@@ -1092,7 +1092,7 @@ function renderEditor() {
       row.velocity = clamp(Number(row.velocity ?? .78), 0, 1);
       const rowSettings = normalizeDrumRowSettings(row);
       const label = document.createElement('label'); label.className = 'step-label';
-      label.innerHTML = '<i></i><span class="step-name"></span><input class="step-velocity" type="range" min="0" max="1" step="0.01" /><output class="step-velocity-value"></output><input class="step-probability" type="range" min="0" max="1" step="0.05" /><output class="step-probability-value"></output><select class="step-ratchets" aria-label="Повторы шага"></select>';
+      label.innerHTML = '<i></i><span class="step-name"></span><span class="step-control"><small>СИЛА</small><input class="step-velocity" type="range" min="0" max="1" step="0.01" /></span><output class="step-velocity-value"></output><span class="step-control"><small>ШАНС</small><input class="step-probability" type="range" min="0" max="1" step="0.05" /></span><output class="step-probability-value"></output><select class="step-ratchets" aria-label="Повторы шага"></select>';
       const rowColor = /^#[\da-f]{6}$/i.test(row.color || '') ? row.color : themePalette()[0];
       $('i', label).style.backgroundColor = rowColor; $('.step-name', label).textContent = row.name;
       const velocity = $('.step-velocity', label), velocityOutput = $('.step-velocity-value', label);
