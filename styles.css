@@ -204,3 +204,22 @@
 .sampler-controls select,.sampler-controls input[type=number]{min-height:34px;width:100%;padding:6px 9px;border:1px solid var(--line);border-radius:5px;background:var(--input-bg);color:var(--input-text);font:inherit;font-size:12px}
 .synth-editor[data-instrument=sampler] .synth-controls{display:none}
 @media(max-width:560px){.sampler-controls{grid-template-columns:1fr}}
+
+
+/* Focused waveform editor */
+.waveform-editor-dialog{width:min(980px,calc(100vw - 40px));max-width:calc(100vw - 40px);max-height:calc(100vh - 40px);padding:0;border:1px solid var(--line);border-radius:14px;background:var(--surface);color:var(--text);box-shadow:0 24px 80px rgba(0,0,0,.55)}
+.waveform-editor-dialog::backdrop{background:rgba(3,5,9,.76);backdrop-filter:blur(5px)}
+.waveform-editor-shell{display:flex;flex-direction:column;gap:18px;padding:22px;overflow:auto}
+.waveform-editor-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+.waveform-editor-header h2{margin:3px 0 5px;font-size:22px;letter-spacing:-.03em}
+.waveform-editor-header .field-help{margin:0;color:var(--muted)}
+.waveform-editor-header .eyebrow{margin:0;color:var(--accent);font-size:10px;font-weight:700;letter-spacing:.16em}
+.waveform-editor-canvas{display:block;width:100%;height:220px;border:1px solid var(--line);border-radius:10px;background:#11151b;touch-action:none;cursor:ew-resize}
+.waveform-editor-range{display:grid;grid-template-columns:1fr auto;align-items:center;gap:7px 14px}
+.waveform-editor-range label{font-size:12px;font-weight:650;color:var(--text)}
+.waveform-editor-range output{margin-left:8px;color:var(--muted);font-variant-numeric:tabular-nums}
+.waveform-editor-range input[type=range]{grid-column:1 / -1;width:100%;accent-color:var(--accent)}
+.waveform-editor-status{min-height:18px;margin:0;color:var(--muted);font-size:12px}
+.waveform-editor-footer{display:flex;justify-content:flex-end;gap:10px;padding-top:4px}
+.waveform-editor-dialog button:disabled{opacity:.48;cursor:not-allowed}
+@media(max-width:680px){.waveform-editor-dialog{width:calc(100vw - 20px);max-width:calc(100vw - 20px);max-height:calc(100vh - 20px)}.waveform-editor-shell{padding:14px;gap:14px}.waveform-editor-canvas{height:160px}}
