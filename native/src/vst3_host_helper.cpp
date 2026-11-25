@@ -10,11 +10,13 @@
 
 #include <windows.h>
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <filesystem>
 #include <iostream>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 
@@ -190,7 +192,7 @@ void serve(const std::filesystem::path& pluginPath, const std::wstring_view mapp
         }
 
         Steinberg::Vst::HostApplication hostApplication;
-        VST3::Hosting::PluginContextFactory::instance().setPluginContext(&hostApplication);
+        Steinberg::Vst::PluginContextFactory::instance().setPluginContext(&hostApplication);
         Vst3StereoEffect effect;
         std::string error;
         if (!effect.initialize(pluginPath, error)) throw std::runtime_error(error);
