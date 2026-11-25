@@ -18,11 +18,11 @@
 | MIDI / hardware | Редактирование внутренних MIDI-клипов | Устройства MIDI input, запись, MIDI Out, CC mapping, clock/sync, hot-plug и проверка hardware round-trip |
 | Запись | AudioWorklet и WASAPI recording paths | Проверка с физическим входом, punch/loop take workflow, background audio logger и recovery после сбоя |
 | Творческие инструменты | MIDI chord generator с мажорными/минорными/уменьшёнными/увеличенными/sus и септаккордовыми/нонаккордовыми формами | Loop starter и stem separation; эти функции нужно оценивать как отдельные продуктовые модули |
-| Release readiness | main commit ecbfc15 прошёл Windows CI run #45621426854: 114 Node, 28 native core, 2 CLAP tests, native/WASAPI smoke, Signalsmith audio smoke, Electron UI smoke и x64 installer artifact | Артефакт не установлен и не открыт на пользовательском компьютере; Windows 11, DPI на целевых экранах, физические audio input/output, длинная нагрузка и ручной end-to-end acceptance остаются незавершёнными |
+| Release readiness | main commit e4af237 прошёл Windows CI run #45625694716: 114 Node, 28 native core, 2 CLAP tests, native/WASAPI smoke, Signalsmith audio smoke, Electron UI smoke и x64 installer artifact | Артефакт CI ещё не установлен на пользовательском компьютере; Windows 11, DPI на целевых экранах, физические audio input/output, длинная нагрузка и ручной end-to-end acceptance остаются незавершёнными |
 
 ## Приоритет выполнения
 
-Статус обновлён после Windows CI run [#45621426854](https://github.com/maxim505885-jpg/swuk/actions/runs/45621426854), commit ecbfc15c5a69a4ce01c7a57722a833a34c287c0c. Build and automated release gate passed; manual Windows 11 and physical-device acceptance remain open.
+Статус обновлён после Windows CI run [#45625694716](https://github.com/maxim505885-jpg/swuk/actions/runs/45625694716), commit e4af2373ca647fb69d11e513b6719ab4411cbdd9. Build and automated release gate passed; manual Windows 11 and physical-device acceptance remain open.
 
 1. **Довести основную сессию до приёмки:** расширить acceptance для больших проектов, Arrangement/Piano Roll и воспроизведения/экспорта на реальных исходниках; оставить ручную проверку долгих мультитактовых паттернов. Сохранить существующие проверки save/open, Undo/Redo, markers, selection и детерминированных WAV assertions.
 2. **Аудиомонтаж:** waveform editor, slicing/transient workflow; Signalsmith stretch уже проверен на Windows в скрытом Electron smoke (36 000 → 45 000 кадров, 440.38 Гц), остаются прослушивание реального вокала/транзиентов, длинные рендеры и оценка памяти.
