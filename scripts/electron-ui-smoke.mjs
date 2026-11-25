@@ -40,7 +40,7 @@ try {
       const response = await fetch('http://127.0.0.1:' + port + '/json/list');
       if (!response.ok) return null;
       const pages = await response.json();
-      return pages.find(page => page.type === 'page' && page.url.startsWith('http://127.0.0.1/')) || null;
+      return pages.find(page => page.type === 'page' && page.url.startsWith('http://127.0.0.1:')) || null;
     } catch { return null; }
   }, Boolean, 'the SONORA window');
   socket = new WebSocket(target.webSocketDebuggerUrl);
