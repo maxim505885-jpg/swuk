@@ -12,7 +12,7 @@
 
 ## Приложение Windows
 
-Последняя сборка main создана после commit ecbfc15c5a69a4ce01c7a57722a833a34c287c0c и прошла [Windows CI](https://github.com/maxim505885-jpg/swuk/actions/runs/45621426854). Установщик SONORA Studio Windows Setup доступен в артефактах запуска; GitHub хранит его семь дней. Это CI-сборка, не подписанный публичный релиз.
+Последняя сборка main создана после commit e4af2373ca647fb69d11e513b6719ab4411cbdd9 и прошла [Windows CI](https://github.com/maxim505885-jpg/swuk/actions/runs/45625694716). Установщик SONORA Studio Windows Setup доступен в артефактах запуска; GitHub хранит его семь дней. Это CI-сборка, не подписанный публичный релиз.
 
 В этом прогоне прошли 114 Node.js-тестов, 28 тестов C++ аудиодвижка, 2 CLAP-теста, native smoke и Electron UI smoke; Signalsmith audio smoke подтвердил преобразование 36 000 → 45 000 кадров, а x64 NSIS установщик был собран. Автоматическая сборка на windows-latest не заменяет ручную приёмку на Windows 11, проверку слышимого WASAPI выхода и тестирование физического аудиовхода.
 
@@ -26,7 +26,7 @@ Track/bus gain и pan automation работают в браузерном, WAV �
 
 `npm test` запускает регрессии Arrangement, DSP, Electron preload bridge, AudioWorklet, локального сервера, аудиорендера и сериализации проекта; последний CI-прогон на main: 114 тестов, все прошли. `npm run native:clap:test` собирает тестовый stereo gain-плагин и проверяет CLAP render, WAV-выход, хвост и отказ для неверного бинарного файла; последний CI-прогон: 2 теста, все прошли. `npm run native:test` запускает 28 тестов C++ ядра, включая маршрутизацию шин, interpolation automation, realtime effects и анализатор спектра; последний CI-прогон: 28 тестов, все прошли. `npm run native:smoke` проверяет протокол set_track automation и WASAPI transport на цифровой тишине, освобождение неиспользуемых аудиоданных, обновления проекта и native memory diagnostics; последний CI-прогон прошёл. Нативный кэш ограничивает один декодированный asset 256 МиБ и временный объём 1 ГиБ.
 
-Для целевых QA-проходов доступны `npm run qa:quick`, `npm run qa:audio`, `npm run qa:plugin`, `npm run qa:load`, `npm run qa:stability` и `npm run qa:final`. `qa:load` измеряет только нативный микшер, `qa:stability` выполняет двухминутный беззвучный WASAPI soak с memory sampling, а `qa:final` запускает полный Windows release gate. Визуальная проверка сейчас выполняется подключённым Playwright MCP; отдельный Playwright test-runner в зависимости проекта не установлен. Реестр и отчёты: `UI_INVENTORY.json`, `TEST_COVERAGE_MATRIX.md`, `QA_MASTER_PLAN.md`, [FL Studio parity plan](FL_STUDIO_PARITY_PLAN.md) и связанные `*_REPORT.md`.
+Для целевых QA-проходов доступны `npm run qa:quick`, `npm run qa:audio`, `npm run qa:plugin`, `npm run qa:load`, `npm run qa:stability` и `npm run qa:final`. `qa:load` измеряет только нативный микшер, `qa:stability` выполняет двухминутный беззвучный WASAPI soak с memory sampling, а `qa:final` запускает полный Windows release gate. Визуальная проверка сейчас выполняется подключённым Playwright MCP; отдельный Playwright test-runner в зависимости проекта не установлен. Реестр и отчёты: `UI_INVENTORY.json`, `TEST_COVERAGE_MATRIX.md`, `QA_MASTER_PLAN.md`, `BUG_REGISTER.md`, [FL Studio parity plan](FL_STUDIO_PARITY_PLAN.md) и [Windows CI](https://github.com/maxim505885-jpg/swuk/actions/runs/45625694716). Отдельные визуальные скриншоты в репозитории не сохранены.
 
 ## Что работает
 

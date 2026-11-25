@@ -1,62 +1,428 @@
 {
   "schemaVersion": 1,
-  "capturedAt": "2026-11-24",
+  "capturedAt": "2026-11-25",
   "product": "SONORA Studio",
   "applicationSurface": "Local browser UI backed by the same frontend used by Electron",
-  "inventoryScope": "Rendered controls and dynamic control families identified from index.html, app.js and a live Playwright session. Dynamic instances are represented by one template with an explicit per-instance test rule.",
+  "inventoryScope": "Rendered controls and dynamic control families identified from index.html, app.js and a live Playwright session. Dynamic instances are represented by one template with an explicit per-instance test rule. New 120-second render-limit recovery control is recorded with evidence from the exact main release run; WARNING remains on broad scenarios that are only partially covered.",
   "items": [
-    {"id":"top.undo","surface":"topbar","control":"button #undoBtn","purpose":"Undo most recent edit","scenario":"Make reversible edit, click twice across valid/empty history; verify model and disabled states","status":"NOT TESTED"},
-    {"id":"top.redo","surface":"topbar","control":"button #redoBtn","purpose":"Redo most recent undone edit","scenario":"Undo then redo and compare project state","status":"NOT TESTED"},
-    {"id":"project.new","surface":"topbar","control":"button #newProjectBtn","purpose":"Start a fresh project","scenario":"Use disposable project; verify confirm/cancel and cleared state","status":"NOT TESTED"},
-    {"id":"project.open","surface":"topbar","control":"button #openProjectBtn + input #projectFile","purpose":"Open .sonora project","scenario":"Open generated valid, malformed, oversized and missing-file fixtures; inspect model","status":"NOT TESTED"},
-    {"id":"project.save","surface":"topbar","control":"button #saveProjectBtn","purpose":"Save portable .sonora file","scenario":"Save generated project; inspect JSON, audio assets and round-trip","status":"NOT TESTED"},
-    {"id":"project.export-wav","surface":"topbar","control":"button #exportBtn","purpose":"Render project to WAV","scenario":"Export generated tones; inspect RIFF metadata, duration, channels and samples","status":"NOT TESTED"},
-    {"id":"transport.stop","surface":"transport","control":"button #stopBtn","purpose":"Stop playback and reset position according to app behavior","scenario":"Play test loop then stop; assert transport and position","status":"NOT TESTED"},
-    {"id":"transport.play-pause","surface":"transport","control":"button #playBtn","purpose":"Start or pause transport","scenario":"Start generated clips, pause/resume and verify PCM/MIDI timing","status":"WARNING"},
-    {"id":"transport.record","surface":"transport","control":"button #recordBtn","purpose":"Record audio input","scenario":"Use synthetic/loopback input or explicitly available test mic; verify resulting clip bytes","status":"NOT TESTED"},
-    {"id":"transport.position","surface":"transport","control":"#positionText","purpose":"Display current musical position","scenario":"Compare elapsed playback against tempo and loop boundaries","status":"NOT TESTED"},
-    {"id":"transport.tempo","surface":"transport","control":"input #tempoInput","purpose":"Set project BPM","scenario":"Check min/max, invalid values, history, project timing and playback sync","status":"NOT TESTED"},
-    {"id":"transport.key","surface":"transport","control":"select #keySelect","purpose":"Set project musical key","scenario":"Change key; verify stored project value and relevant processing behavior","status":"NOT TESTED"},
-    {"id":"transport.metronome","surface":"transport","control":"button #metronomeBtn","purpose":"Toggle metronome","scenario":"Verify pressed state and actual click output in isolated capture","status":"NOT TESTED"},
-    {"id":"transport.loop","surface":"transport","control":"button #loopBtn + A/B controls","purpose":"Toggle and set loop interval","scenario":"Set boundaries, play through wrap, save/reopen project","status":"NOT TESTED"},
-    {"id":"transport.master","surface":"transport/mixer","control":"range #masterVolume and #masterStripVolume","purpose":"Control master gain","scenario":"Change both UI surfaces and compare rendered/output RMS","status":"NOT TESTED"},
-    {"id":"settings.audio-and-theme","surface":"settings dialog","control":"button #settingsBtn","purpose":"Configure audio devices and interface theme","scenario":"Open/close repeatedly; inspect loading/error/device/theme state","status":"WARNING"},
-    {"id":"theme.choice","surface":"settings dialog","control":"[data-theme-choice] radio buttons","purpose":"Select one of four appearance themes","scenario":"Select each, assert theme tokens, radio state, persistence and playback/project invariants","status":"PASS"},
-    {"id":"theme.reset","surface":"settings dialog","control":"button theme reset","purpose":"Restore Dark Rose default","scenario":"Select another theme, reset, reload and inspect stored/default value","status":"NOT TESTED"},
-    {"id":"settings.audio-device-controls","surface":"settings dialog","control":"native/browser device selects, sample-rate/channel/target selects and test-tone buttons","purpose":"Select and test audio I/O/recording configuration","scenario":"Enumerate absent/available devices, validate change and safe tone stop","status":"NOT TESTED"},
-    {"id":"browser.import","surface":"browser panel","control":"button #importBtn + input #audioFiles","purpose":"Import local audio assets","scenario":"Import supported/unsupported/oversized/corrupt files and verify asset metadata","status":"NOT TESTED"},
-    {"id":"browser.search","surface":"browser panel","control":"input #searchInput","purpose":"Filter visible sample/library items","scenario":"Search match, empty result, clear and switch browser tabs","status":"NOT TESTED"},
-    {"id":"browser.tabs","surface":"browser panel","control":".browser-tab tablist","purpose":"Switch Samples, Instruments, Presets, Recordings","scenario":"Visit each tab, inspect contents, keyboard navigation and repeat switching","status":"NOT TESTED"},
-    {"id":"browser.preview","surface":"browser panel","control":"dynamic .preview-button family","purpose":"Preview a selected sample/instrument","scenario":"For each rendered item verify source, playback stop/repeat, errors and labels","status":"NOT TESTED"},
-    {"id":"browser.drag-sample","surface":"browser/arrangement","control":"dynamic sample rows + #arrangementWrap drop target","purpose":"Place imported/generated audio on arrangement","scenario":"Drag test audio and verify clip/asset references and rendered sound","status":"NOT TESTED"},
-    {"id":"editor.tabs","surface":"editor panel","control":".view-tab tablist","purpose":"Switch Arrangement, Instruments/Channel Rack and Piano Roll views","scenario":"Visit each view, test content, repeat and roving keyboard navigation","status":"WARNING"},
-    {"id":"arrangement.tools","surface":"arrangement toolbar","control":"#selectTool, #splitTool, #addTrackBtn, #zoomInput, #followPlayheadBtn","purpose":"Select/split tools; add track; zoom/follow playhead","scenario":"Verify each state/side effect and invalid boundary behavior","status":"NOT TESTED"},
-    {"id":"arrangement.grid","surface":"arrangement","control":"#barRuler, #tracksCanvas, #timelineScroll","purpose":"Position cursor, select loop, move/trim/split/drop clips","scenario":"Create disposable clips; assert model positions, snapping and audio after edit","status":"NOT TESTED"},
-    {"id":"arrangement.markers","surface":"arrangement ruler","control":"#addMarkerBtn","purpose":"Create named section marker","scenario":"Add/cancel marker; verify order, beat and project serialization","status":"NOT TESTED"},
-    {"id":"arrangement.track-controls","surface":"track labels and contextual inspector","control":"dynamic track labels/actions + #trackInspector controls","purpose":"Select, rename, recolor, mute/solo and remove tracks; adjust track mix/effects","scenario":"Exercise every rendered action on test tracks; verify persistence, output, Undo/Redo and focus behavior","status":"WARNING"},
-    {"id":"sequencer.create","surface":"editor","control":"button #createPatternBtn","purpose":"Create drum pattern clip","scenario":"Create pattern; compare step model, arrangement clip and rendered PCM","status":"WARNING"},
-    {"id":"sequencer.steps","surface":"Channel Rack","control":"dynamic .step-cell family","purpose":"Toggle sequencer steps","scenario":"Toggle/re-toggle every supported step group; confirm audible/rendered events","status":"NOT TESTED"},
-    {"id":"sequencer.velocity","surface":"Channel Rack","control":"dynamic step-row velocity range controls","purpose":"Set per-row velocity","scenario":"Vary velocity and compare per-hit output amplitude","status":"NOT TESTED"},
-    {"id":"piano.create","surface":"editor","control":"button #createNotesBtn","purpose":"Create MIDI phrase","scenario":"Create notes and compare clip/model, timeline and rendered pitches","status":"WARNING"},
-    {"id":"piano.grid","surface":"Piano Roll","control":"dynamic .piano-cell family","purpose":"Draw notes on the piano grid","scenario":"Draw notes at boundaries; assert note, beat, pitch and playback","status":"NOT TESTED"},
-    {"id":"piano.note-edit","surface":"Piano Roll","control":"dynamic .piano-note, resize handle and keyboard commands","purpose":"Move/resize/delete MIDI notes","scenario":"Edit note geometry and compare exact MIDI data/history/playback","status":"NOT TESTED"},
-    {"id":"piano.velocity","surface":"Piano Roll","control":"#pianoVelocity","purpose":"Adjust selected MIDI note velocity","scenario":"Set min/max/intermediate value and compare rendered note amplitude","status":"NOT TESTED"},
-    {"id":"mixer.collapse","surface":"mixer","control":"button #mixerCollapseBtn","purpose":"Collapse/expand mixer panel","scenario":"Toggle twice at supported viewport heights and verify accessible state/layout","status":"NOT TESTED"},
-    {"id":"mixer.strip-controls","surface":"mixer","control":"dynamic track and master sliders/buttons","purpose":"Set gain/pan, mute/solo and built-in reverb/delay","scenario":"Verify each control changes render/output and persists through project round-trip","status":"NOT TESTED"},
-    {"id":"modal.close","surface":"modal dialogs","control":"button #modalClose, backdrop, Escape","purpose":"Close active modal and restore focus","scenario":"Open each modal, close via every supported path and verify focus restoration","status":"NOT TESTED"},
-    {"id":"about.open","surface":"browser panel","control":"button #helpBtn","purpose":"Show app capabilities and limitations","scenario":"Open/reopen, check text against implemented features and close","status":"NOT TESTED"},
-    {"id":"hotkeys","surface":"global/document","control":"Space, Delete, Ctrl+S, Ctrl+O, Ctrl+D, Escape, arrow keys","purpose":"Keyboard transport, edit and dialog actions","scenario":"Test per key with editor focus and text-input focus; verify scope/side effects","status":"NOT TESTED"},
-    {"id":"clip-processor","surface":"clip inspector/modal","control":"dynamic clip property fields including pitch/rate/autotune/effects/CLAP","purpose":"Configure and render supported clip processing","scenario":"Validate values, safe failure paths, source preservation and rendered WAV","status":"NOT TESTED"},
-    {"id":"instrument.controls","surface":"Rack editor and contextual inspector","control":"#synthInstrument, #inspectorSynthInstrument and dynamic [data-synth] controls","purpose":"Select built-in instrument and adjust actual waveform/filter/envelope/detune settings","scenario":"Check keyboard/focus states, keep values synchronized across panels, switch instruments while native playback runs, save/reopen, and compare browser/WASAPI/WAV render output","status":"WARNING"},
-    {"id":"browser.asset-tabs","surface":"Browser library","control":"#tab-project, #tab-samples, #tab-instruments, #tab-presets, #tab-recordings","purpose":"Browse project/imported/processed audio, built-in samples, instruments, presets and recordings","scenario":"Import and record audio; switch tabs and search; verify empty states, grouping, roving keyboard focus and filtering","status":"WARNING"},
-    {"id":"browser.preview","surface":"Browser preview card","control":"#browserPreviewPlay, #browserPreviewWaveform, #browserPreviewInfo","purpose":"Preview selected PCM audio or synth preset and inspect decoded waveform/details","scenario":"Play/stop/finish preview; inspect sample rate, channel count, duration and decoded memory; verify waveform and preset oscillator; use keyboard and narrow/wide layouts","status":"WARNING"},
-    {"id":"window-controls","surface":"Electron frame","control":"native OS controls","purpose":"Move, resize, minimize and close app window","scenario":"Launch packaged Electron and exercise OS window controls at DPI matrix","status":"NOT TESTED"}
+    {
+      "id": "top.undo",
+      "surface": "topbar",
+      "control": "button #undoBtn",
+      "purpose": "Undo most recent edit",
+      "scenario": "Make reversible edit, click twice across valid/empty history; verify model and disabled states",
+      "status": "NOT TESTED"
+    },
+    {
+      "id": "top.redo",
+      "surface": "topbar",
+      "control": "button #redoBtn",
+      "purpose": "Redo most recent undone edit",
+      "scenario": "Undo then redo and compare project state",
+      "status": "NOT TESTED"
+    },
+    {
+      "id": "project.new",
+      "surface": "topbar",
+      "control": "button #newProjectBtn",
+      "purpose": "Start a fresh project",
+      "scenario": "Use disposable project; verify confirm/cancel and cleared state",
+      "status": "NOT TESTED"
+    },
+    {
+      "id": "project.open",
+      "surface": "topbar",
+      "control": "button #openProjectBtn + input #projectFile",
+      "purpose": "Open .sonora project",
+      "scenario": "Open generated valid, malformed, oversized and missing-file fixtures; inspect model",
+      "status": "NOT TESTED"
+    },
+    {
+      "id": "project.save",
+      "surface": "topbar",
+      "control": "button #saveProjectBtn",
+      "purpose": "Save portable .sonora file",
+      "scenario": "Save generated project; inspect JSON, audio assets and round-trip",
+      "status": "NOT TESTED"
+    },
+    {
+      "id": "project.export-wav",
+      "surface": "topbar",
+      "control": "button #exportBtn",
+      "purpose": "Render project to WAV",
+      "scenario": "Export generated tones; inspect RIFF metadata, duration, channels and samples",
+      "status": "NOT TESTED"
+    },
+    {
+      "id": "transport.stop",
+      "surface": "transport",
+      "control": "button #stopBtn",
+      "purpose": "Stop playback and reset position according to app behavior",
+      "scenario": "Play test loop then stop; assert transport and position",
+      "status": "NOT TESTED"
+    },
+    {
+      "id": "transport.play-pause",
+      "surface": "transport",
+      "control": "button #playBtn",
+      "purpose": "Start or pause transport",
+      "scenario": "Start generated clips, pause/resume and verify PCM/MIDI timing",
+      "status": "WARNING"
+    },
+    {
+      "id": "transport.record",
+      "surface": "transport",
+      "control": "button #recordBtn",
+      "purpose": "Record audio input",
+      "scenario": "Use synthetic/loopback input or explicitly available test mic; verify resulting clip bytes",
+      "status": "NOT TESTED"
+    },
+    {
+      "id": "transport.position",
+      "surface": "transport",
+      "control": "#positionText",
+      "purpose": "Display current musical position",
+      "scenario": "Compare elapsed playback against tempo and loop boundaries",
+      "status": "NOT TESTED"
+    },
+    {
+      "id": "transport.tempo",
+      "surface": "transport",
+      "control": "input #tempoInput",
+      "purpose": "Set project BPM",
+      "scenario": "Проверить диапазон min/max, некорректные значения, историю, синхронизацию проекта и playback; отдельный UI smoke также проверяет, что после смены темпа пересчитывается предел длины drum-паттерна.",
+      "status": "WARNING",
+      "evidence": "Windows CI run #45625694716, main commit e4af2373ca647fb69d11e513b6719ab4411cbdd9 / Electron UI smoke: 40 BPM → 20 тактов, 120 BPM → 60 тактов. Остальные проверки этого сценария не закрыты."
+    },
+    {
+      "id": "transport.key",
+      "surface": "transport",
+      "control": "select #keySelect",
+      "purpose": "Set project musical key",
+      "scenario": "Change key; verify stored project value and relevant processing behavior",
+      "status": "NOT TESTED"
+    },
+    {
+      "id": "transport.metronome",
+      "surface": "transport",
+      "control": "button #metronomeBtn",
+      "purpose": "Toggle metronome",
+      "scenario": "Verify pressed state and actual click output in isolated capture",
+      "status": "NOT TESTED"
+    },
+    {
+      "id": "transport.loop",
+      "surface": "transport",
+      "control": "button #loopBtn + A/B controls",
+      "purpose": "Toggle and set loop interval",
+      "scenario": "Set boundaries, play through wrap, save/reopen project",
+      "status": "NOT TESTED"
+    },
+    {
+      "id": "transport.master",
+      "surface": "transport/mixer",
+      "control": "range #masterVolume and #masterStripVolume",
+      "purpose": "Control master gain",
+      "scenario": "Change both UI surfaces and compare rendered/output RMS",
+      "status": "NOT TESTED"
+    },
+    {
+      "id": "settings.audio-and-theme",
+      "surface": "settings dialog",
+      "control": "button #settingsBtn",
+      "purpose": "Configure audio devices and interface theme",
+      "scenario": "Open/close repeatedly; inspect loading/error/device/theme state",
+      "status": "WARNING"
+    },
+    {
+      "id": "theme.choice",
+      "surface": "settings dialog",
+      "control": "[data-theme-choice] radio buttons",
+      "purpose": "Select one of four appearance themes",
+      "scenario": "Select each, assert theme tokens, radio state, persistence and playback/project invariants",
+      "status": "PASS"
+    },
+    {
+      "id": "theme.reset",
+      "surface": "settings dialog",
+      "control": "button theme reset",
+      "purpose": "Restore Dark Rose default",
+      "scenario": "Select another theme, reset, reload and inspect stored/default value",
+      "status": "NOT TESTED"
+    },
+    {
+      "id": "settings.audio-device-controls",
+      "surface": "settings dialog",
+      "control": "native/browser device selects, sample-rate/channel/target selects and test-tone buttons",
+      "purpose": "Select and test audio I/O/recording configuration",
+      "scenario": "Enumerate absent/available devices, validate change and safe tone stop",
+      "status": "NOT TESTED"
+    },
+    {
+      "id": "browser.import",
+      "surface": "browser panel",
+      "control": "button #importBtn + input #audioFiles",
+      "purpose": "Import local audio assets",
+      "scenario": "Import supported/unsupported/oversized/corrupt files and verify asset metadata",
+      "status": "NOT TESTED"
+    },
+    {
+      "id": "browser.search",
+      "surface": "browser panel",
+      "control": "input #searchInput",
+      "purpose": "Filter visible sample/library items",
+      "scenario": "Search match, empty result, clear and switch browser tabs",
+      "status": "NOT TESTED"
+    },
+    {
+      "id": "browser.tabs",
+      "surface": "browser panel",
+      "control": ".browser-tab tablist",
+      "purpose": "Switch Samples, Instruments, Presets, Recordings",
+      "scenario": "Visit each tab, inspect contents, keyboard navigation and repeat switching",
+      "status": "NOT TESTED"
+    },
+    {
+      "id": "browser.preview",
+      "surface": "browser panel",
+      "control": "dynamic .preview-button family",
+      "purpose": "Preview a selected sample/instrument",
+      "scenario": "For each rendered item verify source, playback stop/repeat, errors and labels",
+      "status": "NOT TESTED"
+    },
+    {
+      "id": "browser.drag-sample",
+      "surface": "browser/arrangement",
+      "control": "dynamic sample rows + #arrangementWrap drop target",
+      "purpose": "Place imported/generated audio on arrangement",
+      "scenario": "Drag test audio and verify clip/asset references and rendered sound",
+      "status": "NOT TESTED"
+    },
+    {
+      "id": "editor.tabs",
+      "surface": "editor panel",
+      "control": ".view-tab tablist",
+      "purpose": "Switch Arrangement, Instruments/Channel Rack and Piano Roll views",
+      "scenario": "Visit each view, test content, repeat and roving keyboard navigation",
+      "status": "WARNING"
+    },
+    {
+      "id": "arrangement.tools",
+      "surface": "arrangement toolbar",
+      "control": "#selectTool, #splitTool, #addTrackBtn, #zoomInput, #followPlayheadBtn",
+      "purpose": "Select/split tools; add track; zoom/follow playhead",
+      "scenario": "Verify each state/side effect and invalid boundary behavior",
+      "status": "NOT TESTED"
+    },
+    {
+      "id": "arrangement.grid",
+      "surface": "arrangement",
+      "control": "#barRuler, #tracksCanvas, #timelineScroll",
+      "purpose": "Position cursor, select loop, move/trim/split/drop clips",
+      "scenario": "Create disposable clips; assert model positions, snapping and audio after edit",
+      "status": "NOT TESTED"
+    },
+    {
+      "id": "arrangement.markers",
+      "surface": "arrangement ruler",
+      "control": "#addMarkerBtn",
+      "purpose": "Create named section marker",
+      "scenario": "Add/cancel marker; verify order, beat and project serialization",
+      "status": "NOT TESTED"
+    },
+    {
+      "id": "arrangement.track-controls",
+      "surface": "track labels and contextual inspector",
+      "control": "dynamic track labels/actions + #trackInspector controls",
+      "purpose": "Select, rename, recolor, mute/solo and remove tracks; adjust track mix/effects",
+      "scenario": "Exercise every rendered action on test tracks; verify persistence, output, Undo/Redo and focus behavior",
+      "status": "WARNING"
+    },
+    {
+      "id": "sequencer.create",
+      "surface": "editor",
+      "control": "button #createPatternBtn",
+      "purpose": "Create drum pattern clip",
+      "scenario": "Создать паттерн и сверить модель, Arrangement-клип и PCM; автоматизированный UI smoke проверяет создание и уникальное имя, а legacy recovery проверяет уменьшение длины.",
+      "status": "WARNING",
+      "evidence": "Windows CI run #45625694716, main commit e4af2373ca647fb69d11e513b6719ab4411cbdd9 / UI smoke частично покрывает создание; полный parity модели/рендера здесь не подтверждён."
+    },
+    {
+      "id": "sequencer.steps",
+      "surface": "Channel Rack",
+      "control": "dynamic .step-cell family",
+      "purpose": "Toggle sequencer steps",
+      "scenario": "Переключить и повторно переключить шаги всех размеров; сверить рендер и audible output; проверить очистку хвостовых шагов legacy-паттерна сверх 120-секундного предела.",
+      "status": "WARNING",
+      "evidence": "Windows CI run #45625694716, main commit e4af2373ca647fb69d11e513b6719ab4411cbdd9 / UI smoke проверяет per-step probability/ratchets и legacy cleanup; слышимый результат и полная переборка шагов не выполнены."
+    },
+    {
+      "id": "sequencer.velocity",
+      "surface": "Channel Rack",
+      "control": "dynamic step-row velocity range controls",
+      "purpose": "Set per-row velocity",
+      "scenario": "Vary velocity and compare per-hit output amplitude",
+      "status": "NOT TESTED"
+    },
+    {
+      "id": "piano.create",
+      "surface": "editor",
+      "control": "button #createNotesBtn",
+      "purpose": "Create MIDI phrase",
+      "scenario": "Create notes and compare clip/model, timeline and rendered pitches",
+      "status": "WARNING"
+    },
+    {
+      "id": "piano.grid",
+      "surface": "Piano Roll",
+      "control": "dynamic .piano-cell family",
+      "purpose": "Draw notes on the piano grid",
+      "scenario": "Draw notes at boundaries; assert note, beat, pitch and playback",
+      "status": "NOT TESTED"
+    },
+    {
+      "id": "piano.note-edit",
+      "surface": "Piano Roll",
+      "control": "dynamic .piano-note, resize handle and keyboard commands",
+      "purpose": "Move/resize/delete MIDI notes",
+      "scenario": "Edit note geometry and compare exact MIDI data/history/playback",
+      "status": "NOT TESTED"
+    },
+    {
+      "id": "piano.velocity",
+      "surface": "Piano Roll",
+      "control": "#pianoVelocity",
+      "purpose": "Adjust selected MIDI note velocity",
+      "scenario": "Set min/max/intermediate value and compare rendered note amplitude",
+      "status": "NOT TESTED"
+    },
+    {
+      "id": "mixer.collapse",
+      "surface": "mixer",
+      "control": "button #mixerCollapseBtn",
+      "purpose": "Collapse/expand mixer panel",
+      "scenario": "Toggle twice at supported viewport heights and verify accessible state/layout",
+      "status": "NOT TESTED"
+    },
+    {
+      "id": "mixer.strip-controls",
+      "surface": "mixer",
+      "control": "dynamic track and master sliders/buttons",
+      "purpose": "Set gain/pan, mute/solo and built-in reverb/delay",
+      "scenario": "Verify each control changes render/output and persists through project round-trip",
+      "status": "NOT TESTED"
+    },
+    {
+      "id": "modal.close",
+      "surface": "modal dialogs",
+      "control": "button #modalClose, backdrop, Escape",
+      "purpose": "Close active modal and restore focus",
+      "scenario": "Open each modal, close via every supported path and verify focus restoration",
+      "status": "NOT TESTED"
+    },
+    {
+      "id": "about.open",
+      "surface": "browser panel",
+      "control": "button #helpBtn",
+      "purpose": "Show app capabilities and limitations",
+      "scenario": "Open/reopen, check text against implemented features and close",
+      "status": "NOT TESTED"
+    },
+    {
+      "id": "hotkeys",
+      "surface": "global/document",
+      "control": "Space, Delete, Ctrl+S, Ctrl+O, Ctrl+D, Escape, arrow keys",
+      "purpose": "Keyboard transport, edit and dialog actions",
+      "scenario": "Test per key with editor focus and text-input focus; verify scope/side effects",
+      "status": "NOT TESTED"
+    },
+    {
+      "id": "clip-processor",
+      "surface": "clip inspector/modal",
+      "control": "dynamic clip property fields including pitch/rate/autotune/effects/CLAP",
+      "purpose": "Configure and render supported clip processing",
+      "scenario": "Validate values, safe failure paths, source preservation and rendered WAV",
+      "status": "NOT TESTED"
+    },
+    {
+      "id": "instrument.controls",
+      "surface": "Rack editor and contextual inspector",
+      "control": "#synthInstrument, #inspectorSynthInstrument and dynamic [data-synth] controls",
+      "purpose": "Select built-in instrument and adjust actual waveform/filter/envelope/detune settings",
+      "scenario": "Check keyboard/focus states, keep values synchronized across panels, switch instruments while native playback runs, save/reopen, and compare browser/WASAPI/WAV render output",
+      "status": "WARNING"
+    },
+    {
+      "id": "browser.asset-tabs",
+      "surface": "Browser library",
+      "control": "#tab-project, #tab-samples, #tab-instruments, #tab-presets, #tab-recordings",
+      "purpose": "Browse project/imported/processed audio, built-in samples, instruments, presets and recordings",
+      "scenario": "Import and record audio; switch tabs and search; verify empty states, grouping, roving keyboard focus and filtering",
+      "status": "WARNING"
+    },
+    {
+      "id": "browser.preview",
+      "surface": "Browser preview card",
+      "control": "#browserPreviewPlay, #browserPreviewWaveform, #browserPreviewInfo",
+      "purpose": "Preview selected PCM audio or synth preset and inspect decoded waveform/details",
+      "scenario": "Play/stop/finish preview; inspect sample rate, channel count, duration and decoded memory; verify waveform and preset oscillator; use keyboard and narrow/wide layouts",
+      "status": "WARNING"
+    },
+    {
+      "id": "window-controls",
+      "surface": "Electron frame",
+      "control": "native OS controls",
+      "purpose": "Move, resize, minimize and close app window",
+      "scenario": "Launch packaged Electron and exercise OS window controls at DPI matrix",
+      "status": "NOT TESTED"
+    },
+    {
+      "id": "sequencer.render-limit-recovery",
+      "surface": "Инструменты / Шаговый секвенсор",
+      "control": "#stepLengthSelect, #stepBarSelect, #stepLengthNotice",
+      "purpose": "Не допускать выбора drum-паттерна длиннее 120-секундного рендера при текущем BPM; помогать восстановить старые проекты.",
+      "preconditions": "Открыт проект с drum-паттерном; для recovery используется disposable legacy-проект длиной 128 тактов.",
+      "expectedState": "Предел тактов обновляется после изменения BPM; legacy-длина и хвостовые шаги видимы, предупреждение доступно скринридеру; пользователь может удалить хвостовые шаги и выбрать поддерживаемую длину.",
+      "observedResult": "Electron UI smoke проверил 40 BPM → максимум 20 тактов, 120 BPM → максимум 60 тактов; legacy-паттерн сохранил навигацию до 128-го такта, хвостовой шаг удалён, длина сокращена до 60 тактов, предупреждение снято.",
+      "status": "PASS",
+      "evidence": "Windows CI run #45625694716, main commit e4af2373ca647fb69d11e513b6719ab4411cbdd9 / script scripts/electron-ui-smoke.mjs; test ran on source tree identical to merged main.",
+      "limitations": [
+        "No audible hardware verification.",
+        "No screenshot artifact was stored.",
+        "The smoke uses generated disposable project data."
+      ]
+    }
   ],
   "explicitly_not_implemented": [
-    {"id":"feature.instrument-inspector","name":"Advanced Serum-style instrument inspector","status":"PARTIAL","reason":"The contextual inspector now exposes the built-in synth's real instrument, waveform, cutoff, attack, release and detune settings; the full editor remains in the Rack view. Multi-oscillator/unison/LFO/matrix synth features and Serum integration are not implemented; layout has not received visual acceptance."},
-    {"id":"feature.vst3-host","name":"VST3 hosting","status":"NOT APPLICABLE","reason":"Not implemented."},
-    {"id":"feature.clap-gui","name":"CLAP GUI/instrument hosting","status":"NOT APPLICABLE","reason":"Current supported CLAP path is offline stereo effect rendering only."},
-    {"id":"feature.midi-hardware","name":"External MIDI devices","status":"NOT APPLICABLE","reason":"Not implemented."},
-    {"id":"feature.track-automation","name":"Track automation editor","status":"NOT APPLICABLE","reason":"Not implemented in the current UI."}
+    {
+      "id": "feature.instrument-inspector",
+      "name": "Advanced Serum-style instrument inspector",
+      "status": "PARTIAL",
+      "reason": "The contextual inspector now exposes the built-in synth's real instrument, waveform, cutoff, attack, release and detune settings; the full editor remains in the Rack view. Multi-oscillator/unison/LFO/matrix synth features and Serum integration are not implemented; layout has not received visual acceptance."
+    },
+    {
+      "id": "feature.vst3-host",
+      "name": "VST3 hosting",
+      "status": "NOT APPLICABLE",
+      "reason": "Not implemented."
+    },
+    {
+      "id": "feature.clap-gui",
+      "name": "CLAP GUI/instrument hosting",
+      "status": "NOT APPLICABLE",
+      "reason": "Current supported CLAP path is offline stereo effect rendering only."
+    },
+    {
+      "id": "feature.midi-hardware",
+      "name": "External MIDI devices",
+      "status": "NOT APPLICABLE",
+      "reason": "Not implemented."
+    },
+    {
+      "id": "feature.track-automation",
+      "name": "Track automation editor",
+      "status": "NOT APPLICABLE",
+      "reason": "Not implemented in the current UI."
+    }
   ]
 }
