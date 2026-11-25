@@ -1205,7 +1205,7 @@ ${track.effects?.compressor ? `<div class="inspector-eq-controls inspector-compr
       output.textContent = format(compressorSettings[key]);
       control.addEventListener('focus', recordUndo, { once: true });
       control.addEventListener('input', event => {
-        track.compressorSettings = normalizeCompressorSettings({ ...compressorSettings, [key]: Number(event.target.value) });
+        track.compressorSettings = normalizeCompressorSettings({ ...(track.compressorSettings || compressorSettings), [key]: Number(event.target.value) });
         output.textContent = format(track.compressorSettings[key]); markProjectDirty();
         const nodes = liveTrackCompressors.get(track.id);
         if (nodes) applyCompressorSettings(nodes, track.compressorSettings);
