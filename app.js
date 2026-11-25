@@ -3238,7 +3238,7 @@ async function nativeMidiSettings() {
   const outputButton = document.createElement('button'); outputButton.type = 'button'; outputButton.className = 'button quiet';
   outputButton.textContent = midiOutputConnected ? 'Отключить MIDI-выход' : 'Подключить MIDI-выход'; outputButton.disabled = !outputs.length && !midiOutputConnected;
   const testButton = document.createElement('button'); testButton.type = 'button'; testButton.className = 'button quiet';
-  testButton.textContent = 'Проверить MIDI-выход'; testButton.disabled = !midiOutputConnected;
+  testButton.textContent = 'Проверить MIDI-выход'; testButton.disabled = !midiOutputConnected || (midiOutputPlaybackEnabled && state.playing);
   const midiRecordButton = document.createElement('button'); midiRecordButton.type = 'button'; midiRecordButton.className = 'button quiet'; midiRecordButton.id = 'midiRecordArmButton';
   midiRecordButton.textContent = midiRecordingArmed ? 'Остановить запись MIDI' : 'Включить запись MIDI';
   midiRecordButton.disabled = !midiInputConnected || getTrack(state.selectedTrackId)?.type !== 'instrument';
@@ -3309,7 +3309,7 @@ async function nativeMidiSettings() {
     testButton.disabled = !midiOutputConnected || (midiOutputPlaybackEnabled && state.playing);
     outputPlaybackInput.disabled = !midiOutputConnected;
     syncMidiOutputPlayback();
-    outputButton.disabled = !outputs.length;
+    outputButton.disabled = !outputs.length && !midiOutputConnected;
   };
   testButton.onclick = async () => {
     if (!midiOutputConnected) return;
@@ -3320,7 +3320,7 @@ async function nativeMidiSettings() {
       updateStatus('Отправлена MIDI-нота C4.'); midiTestOffTimer = window.setTimeout(() => {
         midiTestOffTimer = 0;
         if (midiOutputConnected) window.sonoraNative.sendMidiNote(0, 60, 0, false).catch(() => {});
-        testButton.disabled = !midiOutputConnected;
+        testButton.disabled = !midiOutputConnected || (midiOutputPlaybackEnabled && state.playing);
       }, 350);
     }
     if (!midiTestOffTimer) testButton.disabled = !midiOutputConnected;
