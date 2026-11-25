@@ -370,6 +370,7 @@ async function createMainWindow() {
     callback(Boolean(allowed));
   });
   windowInstance = new BrowserWindow({
+    icon: join(WEB_ROOT, "icon.svg"),
     width: 1440,
     height: 960,
     minWidth: 960,
