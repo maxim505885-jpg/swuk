@@ -396,6 +396,7 @@ try {
   assert.ok(audioTrack, 'saved project contains an audio track for the large-session fixture');
   const clipTemplate = structuredClone(audioTrack.clips.find(clip => !clip.kind));
   const previousClipCount = largeProject.tracks.reduce((sum, track) => sum + track.clips.length, 0);
+  const previousAudioClipCount = audioTrack.clips.length;
   const largeClipCount = 128;
   const clipSpacing = clipTemplate.lengthBeats + 1;
   audioTrack.clips = Array.from({ length: largeClipCount }, (_, index) => ({
@@ -405,7 +406,7 @@ try {
     offsetSec: 0,
     trimEndSec: 0,
   }));
-  const expectedLargeProjectClipCount = previousClipCount - largeClipCount + audioTrack.clips.length;
+  const expectedLargeProjectClipCount = previousClipCount - previousAudioClipCount + largeClipCount;
   const largeProjectText = JSON.stringify(largeProject);
   await evaluate("(() => { const previous=window.confirm; window.confirm=()=>true; document.querySelector('#newProjectBtn').click(); window.confirm=previous; })()");
   await waitUntil(() => evaluate("document.querySelectorAll('.track-lane .clip').length"), count => count === 0, 'empty Arrangement before loading the large session');
