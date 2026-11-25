@@ -157,7 +157,7 @@ async function loadNativeProject(project) {
         (track.trackId && channelIds.has(track.trackId)))) {
       return { ok: false, error: 'Идентификатор канала native-проекта некорректен или повторяется' };
     }
-    if (track.trackId) channelIds.add(track.trackId);
+    if (track?.trackId) channelIds.add(track.trackId);
     if (!isFiniteRange(track?.gain, 0, 4) || !isFiniteRange(track?.pan, -1, 1) || typeof track.mute !== 'boolean' || typeof track.solo !== 'boolean' ||
         typeof track.isBus !== 'boolean' || !Number.isInteger(track.outputBusIndex) || track.outputBusIndex < -1 ||
         typeof track.reverb !== 'boolean' || typeof track.delay !== 'boolean' || typeof track.equalizer !== 'boolean' ||
