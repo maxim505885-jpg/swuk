@@ -8,7 +8,7 @@
 
 | Область | SONORA сейчас | Чего не хватает для зрелого рабочего процесса |
 |---|---|---|
-| Arrangement / Playlist | Частичная работа с аудио, MIDI, drum и automation clips; grid/snap, перемещение, split, fades и tempo-aware Signalsmith stretch | Верифицированные marker/selection сценарии, клиповая огибающая, slicing, полный save/open/export и undo acceptance |
+| Arrangement / Playlist | Частичная работа с аудио, MIDI, drum и automation clips; grid/snap, перемещение, split, fades и tempo-aware Signalsmith stretch; Windows UI smoke проверяет markers, A–B range/loop, transient slicing с undo/redo и `.sonora` save/open round-trip, WAV export | Клип envelope и полная undo-приёмка перемещения/fades |
 | Step Sequencer / Channel Rack | 16 шагов, паттерны ударных, velocity | Развитые channel instruments, step probability/ratchets, полная UI-аудио регрессия, удобная работа с несколькими паттернами |
 | Piano Roll | Редактирование MIDI нот, velocity, клавиатурная навигация по диапазону 0–127 | Выразительные инструменты редактирования/квантизации, масштабирование и полный сценарный acceptance; внешний MIDI input/output |
 | Audio Browser / Editor | Локальные категории, импорт, preview, waveform, запись, ручное разделение и локальная RMS-нарезка клипа по транзиентам; pitch shift, autotune и tempo-aware Signalsmith stretch | Полноценный waveform editor, warp markers, denoise/repair; оценка детектора на реальных исходниках, ручное прослушивание stretch, длинные рендеры и память |
