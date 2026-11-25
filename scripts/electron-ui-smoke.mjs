@@ -210,7 +210,7 @@ try {
   assert.equal(await waitUntil(()=>evaluate("document.querySelector('[data-inspector-effect=compressor]')?.getAttribute('aria-pressed')"),value=>value==='true','compressor after reopening'),'true');
   assert.equal(await evaluate("Number(document.querySelector('#compressorRatio').value)"),6,'compressor controls after reopening');
   assert.equal(await waitUntil(()=>evaluate("document.querySelector('[data-inspector-effect=limiter]')?.getAttribute('aria-pressed')"),value=>value==='true','limiter after reopening'),'true');
-  assert.deepEqual(await evaluate("(()=>({ceilingDb:Number(document.querySelector('#limiterCeiling').value),releaseMs:Number(document.querySelector('#limiterRelease').value}))())"),{ceilingDb:-3.5,releaseMs:125},'limiter controls after reopening');
+  assert.deepEqual(await evaluate("(()=>({ceilingDb:Number(document.querySelector('#limiterCeiling').value),releaseMs:Number(document.querySelector('#limiterRelease').value)}))()"),{ceilingDb:-3.5,releaseMs:125},'limiter controls after reopening');
   assert.deepEqual(exceptions,[], 'markers and project save/open must not throw renderer exceptions');
   await evaluate(`(() => {
     window.__qaWavBlob=null;window.__qaWavDownload=null;
