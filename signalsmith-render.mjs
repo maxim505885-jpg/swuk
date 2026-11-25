@@ -35,9 +35,9 @@ export async function renderTempoStretch(audioBuffer, ratio, options = {}) {
     outputChannelCount: [audioBuffer.numberOfChannels],
   });
   const channels = Array.from({ length: audioBuffer.numberOfChannels }, (_, index) => audioBuffer.getChannelData(index).slice());
-  await stretch.addBuffers(channels);
   stretch.connect(context.destination);
-  await stretch.start(0, 0, outputFrames / audioBuffer.sampleRate, 1 / ratio, 0);
+  await stretch.addBuffers(channels, channels.map(channel => channel.buffer));
+  await stretch.schedule({ active: true, input: 0, output: 0, rate: 1 / ratio, semitones: 0 });
   const rendered = await context.startRendering();
   if (!rendered || rendered.length !== outputFrames || rendered.numberOfChannels !== audioBuffer.numberOfChannels) {
     throw new Error('Signalsmith returned an unexpected render format');
