@@ -77,7 +77,7 @@ struct TrackMixSettings {
     float equalizerFrequencyHz{1000.0F};
     float equalizerGainDb{};
     float equalizerQ{1.0F};
-    std::array<EqualizerBandSettings, kEqualizerBandCount> equalizerBands{kDefaultEqualizerBands};
+    std::array<EqualizerBandSettings, kEqualizerBandCount> equalizerBands = kDefaultEqualizerBands;
 };
 
 struct AudioClipView {
