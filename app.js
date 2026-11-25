@@ -4,6 +4,7 @@ import { createProjectDocument, PROJECT_LIMITS, validateProjectDocument } from '
 import { normalizeTheme, readTheme, THEMES, THEME_KEY } from './theme-core.mjs';
 import { analyzeMeter, presentMeter } from './audio-meter.mjs?v=1';
 import { sampleWaveformPeaks } from './waveform-core.mjs?v=2';
+import { moveWaveWindowEdge, normalizeWaveWindow, waveWindowSecondsAtX } from './wave-window-core.mjs?v=1';
 import { detectTransientFrames } from './transient-core.mjs?v=1';
 import { clampMidiPitch, generateChordPitches, midiOctaveStart, quantizeMidiNotes, shiftMidiOctave } from './midi-edit-core.mjs?v=3';
 import { normalizeClipFades } from './clip-fade-core.mjs?v=1';
@@ -876,6 +877,141 @@ function drawWaveform(canvas, buffer, color, clip = null) {
   for(let x=0;x<peaks.length;x++){const h=Math.max(1,peaks[x]*height*.86);ctx.fillRect(x*step,(height-h)/2,Math.max(1,step),h);}
 }
 
+function openWaveformEditor(clip) {
+  if (getClip(clip.id).clip !== clip) return;
+  const asset = state.assets.get(clip.renderedAssetId && !clip.bypassProcessing ? clip.renderedAssetId : clip.assetId);
+  const buffer = asset?.buffer;
+  if (!buffer || buffer.duration < 0.02) { showToast('Для редактора нужна доступная аудиоволна'); return; }
+
+  const dialog = document.createElement('dialog');
+  dialog.id = 'waveformEditorDialog';
+  dialog.className = 'waveform-editor-dialog';
+  dialog.setAttribute('aria-labelledby', 'waveEditorTitle');
+  dialog.setAttribute('aria-describedby', 'waveEditorHelp');
+  const sourceName = escapeHtml(asset.fileName || clip.name || 'Аудиоклип');
+  dialog.innerHTML =
+    '<div class="waveform-editor-shell">' +
+      '<header class="waveform-editor-header"><div><p class="eyebrow">АУДИОМОНТАЖ</p><h2 id="waveEditorTitle">Форма волны</h2><p class="field-help" id="waveEditorHelp">' + sourceName + ' · выберите начало и конец слышимого фрагмента</p></div>' +
+      '<button class="icon-button small" id="waveEditorClose" type="button" aria-label="Закрыть редактор">×</button></header>' +
+      '<canvas class="waveform-editor-canvas" id="waveEditorCanvas" width="1400" height="260" aria-label="Форма волны; перетащите маркер начала или конца"></canvas>' +
+      '<div class="waveform-editor-range">' +
+        '<label for="waveEditorStart">Начало <output id="waveEditorStartValue"></output></label><input id="waveEditorStart" type="range" min="0" max="' + buffer.duration.toFixed(3) + '" step="0.001" aria-label="Начало фрагмента в секундах" />' +
+        '<label for="waveEditorEnd">Конец <output id="waveEditorEndValue"></output></label><input id="waveEditorEnd" type="range" min="0" max="' + buffer.duration.toFixed(3) + '" step="0.001" aria-label="Конец фрагмента в секундах" />' +
+      '</div>' +
+      '<p class="waveform-editor-status" id="waveEditorStatus" role="status" aria-live="polite"></p>' +
+      '<footer class="waveform-editor-footer"><button class="button quiet" id="waveEditorCancel" type="button">Отмена</button><button class="button primary" id="waveEditorSave" type="button">Применить обрезку</button></footer>' +
+    '</div>';
+  document.body.append(dialog);
+
+  const canvas = $('#waveEditorCanvas', dialog), ctx = canvas.getContext('2d');
+  const startInput = $('#waveEditorStart', dialog), endInput = $('#waveEditorEnd', dialog);
+  const startValue = $('#waveEditorStartValue', dialog), endValue = $('#waveEditorEndValue', dialog);
+  const status = $('#waveEditorStatus', dialog), saveButton = $('#waveEditorSave', dialog);
+  const minBeatSeconds = Math.max(0.02, 0.25 * beatSeconds() * getClipPlaybackRate(clip, false));
+  const canEdit = !clip.renderedAssetId && !clip.timeStretchRatio && !clip.clapPluginName && !clip.autoTune && !clip.bypassProcessing;
+  const sourceStart = Math.max(0, Number(clip.offsetSec) || 0);
+  const sourceEnd = Math.min(buffer.duration - Math.max(0, Number(clip.trimEndSec) || 0),
+    sourceStart + clip.lengthBeats * beatSeconds() * getClipPlaybackRate(clip, false));
+  let window = normalizeWaveWindow(buffer.duration, sourceStart, sourceEnd, minBeatSeconds);
+  const peakCount = canvas.width;
+  const peaks = new Float32Array(peakCount);
+  const overviewStride = Math.max(1, Math.floor(buffer.length / (peakCount * 256)));
+  for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
+    const samples = buffer.getChannelData(channel);
+    for (let frame = 0; frame < samples.length; frame += overviewStride) {
+      const peakIndex = Math.min(peakCount - 1, Math.floor(frame / samples.length * peakCount));
+      const sample = samples[frame];
+      if (Number.isFinite(sample)) peaks[peakIndex] = Math.max(peaks[peakIndex], Math.min(1, Math.abs(sample)));
+    }
+    const lastSample = samples[samples.length - 1];
+    if (Number.isFinite(lastSample)) peaks[peakCount - 1] = Math.max(peaks[peakCount - 1], Math.min(1, Math.abs(lastSample)));
+  }
+
+  function drawSelection() {
+    const width = canvas.width, height = canvas.height, startX = window.start / buffer.duration * width, endX = window.end / buffer.duration * width;
+    ctx.clearRect(0, 0, width, height);
+    ctx.fillStyle = '#11151b'; ctx.fillRect(0, 0, width, height);
+    const color = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#ed9868';
+    ctx.fillStyle = color;
+    for (let x = 0; x < peaks.length; x++) {
+      const barHeight = Math.max(1, peaks[x] * height * 0.78);
+      ctx.fillRect(x, (height - barHeight) / 2, 1, barHeight);
+    }
+    ctx.fillStyle = 'rgba(6, 8, 12, .64)';
+    ctx.fillRect(0, 0, startX, height); ctx.fillRect(endX, 0, width - endX, height);
+    ctx.fillStyle = 'rgba(255, 255, 255, .08)'; ctx.fillRect(startX, 0, Math.max(1, endX - startX), height);
+    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;
+    for (const markerX of [startX, endX]) {
+      ctx.beginPath(); ctx.moveTo(markerX, 0); ctx.lineTo(markerX, height); ctx.stroke();
+      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.moveTo(markerX - 7, 0); ctx.lineTo(markerX + 7, 0); ctx.lineTo(markerX, 10); ctx.closePath(); ctx.fill();
+    }
+    startInput.value = window.start.toFixed(3); endInput.value = window.end.toFixed(3);
+    startInput.max = Math.max(0, window.end - minBeatSeconds).toFixed(3);
+    endInput.min = Math.min(buffer.duration, window.start + minBeatSeconds).toFixed(3);
+    startValue.value = window.start.toFixed(3) + ' с'; endValue.value = window.end.toFixed(3) + ' с';
+  }
+
+  if (!canEdit) {
+    startInput.disabled = true; endInput.disabled = true; saveButton.disabled = true;
+    status.textContent = 'Сначала сбросьте обработку клипа, чтобы безопасно изменить исходный диапазон.';
+  } else {
+    status.textContent = 'Потяните белые маркеры или используйте ползунки. Минимальная длина соответствует ¼ доли.';
+  }
+  drawSelection();
+
+  function setEdge(edge, seconds) {
+    if (!canEdit) return;
+    window = moveWaveWindowEdge(buffer.duration, window, edge, seconds, minBeatSeconds);
+    drawSelection();
+  }
+  startInput.addEventListener('input', () => setEdge('start', Number(startInput.value)));
+  endInput.addEventListener('input', () => setEdge('end', Number(endInput.value)));
+
+  let draggingEdge = null;
+  const edgeAtPointer = event => {
+    const rect = canvas.getBoundingClientRect();
+    const x = Math.max(0, Math.min(canvas.width, (event.clientX - rect.left) / rect.width * canvas.width));
+    const startX = window.start / buffer.duration * canvas.width, endX = window.end / buffer.duration * canvas.width;
+    return Math.abs(x - startX) <= Math.abs(x - endX) ? 'start' : 'end';
+  };
+  const updatePointer = event => {
+    if (!draggingEdge) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = (event.clientX - rect.left) / rect.width * canvas.width;
+    setEdge(draggingEdge, waveWindowSecondsAtX(x, canvas.width, buffer.duration));
+  };
+  canvas.addEventListener('pointerdown', event => {
+    if (!canEdit) return;
+    draggingEdge = edgeAtPointer(event);
+    canvas.setPointerCapture(event.pointerId);
+    updatePointer(event);
+  });
+  canvas.addEventListener('pointermove', updatePointer);
+  canvas.addEventListener('pointerup', () => { draggingEdge = null; });
+  canvas.addEventListener('pointercancel', () => { draggingEdge = null; });
+
+  $('#waveEditorClose', dialog).addEventListener('click', () => dialog.close());
+  $('#waveEditorCancel', dialog).addEventListener('click', () => dialog.close());
+  saveButton.addEventListener('click', () => {
+    if (!canEdit || getClip(clip.id).clip !== clip) {
+      status.textContent = 'Выбранный клип изменился. Закройте редактор и выберите его снова.';
+      return;
+    }
+    if (Math.abs(window.start - sourceStart) < 0.001 && Math.abs(window.end - sourceEnd) < 0.001) { dialog.close(); return; }
+    recordUndo();
+    clip.offsetSec = window.start;
+    clip.trimEndSec = Math.max(0, buffer.duration - window.end);
+    clip.lengthBeats = Math.max(0.25, (window.end - window.start) / getClipPlaybackRate(clip, false) * state.tempo / 60);
+    renderAll();
+    markProjectDirty();
+    restartPlaybackIfActive();
+    dialog.close();
+  });
+  dialog.addEventListener('close', () => dialog.remove(), { once: true });
+  dialog.showModal();
+  $('#waveEditorClose', dialog).focus();
+}
+
 async function sliceAudioAtTransients(clip, sensitivity, minSpacingMs) {
   const button = $('#sliceTransientsBtn'), status = $('#sliceTransientStatus'), asset = state.assets.get(clip.assetId);
   if (!button || button.disabled || getClip(clip.id).clip !== clip || !asset?.buffer) return;
@@ -1212,6 +1348,7 @@ function renderEditor() {
     const clip = selected.clip, asset = state.assets.get(clip.assetId), activeAsset = state.assets.get(clip.renderedAssetId && !clip.bypassProcessing ? clip.renderedAssetId : clip.assetId) || asset;
     const canSliceTransients = !clip.renderedAssetId && !clip.timeStretchRatio && !clip.clapPluginName && !clip.autoTune && !clip.bypassProcessing;
     body.innerHTML = `<div class="properties">
+      <div class="property waveform-editor-entry"><label>АУДИОМОНТАЖ</label><button class="button quiet compact" id="openWaveformEditorBtn" type="button">Открыть редактор формы волны</button><small class="field-help">Точно задайте слышимую часть клипа и сохраните обрезку в проекте.</small></div>
       <div class="property"><label>ВЫСОТА · ПОЛУТОНЫ</label><input id="clipPitch" type="number" min="-24" max="24" value="${clip.pitch || 0}" /></div>
       <div class="property"><label>СКОРОСТЬ · ${Math.round((clip.rate || 1) * 100)}%</label><input id="clipRate" type="range" min="0.5" max="2" step="0.01" value="${clip.rate || 1}" /></div>
       <div class="property"><label>ТЕМП ИСТОЧНИКА · BPM</label><input id="clipSourceTempo" type="number" min="40" max="240" step="1" value="${clip.timeStretchSourceTempo || Math.round(state.tempo)}" /><small class="field-help">Растянуть к темпу проекта (${Math.round(state.tempo)} BPM), сохранив высоту.</small><button class="button quiet compact" id="applyTimeStretchBtn">Подогнать к темпу проекта</button></div>
@@ -1266,6 +1403,7 @@ function renderEditor() {
       renderTimeline();
     });
     $('#clipOffset').addEventListener('change', event => { clip.offsetSec = clamp(Number(event.target.value) || 0, 0, activeAsset.buffer.duration - .05); renderAll(); });
+    $('#openWaveformEditorBtn')?.addEventListener('click', () => openWaveformEditor(clip));
     for (const field of ['clipVolume', 'clipPan', 'clipOffset', 'clipRate', 'clipFadeIn', 'clipFadeOut']) $(`#${field}`).addEventListener('focus', recordUndo, { once: true });
     $('#resetPitchBtn').textContent = 'Сбросить обработку';
     $('#resetPitchBtn').onclick = () => { recordUndo(); clip.pitch = 0; clip.autoTune = null; clip.renderedAssetId = null; if (clip.timeStretchRatio) { clip.lengthBeats = clip.stretchOriginalLengthBeats ?? clip.lengthBeats; clip.offsetSec = clip.stretchOriginalOffsetSec ?? clip.offsetSec; clip.trimEndSec = clip.stretchOriginalTrimEndSec ?? clip.trimEndSec; } if (clip.clapPluginName) { clip.lengthBeats = clip.clapOriginalLengthBeats ?? clip.lengthBeats; clip.offsetSec = clip.clapOriginalOffsetSec ?? clip.offsetSec; clip.trimEndSec = clip.clapOriginalTrimEndSec ?? clip.trimEndSec; } clip.timeStretchRatio = null; clip.timeStretchSourceTempo = null; clip.stretchOriginalLengthBeats = null; clip.stretchOriginalOffsetSec = null; clip.stretchOriginalTrimEndSec = null; clip.clapPluginName = null; clip.clapPluginId = null; clip.clapParameters = null; clip.clapSourceAssetId = null; clip.clapSourceOffsetSec = null; clip.clapSourceTrimEndSec = null; clip.clapOriginalLengthBeats = null; clip.clapOriginalOffsetSec = null; clip.clapOriginalTrimEndSec = null; clapSelections.delete(clip.id); clip.bypassProcessing = false; restartPlaybackIfActive(); renderAll(); };

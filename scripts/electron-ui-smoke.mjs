@@ -152,6 +152,45 @@ try {
     count => count === 1,
     'redo restores the imported clip after no-op selection',
   );
+  await waitUntil(
+    () => evaluate("Boolean(document.querySelector('#openWaveformEditorBtn'))"),
+    Boolean,
+    'the audio clip waveform editor action',
+  );
+  await evaluate("document.querySelector('#openWaveformEditorBtn').click()");
+  await waitUntil(
+    () => evaluate("document.querySelector('#waveformEditorDialog')?.open === true"),
+    Boolean,
+    'the waveform editor dialog',
+  );
+  await evaluate("(() => { const start=document.querySelector('#waveEditorStart'); start.value='0.250'; start.dispatchEvent(new Event('input',{bubbles:true})); })()");
+  const waveformEditorSelection = await evaluate("(()=>({start:document.querySelector('#waveEditorStartValue')?.value,end:document.querySelector('#waveEditorEndValue')?.value,canvas:document.querySelector('#waveEditorCanvas')?.width}))()");
+  assert.deepEqual(waveformEditorSelection,{start:'0.250 с',end:'2.000 с',canvas:1400},'waveform editor exposes a source selection and cached overview');
+  await evaluate("document.querySelector('#waveEditorSave').click()");
+  const waveformOffset = await waitUntil(
+    () => evaluate("Number(document.querySelector('#clipOffset')?.value)"),
+    value => Math.abs(value - .25) < .001,
+    'applying the waveform crop updates the selected source offset',
+  );
+  assert.ok(Math.abs(waveformOffset - .25) < .001);
+  await evaluate("document.querySelector('#undoBtn').click()");
+  await waitUntil(
+    () => evaluate("Number(document.querySelector('#clipOffset')?.value)"),
+    value => Math.abs(value) < .001,
+    'waveform crop participates in undo',
+  );
+  await evaluate("document.querySelector('#redoBtn').click()");
+  await waitUntil(
+    () => evaluate("Number(document.querySelector('#clipOffset')?.value)"),
+    value => Math.abs(value - .25) < .001,
+    'waveform crop participates in redo',
+  );
+  await evaluate("document.querySelector('#undoBtn').click()");
+  await waitUntil(
+    () => evaluate("Number(document.querySelector('#clipOffset')?.value)"),
+    value => Math.abs(value) < .001,
+    'waveform editor fixture restores the source before later split tests',
+  );
   const clipWidthAtDefaultZoom = await evaluate("parseFloat(document.querySelector('.track-lane .clip').style.width)");
   await evaluate("(() => { const input=document.querySelector('#zoomInput'); input.value='150'; input.dispatchEvent(new Event('input',{bubbles:true})); })()");
   const clipWidthZoomedIn = await waitUntil(
