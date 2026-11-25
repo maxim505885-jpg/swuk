@@ -1,0 +1,107 @@
+/* Semantic theme palette. Theme changes only paint; project and transport state stay untouched. */
+:root,
+:root[data-theme="dark-rose"] {
+  color-scheme: dark;
+  --bg: #171319; --surface: #252027; --surface-2: #342c37; --surface-3: #3c303d; --line: #493b49;
+  --text: #f1ebf2; --muted: #b8adb9; --muted-2: #8f828f; --accent: #d35c9f; --accent-hover: #e987bd; --accent-pressed: #ad3979;
+  --selection: #593046; --focus: #e987bd; --input-bg: #211b24; --input-text: #f1ebf2; --grid-major: #493b49; --grid-minor: #382f39;
+  --green: #d35c9f; --blue: #b391d2; --purple: #c87ab0; --yellow: #e9b6c9; --play: #d35c9f; --record: #f17691;
+  --meter-normal: #d35c9f; --meter-warning: #e9b04b; --meter-clip: #ec6570; --waveform: #e987bd; --midi-note: #d35c9f; --automation: #b391d2;
+  --knob-arc: #d35c9f; --fader-thumb: #f1ebf2; --step-on: #d35c9f; --step-off: #3c303d;
+  --track-palette: #d35c9f, #c767a8, #b391d2, #a9507e, #e987bd, #8e658b;
+  --background: var(--bg); --panel: var(--surface); --border: var(--line); --text-primary: var(--text); --text-secondary: var(--muted); --text-disabled: var(--muted-2); --input-background: var(--input-bg); --inputBackground: var(--input-bg);
+  --gridMajor: var(--grid-major); --gridMinor: var(--grid-minor); --accentHover: var(--accent-hover); --accentPressed: var(--accent-pressed);
+  --meterNormal: var(--meter-normal); --meterWarning: var(--meter-warning); --meterClip: var(--meter-clip); --midiNote: var(--midi-note); --stepOn: var(--step-on); --stepOff: var(--step-off); --trackPalette: var(--track-palette);
+}
+
+:root[data-theme="bordeaux"] {
+  color-scheme: dark;
+  --bg: #30131f; --surface: #472331; --surface-2: #59313e; --surface-3: #633746; --line: #754454;
+  --text: #fff0f3; --muted: #d5b7c0; --muted-2: #a98992; --accent: #e879a5; --accent-hover: #f3a4be; --accent-pressed: #bb527e;
+  --selection: #633746; --focus: #f3a4be; --input-bg: #28121b; --input-text: #fff0f3; --grid-major: #714252; --grid-minor: #512a37;
+  --green: #6ce5ce; --blue: #72bdb2; --purple: #b98bc8; --yellow: #eaa359; --play: #e879a5; --record: #ee727f;
+  --meter-normal: #6bcf9a; --meter-warning: #e7c64f; --meter-clip: #ec5b59; --waveform: #e879a5; --midi-note: #6ce5ce; --automation: #eaa359;
+  --knob-arc: #e879a5; --fader-thumb: #f6dde2; --step-on: #e879a5; --step-off: #59313e;
+  --track-palette: #eaa359, #51c99b, #40c9d4, #a38adf, #e477ab, #72a9e9;
+  --background: var(--bg); --panel: var(--surface); --border: var(--line); --text-primary: var(--text); --text-secondary: var(--muted); --text-disabled: var(--muted-2); --input-background: var(--input-bg); --inputBackground: var(--input-bg);
+  --gridMajor: var(--grid-major); --gridMinor: var(--grid-minor); --accentHover: var(--accent-hover); --accentPressed: var(--accent-pressed);
+  --meterNormal: var(--meter-normal); --meterWarning: var(--meter-warning); --meterClip: var(--meter-clip); --midiNote: var(--midi-note); --stepOn: var(--step-on); --stepOff: var(--step-off); --trackPalette: var(--track-palette);
+}
+
+:root[data-theme="aqua-graphite"] {
+  color-scheme: dark;
+  --bg: #101719; --surface: #1b2428; --surface-2: #273439; --surface-3: #35454b; --line: #40545a;
+  --text: #eef4f5; --muted: #a5b5bb; --muted-2: #7f939a; --accent: #009da5; --accent-hover: #38e3e8; --accent-pressed: #08767c;
+  --selection: #16434a; --focus: #38e3e8; --input-bg: #141e22; --input-text: #eef4f5; --grid-major: #3b5056; --grid-minor: #29383d;
+  --green: #4bc78a; --blue: #60c8d0; --purple: #89a9d4; --yellow: #e8c94d; --play: #e88b27; --record: #f17671;
+  --meter-normal: #44c982; --meter-warning: #e8c94d; --meter-clip: #ef625c; --waveform: #38e3e8; --midi-note: #38e3e8; --automation: #e88b27;
+  --knob-arc: #38e3e8; --fader-thumb: #dce9eb; --step-on: #38e3e8; --step-off: #273439;
+  --track-palette: #e8c94d, #e88b27, #40c9d4, #72a9e9, #51c99b, #a38adf;
+  --background: var(--bg); --panel: var(--surface); --border: var(--line); --text-primary: var(--text); --text-secondary: var(--muted); --text-disabled: var(--muted-2); --input-background: var(--input-bg); --inputBackground: var(--input-bg);
+  --gridMajor: var(--grid-major); --gridMinor: var(--grid-minor); --accentHover: var(--accent-hover); --accentPressed: var(--accent-pressed);
+  --meterNormal: var(--meter-normal); --meterWarning: var(--meter-warning); --meterClip: var(--meter-clip); --midiNote: var(--midi-note); --stepOn: var(--step-on); --stepOff: var(--step-off); --trackPalette: var(--track-palette);
+}
+
+:root[data-theme="neon-rose"] {
+  color-scheme: dark;
+  --bg: #190810; --surface: #2d101d; --surface-2: #411d30; --surface-3: #63223c; --line: #74304b;
+  --text: #fff1f6; --muted: #d4aab9; --muted-2: #a27787; --accent: #f01473; --accent-hover: #ff5a9e; --accent-pressed: #b91058;
+  --selection: #63223c; --focus: #ff5a9e; --input-bg: #200a15; --input-text: #fff1f6; --grid-major: #62253f; --grid-minor: #3d1729;
+  --green: #00e887; --blue: #56c6d2; --purple: #bf83df; --yellow: #f0c257; --play: #f01473; --record: #ff596d;
+  --meter-normal: #00d981; --meter-warning: #f0c257; --meter-clip: #ff5360; --waveform: #ff4b9c; --midi-note: #00e887; --automation: #f01473;
+  --knob-arc: #f01473; --fader-thumb: #f7f2f4; --step-on: #f01473; --step-off: #411d30;
+  --track-palette: #e8a04c, #56c6d2, #00e887, #a38adf, #e477ab, #72a9e9;
+  --background: var(--bg); --panel: var(--surface); --border: var(--line); --text-primary: var(--text); --text-secondary: var(--muted); --text-disabled: var(--muted-2); --input-background: var(--input-bg); --inputBackground: var(--input-bg);
+  --gridMajor: var(--grid-major); --gridMinor: var(--grid-minor); --accentHover: var(--accent-hover); --accentPressed: var(--accent-pressed);
+  --meterNormal: var(--meter-normal); --meterWarning: var(--meter-warning); --meterClip: var(--meter-clip); --midiNote: var(--midi-note); --stepOn: var(--step-on); --stepOff: var(--step-off); --trackPalette: var(--track-palette);
+}
+
+:root { font-family: "Segoe UI", Arial, sans-serif; color: var(--text); background: var(--bg); --radius: 7px; }
+.mini-meter i[data-level="warning"], .mixer-strip .meter i[data-level="warning"] { background: var(--meter-warning); }
+.mini-meter i[data-level="clip"], .mixer-strip .meter i[data-level="clip"] { background: var(--meter-clip); }
+body, .app-shell { background: var(--bg); color: var(--text); }
+.topbar, .transport, .browser-panel, .studio-area, .editor-panel, .mixer-panel { background-color: var(--surface); border-color: var(--line); }
+.project-title input, .position-readout strong, .compact-field input, .compact-field select, .property input, .property select { color: var(--text); }
+.button, .icon-button, .transport-button, .toggle-button, .tool-button, .quick-chip, .property, .mixer-strip, .native-engine-panel { background-color: var(--surface-2); border-color: var(--line); color: var(--text); }
+.button:hover, .icon-button:hover, .toggle-button:hover, .quick-chip:hover { background-color: var(--surface-3); border-color: var(--accent); }
+.button.quiet { background: transparent; border-color: var(--line); }
+.export-button { background: var(--accent); color: var(--input-bg); } .export-button:hover { background: var(--accent-hover); }
+.play-button { background: var(--play); color: var(--input-bg); } .play-button:hover { background: var(--accent-hover); }
+.view-tab.active, .browser-tab.active, .tool-button.selected, .step-cell.active { background: var(--selection); border-color: var(--accent); color: var(--text); }
+.compact-field, .search-wrap, .browser-tabs, .ruler, .editor-heading, .track-header-spacer, .track-label-column, .mixer-title { background-color: var(--surface-2); border-color: var(--line); }
+.compact-field select, .device-row select, .property select { background-color: var(--input-bg); color: var(--input-text); border-color: var(--line); }
+.tracks-canvas { background-color: var(--bg); background-image: linear-gradient(to right, color-mix(in srgb,var(--grid-major) 78%,transparent) 1px,transparent 1px),linear-gradient(to right,color-mix(in srgb,var(--grid-minor) 70%,transparent) 1px,transparent 1px); }
+.track-lane { border-color: var(--grid-minor); background-image: linear-gradient(90deg,transparent calc(100% - 1px),var(--grid-major) 1px); }
+.bar-tick, .bar-tick:nth-child(4n+1) { border-color: var(--grid-major); color: var(--muted); }
+.piano-grid { background-image: linear-gradient(to right,var(--grid-major) 1px,transparent 1px),linear-gradient(to bottom,var(--grid-minor) 1px,transparent 1px); }
+.piano-cell, .piano-key { border-color: var(--line); } .piano-key { background: var(--surface-2); color: var(--muted); } .piano-key.black { background: var(--bg); color: var(--muted-2); }
+.piano-note { background: var(--midi-note); border-color: var(--accent-hover); } .piano-note:hover, .piano-note.is-selected { background: var(--accent-hover); }
+.step-cell { background: var(--step-off); border-color: var(--line); } .step-cell.active { background: var(--step-on); border-color: var(--accent-hover); box-shadow: 0 0 8px color-mix(in srgb,var(--accent) 30%,transparent); }
+.mixer-strip .meter i { background: var(--meter-normal); } .mixer-strip input, .master-mini input, .piano-velocity, .property input[type="range"] { accent-color: var(--accent); }
+.record-button, .record-button:hover, .record-button.recording { background: color-mix(in srgb,var(--record) 18%,var(--surface)); color: var(--record); }
+.record-button span, .recording-bar i { background: var(--record); }
+.ruler-top, .track-header-spacer, .track-label, .editor-panel, .mixer-panel, .modal, .native-engine-panel, .property, .device-row, .modal-footnote { color: var(--text); }
+.modal { background: var(--surface); border-color: var(--line); border-radius: var(--radius); box-shadow: 0 18px 70px #0009; }
+.modal-backdrop { background: color-mix(in srgb,var(--bg) 82%,transparent); }
+.modal-header, .modal-footnote, .native-engine-panel { border-color: var(--line); }
+.modal-footnote, .note-banner { background: var(--surface-2); color: var(--muted); }
+.toast { background: var(--surface-3); border-color: var(--line); color: var(--text); }
+
+.appearance-settings { padding: 2px 0 13px; margin-bottom: 14px; border-bottom: 1px solid var(--line); }
+.appearance-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.appearance-heading h3 { font-size: 13px; margin: 4px 0 0; font-weight: 650; }
+.theme-choices { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 7px; }
+.theme-choice { min-width: 0; display: flex; align-items: center; gap: 9px; padding: 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface-2); color: var(--text); text-align: left; cursor: pointer; }
+.theme-choice:hover { border-color: var(--accent); background: var(--surface-3); }
+.theme-choice[aria-checked="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); background: color-mix(in srgb,var(--accent) 13%,var(--surface-2)); }
+.theme-swatches { height: 30px; width: 44px; flex: 0 0 44px; display: flex; overflow: hidden; border: 1px solid var(--line); border-radius: 4px; }
+.theme-swatches i { flex: 1; }
+.theme-choice-copy { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.theme-choice-copy strong { font-size: 10px; } .theme-choice-copy small { font-size: 9px; color: var(--muted); }
+.appearance-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 9px; }
+.appearance-footer p { margin: 0; color: var(--muted); font-size: 9px; line-height: 1.4; }
+.appearance-footer .button { flex: none; margin: 0; }
+@supports selector(.editor-panel:has(.piano-wrap)) {
+  .editor-panel:has(.piano-wrap) { height: min(400px,49vh); flex-basis: min(400px,49vh); }
+}
+@media (max-width: 520px) { .theme-choices { grid-template-columns: 1fr; } .appearance-footer { align-items: flex-start; flex-direction: column; } }

@@ -1,0 +1,99 @@
+{
+  "name": "sonora-studio",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Локальная музыкальная студия на Web Audio API",
+  "author": "SONORA Studio Contributors",
+  "main": "desktop/main.cjs",
+  "scripts": {
+    "start": "node server.mjs",
+    "desktop": "electron .",
+    "build:win": "npm run native:test && npm run native:build && npm run native:clap:test && npm test && npm run native:smoke && electron-builder --win nsis --config.electronDist=node_modules/electron/dist",
+    "build:win:dir": "npm run native:test && npm run native:build && npm run native:clap:test && npm test && npm run native:smoke && electron-builder --win --dir --config.electronDist=node_modules/electron/dist",
+    "native:build": "powershell -ExecutionPolicy Bypass -File native/build.ps1 -Mode Build",
+    "native:clap:test": "powershell -ExecutionPolicy Bypass -File native/build-clap.ps1 -Test",
+    "native:test": "powershell -ExecutionPolicy Bypass -File native/build.ps1 -Mode Test",
+    "native:bench": "powershell -ExecutionPolicy Bypass -File native/build.ps1 -Mode Bench",
+    "native:smoke": "node --test tests/native-smoke.mjs",
+    "qa:stability": "node scripts/native-soak.mjs",
+    "qa:quick": "node --test --test-isolation=none tests/arrangement-core.test.mjs tests/audio-meter.test.mjs tests/clip-fade-core.test.mjs tests/dsp.test.mjs tests/eq-core.test.mjs tests/midi-edit-core.test.mjs tests/preload.test.mjs tests/project-io.test.mjs tests/record-worklet.test.mjs tests/sequencer-audio.test.mjs tests/server.test.mjs tests/theme-core.test.mjs tests/waveform-core.test.mjs",
+    "qa:audio": "npm run native:test && npm run native:smoke",
+    "qa:plugin": "npm run native:clap:test",
+    "qa:hardware-output": "node scripts/native-output-check.mjs",
+    "qa:load": "npm run native:bench",
+    "qa:final": "npm run build:win",
+    "test": "node --test --test-isolation=none"
+  },
+  "devDependencies": {
+    "electron": "^45.4.1",
+    "electron-builder": "^26.15.3"
+  },
+  "overrides": {
+    "minimatch": "^11.0.1"
+  },
+  "build": {
+    "appId": "com.sonora.studio",
+    "productName": "SONORA Studio",
+    "npmRebuild": false,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "index.html",
+      "styles.css",
+      "theme.css",
+      "app.js",
+      "theme-core.mjs",
+      "arrangement-core.mjs",
+      "sequencer-audio.mjs",
+      "project-io.mjs",
+      "audio-meter.mjs",
+      "waveform-core.mjs",
+      "midi-edit-core.mjs",
+      "clip-fade-core.mjs",
+      "eq-core.mjs",
+      "dsp-core.mjs",
+      "dsp-worker.js",
+      "record-worklet.js",
+      "sw.js",
+      "manifest.webmanifest",
+      "icon.svg",
+      "desktop/main.cjs",
+      "desktop/preload.cjs",
+      "desktop/serialized-json-client.cjs",
+      "package.json",
+      "LICENSE"
+    ],
+    "extraResources": [
+      {
+        "from": "native/build/sonora-audio-engine.exe",
+        "to": "engine/sonora-audio-engine.exe"
+      },
+      {
+        "from": "native/build/sonora-clap-offline.exe",
+        "to": "engine/sonora-clap-offline.exe"
+      },
+      {
+        "from": "native/vendor/miniaudio/LICENSE",
+        "to": "licenses/miniaudio/LICENSE"
+      },
+      {
+        "from": "native/vendor/clap/LICENSE",
+        "to": "licenses/clap/LICENSE"
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  }
+}

@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#171319" />
+    <meta name="description" content="Локальная музыкальная студия для записи и сборки звука" />
+    <title>SONORA — музыкальная студия</title>
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Crect width='48' height='48' rx='14' fill='%23e88f5a'/%3E%3Cpath d='M14 26v-5m7 13V14m7 18V18m7 10v-7' stroke='%2311151b' stroke-width='4' stroke-linecap='round'/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="/styles.css?v=23" />
+    <link rel="stylesheet" href="/theme.css?v=3" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand"><div class="brand-mark"><i></i><i></i><i></i><i></i></div><span>SONORA</span><small>STUDIO</small></div>
+        <div class="project-title"><input id="projectName" value="Новый проект" maxlength="256" aria-label="Название проекта" /><span class="save-state" id="saveState">● Локальный проект</span></div>
+        <div class="top-actions">
+          <button class="icon-button" id="undoBtn" title="Отменить (Ctrl+Z)" aria-label="Отменить">↶</button>
+          <button class="icon-button" id="redoBtn" title="Повторить (Ctrl+Y)" aria-label="Повторить">↷</button>
+          <span class="toolbar-divider"></span>
+          <button class="button quiet" id="newProjectBtn">Новый</button>
+          <button class="button quiet" id="openProjectBtn">Открыть</button>
+          <button class="button quiet" id="saveProjectBtn">Сохранить</button>
+          <button class="button export-button" id="exportBtn"><span>↗</span> Экспорт WAV</button>
+          <input id="projectFile" type="file" accept=".sonora,application/json" hidden />
+        </div>
+      </header>
+
+      <section class="transport" aria-label="Управление воспроизведением">
+        <div class="transport-main">
+          <button class="transport-button" id="stopBtn" title="Стоп" aria-label="Остановить воспроизведение">■</button>
+          <button class="play-button" id="playBtn" title="Воспроизвести (Пробел)" aria-label="Воспроизвести" aria-pressed="false"><span>▶</span></button>
+          <button class="record-button" id="recordBtn" title="Запись с микрофона" aria-label="Запись с микрофона" aria-pressed="false"><span aria-hidden="true"></span> Запись</button>
+          <div class="position-readout"><span class="eyebrow">ПОЗИЦИЯ</span><strong id="positionText">001 : 01 : 000</strong></div>
+        </div>
+        <div class="transport-center">
+          <label class="compact-field"><span>ТЕМП</span><input id="tempoInput" type="number" min="40" max="240" value="120" /><b>BPM</b></label>
+          <span class="transport-divider"></span>
+          <label class="compact-field key-field"><span>ТОНАЛЬНОСТЬ</span><select id="keySelect"><option>До мажор</option><option>Ре минор</option><option>Соль мажор</option><option>Ля минор</option></select></label>
+          <button class="toggle-button" id="metronomeBtn" aria-pressed="false"><span class="metronome-icon">⌁</span> Метроном</button>
+        </div>
+        <div class="transport-end">
+          <button class="toggle-button" id="loopBtn" aria-pressed="false"><span>⟳</span> Цикл</button>
+          <span class="master-mini"><span class="eyebrow">MASTER</span><span class="mini-meter" role="meter" aria-label="Уровень мастера" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="Пик −∞ dBFS"><i id="masterMeter" data-level="normal"></i></span><input id="masterVolume" type="range" min="0" max="1" step="0.01" value="0.82" aria-label="Громкость мастера" /></span>
+          <button class="icon-button settings-button" id="settingsBtn" title="Аудиоустройства" aria-label="Настройки аудиоустройств">⚙</button>
+        </div>
+      </section>
+
+      <main class="workspace" id="workspace">
+        <aside class="browser-panel">
+          <div class="panel-heading"><div><span class="eyebrow">БИБЛИОТЕКА</span><h2>Браузер</h2></div><button class="icon-button small" id="importBtn" title="Импортировать аудио" aria-label="Импортировать аудио">＋</button><input id="audioFiles" type="file" accept="audio/*,.wav,.mp3,.ogg,.m4a,.flac" multiple hidden /></div>
+          <div class="search-wrap"><span aria-hidden="true">⌕</span><input id="searchInput" type="search" aria-label="Поиск в библиотеке" placeholder="Поиск звуков" /></div>
+          <div class="browser-tabs" role="tablist" aria-label="Библиотека">
+            <button class="browser-tab" id="tab-project" role="tab" aria-selected="false" aria-controls="browserContent" tabindex="-1" data-tab="project">Проект</button>
+            <button class="browser-tab active" id="tab-samples" role="tab" aria-selected="true" aria-controls="browserContent" tabindex="0" data-tab="samples">Сэмплы</button>
+            <button class="browser-tab" id="tab-instruments" role="tab" aria-selected="false" aria-controls="browserContent" tabindex="-1" data-tab="instruments">Инстр.</button>
+            <button class="browser-tab" id="tab-presets" role="tab" aria-selected="false" aria-controls="browserContent" tabindex="-1" data-tab="presets">Пресеты</button>
+            <button class="browser-tab" id="tab-recordings" role="tab" aria-selected="false" aria-controls="browserContent" tabindex="-1" data-tab="recordings">Записи</button>
+          </div>
+          <div class="browser-content" id="browserContent" role="tabpanel" aria-labelledby="tab-samples" tabindex="0"></div>
+          <section class="browser-preview" id="browserPreview" aria-label="Предпрослушивание" hidden>
+            <div class="browser-preview-heading"><div><span class="eyebrow">ПРЕДПРОСЛУШИВАНИЕ</span><strong id="browserPreviewName"></strong><small id="browserPreviewSource"></small></div><button class="preview-button" id="browserPreviewPlay" type="button" aria-label="Прослушать выбранный звук" aria-pressed="false">▶</button></div>
+            <canvas class="browser-preview-waveform" id="browserPreviewWaveform" width="220" height="48" role="img" hidden></canvas>
+            <p class="browser-preview-info" id="browserPreviewInfo"></p>
+          </section>
+          <div class="browser-footer"><span class="status-dot" aria-hidden="true"></span><span id="browserStatus" role="status" aria-live="polite" aria-atomic="true">Звуки создаются локально</span><button id="helpBtn" title="О приложении" aria-label="О приложении">ⓘ</button></div>
+        </aside>
+
+        <section class="studio-area">
+          <div class="arrangement-toolbar">
+          <div class="view-tabs" role="tablist" aria-label="Рабочая область"><button class="view-tab active" id="tab-view-arrangement" role="tab" aria-selected="true" aria-controls="editorPanel" tabindex="0" data-view="arrangement">Аранжировка</button><button class="view-tab" id="tab-view-rack" role="tab" aria-selected="false" aria-controls="editorPanel" tabindex="-1" data-view="rack">Инструменты</button><button class="view-tab" id="tab-view-piano" role="tab" aria-selected="false" aria-controls="editorPanel" tabindex="-1" data-view="piano">Пиано-ролл</button><button class="view-tab" id="tab-view-automation" role="tab" aria-selected="false" aria-controls="editorPanel" tabindex="-1" data-view="automation">Автоматизация</button></div>
+            <div class="arrangement-tools">
+              <button class="tool-button selected" id="selectTool" title="Выбор" aria-label="Инструмент выбора" aria-pressed="true">↖</button><button class="tool-button" id="splitTool" title="Разрезать в позиции курсора" aria-label="Инструмент разрезания" aria-pressed="false">✂</button>
+              <span class="toolbar-divider"></span>
+              <button class="button quiet compact" id="addTrackBtn">＋ Дорожка</button>
+              <button class="icon-button small" id="addAutomationBtn" title="Создать клип автоматизации громкости" aria-label="Создать клип автоматизации громкости">↗</button>
+              <label class="zoom-control"><span>−</span><input id="zoomInput" type="range" min="70" max="180" value="106" aria-label="Масштаб шкалы" /><span>＋</span></label>
+              <button class="icon-button small" id="followPlayheadBtn" title="Следовать за курсором" aria-label="Следовать за курсором" aria-pressed="true">⌖</button>
+              <button class="icon-button small inspector-toggle" id="inspectorToggleBtn" aria-controls="trackInspector" aria-expanded="true" title="Инспектор дорожки" aria-label="Свернуть инспектор">☷</button>
+            </div>
+          </div>
+          <div class="arrangement-wrap" id="arrangementWrap">
+            <div class="track-label-column">
+              <div class="track-header-spacer"><span>ДОРОЖКИ</span><button id="trackMenuBtn" title="Добавить дорожку" aria-label="Добавить дорожку">＋</button></div>
+              <div class="track-labels" id="trackLabels"></div>
+            </div>
+            <div class="timeline-scroll" id="timelineScroll">
+              <div class="timeline-inner" id="timelineInner">
+                <div class="ruler" id="ruler"><div class="ruler-top"><span>ТАКТ</span><div class="ruler-actions"><button id="setLoopStartBtn" title="Поставить начало цикла в позиции курсора" aria-label="Поставить начало цикла A в позиции курсора">A</button><button id="setLoopEndBtn" title="Поставить конец цикла в позиции курсора" aria-label="Поставить конец цикла B в позиции курсора">B</button><button id="addMarkerBtn" aria-label="Добавить маркер в позиции курсора">＋ Маркер</button></div></div><div class="bar-ruler" id="barRuler" aria-label="Линейка времени: клик задаёт курсор, перетаскивание выделяет участок цикла"></div></div>
+                <div class="tracks-canvas" id="tracksCanvas"><div class="loop-region" id="loopRegion" aria-hidden="true"></div><div class="playhead-line" id="playheadLine"><div class="playhead-cap"></div></div><div id="trackLanes"></div></div>
+              </div>
+            </div>
+          </div>
+          <div class="lower-dock" role="group" aria-label="Редактор и микшер">
+          <section class="editor-panel" id="editorPanel" role="tabpanel" tabindex="0">
+            <div class="editor-heading"><div><span class="eyebrow" id="editorEyebrow">СЕССИЯ</span><h2 id="editorTitle">Соберите идею по слоям</h2></div><div class="editor-actions" id="editorActions"><button class="button quiet compact" id="createPatternBtn">＋ Ритм-партия</button><button class="button quiet compact" id="createNotesBtn">＋ MIDI-партия</button></div></div>
+            <div class="editor-body" id="editorBody"></div>
+          </section>
+            <footer class="mixer-panel" id="mixerPanel" role="region" aria-label="Микшер">
+              <div class="mixer-title"><span class="eyebrow">КАНАЛЫ</span><strong>Микшер</strong><button id="mixerCollapseBtn" title="Свернуть микшер" aria-label="Свернуть микшер" aria-expanded="true">⌄</button></div>
+              <div class="mixer-strips" id="mixerStrips"></div>
+              <div class="mixer-note"><span class="status-dot"></span><span id="mixerEngineNote">Звук обрабатывается в браузере</span></div>
+            </footer>
+          </div>
+        </section>
+        <aside class="inspector-panel" id="trackInspector" aria-labelledby="inspectorTitle">
+          <div class="inspector-heading">
+            <div><span class="eyebrow">КАНАЛ</span><h2 id="inspectorTitle">Инспектор</h2></div>
+            <button class="icon-button small" id="closeInspectorBtn" title="Свернуть инспектор" aria-label="Свернуть инспектор">×</button>
+          </div>
+          <div class="inspector-content" id="inspectorContent" aria-live="polite"></div>
+        </aside>
+        <button class="inspector-scrim" id="inspectorScrim" aria-label="Закрыть инспектор" hidden></button>
+      </main>
+
+      <div class="toast" id="toast" role="status"></div>
+      <div class="modal-backdrop" id="modalBackdrop" hidden><section class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle" tabindex="-1"><div class="modal-header"><div><span class="eyebrow">SONORA STUDIO</span><h2 id="modalTitle">Аудиоустройства</h2></div><button class="icon-button" id="modalClose" aria-label="Закрыть окно">×</button></div><div id="modalContent"></div></section></div>
+    </div>
+    <script type="module" src="/app.js?v=60"></script>
+  </body>
+</html>

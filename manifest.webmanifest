@@ -1,0 +1,14 @@
+{
+  "name": "SONORA Studio",
+  "short_name": "SONORA",
+  "description": "Локальная студия для записи и сборки звука",
+  "lang": "ru",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#171319",
+  "theme_color": "#171319",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

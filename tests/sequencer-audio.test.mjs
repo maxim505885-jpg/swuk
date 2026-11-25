@@ -1,0 +1,71 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { instrumentWaveAt, normalizeSynthSettings, renderSequencedClip } from '../sequencer-audio.mjs';
+
+test('instrument waveforms are distinct and match the built-in timbre definitions', () => {
+  assert.ok(Math.abs(instrumentWaveAt('soft-keys', .25) - .88) < 1e-6);
+  assert.ok(Math.abs(instrumentWaveAt('sine', .25) - 1) < 1e-6);
+  assert.ok(Math.abs(instrumentWaveAt('bass', .25) + .5) < 1e-6);
+  assert.ok(Math.abs(instrumentWaveAt('pad', .25)) < 1e-6);
+  assert.equal(instrumentWaveAt('soft-keys', .25, 'square'), 1);
+  assert.ok(Math.abs(instrumentWaveAt('soft-keys', .25, 'sawtooth') + .5) < 1e-6);
+});
+
+test('synth settings are clamped to supported waveform, filter and envelope ranges', () => {
+  assert.deepEqual(normalizeSynthSettings({
+    waveform: 'invalid', cutoffHz: 90000, attackMs: -4, releaseMs: Number.NaN, detuneCents: 400,
+  }), { waveform: 'preset', cutoffHz: 20000, attackMs: 1, releaseMs: 80, detuneCents: 100 });
+  assert.equal(normalizeSynthSettings(null, 'pad').attackMs, 220);
+});
+
+test('MIDI oscillator waveform, filter cutoff and envelope settings change generated audio', () => {
+  const clip = { kind: 'midi', lengthBeats: 1, notes: [{ beat: 0, length: 1, note: 69, velocity: 1 }] };
+  const open = renderSequencedClip(clip, { bpm: 120, sampleRate: 48000, synthSettings: { waveform: 'sine', cutoffHz: 20000, attackMs: 12, releaseMs: 80 } });
+  const filtered = renderSequencedClip(clip, { bpm: 120, sampleRate: 48000, synthSettings: { waveform: 'sine', cutoffHz: 200, attackMs: 12, releaseMs: 80 } });
+  const slowAttack = renderSequencedClip(clip, { bpm: 120, sampleRate: 48000, synthSettings: { waveform: 'sawtooth', cutoffHz: 20000, attackMs: 300, releaseMs: 200 } });
+  const detuned = renderSequencedClip(clip, { bpm: 120, sampleRate: 48000, synthSettings: { waveform: 'sine', cutoffHz: 20000, attackMs: 12, releaseMs: 80, detuneCents: 100 } });
+  const rms = (samples, start, end) => Math.sqrt(samples.slice(start, end).reduce((sum, value) => sum + value * value, 0) / (end - start));
+  assert.ok(rms(filtered, 2400, 7200) < rms(open, 2400, 7200) * .75, 'lower cutoff attenuates the note');
+  assert.ok(rms(slowAttack, 2400, 7200) < rms(open, 2400, 7200) * .35, 'a longer attack keeps the note quiet at the start');
+  assert.ok(detuned.some((value, index) => Math.abs(value - open[index]) > .001), 'detune changes the rendered pitch');
+  assert.ok(slowAttack.length > open.length, 'release length extends the rendered clip');
+  const shortNote = renderSequencedClip({ kind: 'midi', lengthBeats: .25, notes: [{ beat: 0, length: .1, note: 69, velocity: 1 }] }, {
+    bpm: 120, sampleRate: 48000, synthSettings: { waveform: 'sine', attackMs: 300, releaseMs: 200 },
+  });
+  assert.ok(Math.abs(shortNote.at(-1)) < .001, 'a short note releases to silence even when its attack is longer than the note');
+});
+
+test('MIDI clip renders a pitched oscillator with the requested note envelope', () => {
+  const pcm = renderSequencedClip({ kind: 'midi', lengthBeats: 1, notes: [{ beat: 0, length: .5, note: 69, velocity: 1 }] }, { bpm: 120, sampleRate: 48000, instrument: 'sine' });
+  assert.ok(pcm instanceof Float32Array);
+  assert.equal(pcm.length, 24_000);
+  assert.ok(Math.abs(pcm[1230]) > .1, 'A4 is audible after its attack');
+  assert.ok(Math.abs(pcm[0]) < .001, 'the attack begins at a quiet level');
+  assert.ok(Math.abs(pcm[pcm.length - 1]) < .001, 'the release reaches silence');
+  const softKeys = renderSequencedClip({ kind: 'midi', lengthBeats: 1, notes: [{ beat: 0, length: .5, note: 69, velocity: 1 }] }, { bpm: 120, sampleRate: 48000, instrument: 'soft-keys' });
+  assert.ok(Math.abs(softKeys[1230]) < Math.abs(pcm[1230]) * .95, 'soft keys add a quieter octave partial');
+});
+
+test('drum hits render at their step positions and include the sample tail', () => {
+  const sample = new Float32Array([1, .5, 0, 0]);
+  const pcm = renderSequencedClip({ kind: 'drums', lengthBeats: 1, steps: [{ kind: 'kick', hits: [0, 4] }] }, {
+    bpm: 120, sampleRate: 48000, createDrumSample: () => sample,
+  });
+  assert.ok(pcm instanceof Float32Array);
+  assert.equal(pcm.length, 24_004);
+  assert.ok(Math.abs(pcm[0] - .78) < 1e-6);
+  assert.ok(Math.abs(pcm[24_000] - .78) < 1e-6);
+  const softer = renderSequencedClip({ kind: 'drums', lengthBeats: 1, steps: [{ kind: 'kick', velocity: .25, hits: [0] }] }, {
+    bpm: 120, sampleRate: 48000, createDrumSample: () => sample,
+  });
+  assert.ok(Math.abs(softer[0] - .25) < 1e-6, 'row velocity controls the drum hit level');
+});
+
+test('sequencer renderer rejects malformed or unbounded patterns', () => {
+  assert.equal(renderSequencedClip({ kind: 'midi', lengthBeats: 1, notes: [{ beat: 0, length: 1, note: 200, velocity: .8 }] }), null);
+  assert.equal(renderSequencedClip({ kind: 'drums', lengthBeats: 1, steps: [{ kind: 'kick', velocity: 2, hits: [0] }] }, { createDrumSample: () => new Float32Array([1]) }), null);
+  assert.equal(renderSequencedClip({ kind: 'drums', lengthBeats: 1, steps: [{ kind: 'kick', hits: [0] }] }, { createDrumSample: () => new Float32Array(0) }), null);
+  assert.equal(renderSequencedClip({ kind: 'midi', lengthBeats: 1000, notes: [] }), null);
+  const denseNotes = Array.from({ length: 50 }, () => ({ beat: 0, length: 20, note: 60, velocity: .5 }));
+  assert.equal(renderSequencedClip({ kind: 'midi', lengthBeats: 240, notes: denseNotes }, { bpm: 120 }), null);
+});
