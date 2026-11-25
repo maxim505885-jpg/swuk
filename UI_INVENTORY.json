@@ -400,10 +400,10 @@
       "preconditions": "An unprocessed audio clip is selected in Arrangement.",
       "scenario": "Open the editor; move start and end markers with pointer and keyboard range controls; apply the crop; verify clip timing, project save/open, undo and redo. Confirm processed clips show a safe read-only explanation.",
       "expectedState": "Waveform overview stays responsive for long sources, markers cannot cross or leave source bounds, the saved crop updates offset/trim and timeline length, and undo/redo restores each state.",
-      "observedResult": "Automated Electron UI smoke is added for opening, selecting, applying and undoing/redoing a 2-second disposable WAV. Full visual, screen-reader and DPI acceptance remains pending.",
+      "observedResult": "Windows Electron UI smoke passed in run #45638352980: opened the dialog, moved the start range, applied a 2-second WAV crop and verified undo/redo. Manual visual, screen-reader and DPI acceptance remains pending.",
       "status": "WARNING",
       "limitations": [
-        "UI smoke result depends on Windows release gate for this PR.",
+        "Automated smoke uses a generated disposable source and exercises the keyboard-operable range input; canvas pointer dragging has not been manually inspected.",
         "Manual visual, screen-reader, high-DPI and real-source listening acceptance remains open."
       ]
     }
