@@ -148,10 +148,10 @@ public:
         const std::uint64_t firstProjectFrame) noexcept {
         if (trackIndex >= kMaxTracks || interleavedStereo == nullptr) return;
         if (trackIndex == 0) {
+            framesSinceReset_ += frameCount;
             const auto available = framesSinceReset_ > kPipelineLatencyFrames
                 ? framesSinceReset_ - kPipelineLatencyFrames : 0;
             outputProjectFrame_ = timelineStart_ + available;
-            framesSinceReset_ += frameCount;
         }
 
         if (clap_[trackIndex]) {
