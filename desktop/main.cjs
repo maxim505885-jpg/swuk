@@ -349,6 +349,28 @@ function registerAudioHandlers() {
     ? requestAudioEngine('vst3_status')
     : { ok: false, error: 'Запрос отклонён' });
 
+  const validTrackIndex = trackIndex => Number.isInteger(trackIndex) && trackIndex >= 0 && trackIndex < MAX_NATIVE_PROJECT_TRACKS;
+  ipcMain.handle('native-track-plugin:load', (event, format, trackIndex, selectionToken) => {
+    if (!trustedRenderer(event)) return { ok: false, error: 'Запрос отклонён' };
+    if (!['clap', 'vst3'].includes(format) || !validTrackIndex(trackIndex) ||
+        typeof selectionToken !== 'string' || !/^[\\da-f-]{36}$/i.test(selectionToken)) {
+      return { ok: false, error: 'Параметры вставки дорожки некорректны' };
+    }
+    const selection = (format === 'clap' ? clapSelections : vst3Selections).get(selectionToken);
+    if (!selection) return { ok: false, error: 'Сначала выберите локальный CLAP- или VST3-эффект' };
+    return requestAudioEngine(`load_track_${format}`, { trackIndex, path: selection.pluginPath });
+  });
+  ipcMain.handle('native-track-plugin:unload', (event, trackIndex) => {
+    if (!trustedRenderer(event)) return { ok: false, error: 'Запрос отклонён' };
+    if (!validTrackIndex(trackIndex)) return { ok: false, error: 'Индекс дорожки некорректен' };
+    return requestAudioEngine('unload_track_plugin', { trackIndex });
+  });
+  ipcMain.handle('native-track-plugin:status', (event, trackIndex) => {
+    if (!trustedRenderer(event)) return { ok: false, error: 'Запрос отклонён' };
+    if (!validTrackIndex(trackIndex)) return { ok: false, error: 'Индекс дорожки некорректен' };
+    return requestAudioEngine('track_plugin_status', { trackIndex });
+  });
+
   ipcMain.handle('native-clap:render', async (event, selectionToken, wavValue, values) => {
     if (!trustedRenderer(event)) return { ok: false, error: 'Запрос отклонён' };
     const clapSelection = typeof selectionToken === 'string' ? clapSelections.get(selectionToken) : null;
