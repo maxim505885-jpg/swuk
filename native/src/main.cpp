@@ -332,8 +332,10 @@ public:
         const std::array<sonora::audio::EqualizerBandSettings, sonora::audio::kEqualizerBandCount> equalizerBands = sonora::audio::kDefaultEqualizerBands,
         const bool compressor = false, const float compressorThresholdDb = -18.0F, const float compressorRatio = 4.0F,
         const float compressorAttackMs = 10.0F, const float compressorReleaseMs = 120.0F, const float compressorMakeupDb = 0.0F,
-        const bool limiter = false, const float limiterCeilingDb = -1.0F, const float limiterReleaseMs = 80.0F) {
+        const bool limiter = false, const float limiterCeilingDb = -1.0F, const float limiterReleaseMs = 80.0F,
+        const bool isBus = false, const std::int32_t outputBusIndex = -1) {
         if (index >= kMaxProjectTracks) return errorJson("Track index exceeds the project limit");
+        if (outputBusIndex < -1 || (isBus && outputBusIndex != -1)) return errorJson("Bus output must remain connected to the master");
         if (!std::isfinite(gain) || gain < 0.0F || gain > 4.0F || !std::isfinite(pan) || pan < -1.0F || pan > 1.0F) {
             return errorJson("Track mix values are outside the supported range");
         }
@@ -350,6 +352,8 @@ public:
         builderTracks_[index].limiter = limiter;
         builderTracks_[index].limiterCeilingDb = limiterCeilingDb;
         builderTracks_[index].limiterReleaseMs = limiterReleaseMs;
+        builderTracks_[index].isBus = isBus;
+        builderTracks_[index].outputBusIndex = outputBusIndex;
         return "{\"version\":1,\"ok\":true}";
     }
 
@@ -366,6 +370,7 @@ public:
         const std::uint64_t fadeOutFrames) {
         if (builderClips_.size() >= kMaxProjectClips) return errorJson("Project exceeds the native clip limit");
         if (trackIndex >= builderTracks_.size()) return errorJson("Clip references an unknown track");
+        if (builderTracks_[trackIndex].isBus) return errorJson("Audio clips cannot be assigned directly to a mixer bus");
         const auto asset = assets_.find(assetId);
         if (asset == assets_.end()) return errorJson("Clip references an unloaded audio asset");
         if (fadeInFrames > durationFrames || fadeOutFrames > durationFrames || fadeInFrames > durationFrames - fadeOutFrames) {
@@ -388,7 +393,10 @@ public:
             const auto& track = snapshot->tracks[clip.trackIndex];
             return track.reverb || track.delay;
         });
-        if (hasEffectClips) snapshot->durationFrames += 3ULL * kSampleRate;
+        const bool hasBusEffects = !snapshot->clips.empty() && std::any_of(snapshot->tracks.begin(), snapshot->tracks.end(), [](const auto& track) {
+            return track.isBus && (track.reverb || track.delay);
+        });
+        if (hasEffectClips || hasBusEffects) snapshot->durationFrames += 3ULL * kSampleRate;
         auto mixState = std::make_unique<sonora::audio::ProjectMixState>();
         if (!sonora::audio::configureProjectMixState(*mixState, snapshot->view)) return errorJson("Project effects could not be prepared");
         float probe[2]{};
@@ -815,6 +823,8 @@ private:
         const auto equalizer = booleanField(line, "equalizer");
         const auto compressor = booleanField(line, "compressor");
         const auto limiter = booleanField(line, "limiter");
+        const auto isBus = booleanField(line, "isBus");
+        const auto outputBusIndex = numberField<std::int32_t>(line, "outputBusIndex");
         const auto limiterCeilingDb = numberField<float>(line, "limiterCeilingDb").value_or(-1.0F);
         const auto limiterReleaseMs = numberField<float>(line, "limiterReleaseMs").value_or(80.0F);
         const auto compressorThresholdDb = numberField<float>(line, "compressorThresholdDb").value_or(-18.0F);
@@ -861,11 +871,12 @@ private:
                 panAutomation.push_back({static_cast<std::uint64_t>(frame), static_cast<float>(value)});
             }
         }
-        if (!index || !gain || !pan || !mute || !solo) return errorJson("set_track requires index, gain, pan, mute and solo");
+        if (!index || !gain || !pan || !mute || !solo || !isBus || !outputBusIndex)
+            return errorJson("set_track requires index, gain, pan, mute, solo, isBus and outputBusIndex");
         return host.setTrackMix(*index, *gain, *pan, *mute, *solo, reverb.value_or(false), delay.value_or(false), std::move(gainAutomation), std::move(panAutomation),
             equalizer.value_or(false), equalizerFrequencyHz, equalizerGainDb, equalizerQ, equalizerBands,
             compressor.value_or(false), compressorThresholdDb, compressorRatio, compressorAttackMs, compressorReleaseMs, compressorMakeupDb,
-            limiter.value_or(false), limiterCeilingDb, limiterReleaseMs);
+            limiter.value_or(false), limiterCeilingDb, limiterReleaseMs, *isBus, *outputBusIndex);
     }
     if (*operation == "add_clip") {
         const auto assetId = stringField(line, "assetId");
