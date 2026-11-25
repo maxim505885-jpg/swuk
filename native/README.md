@@ -65,5 +65,4 @@ The helper also serves one real-time stereo master insert over the versioned sha
 The pinned Steinberg VST3 SDK is initialized in CI with only its required hosting dependencies
 (`base`, `cmake`, `pluginterfaces`, and `public.sdk`). The Windows release build compiles
 the SDK's `sdk_hosting` target with plugin examples, hosting examples, and VSTGUI disabled.
-This verifies the SDK toolchain and dependency pin before the SONORA VST3 helper is implemented.
-It does **not** mean that VST3 effects can already be loaded or processed by the application.
+The isolated helper now loads a local stereo VST3 effect inside a child process and processes fixed audio blocks through the shared transport. The engine callback and mixer UI are not connected to this helper yet, so this milestone does not make VST3 effects selectable or audible in the application.
