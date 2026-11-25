@@ -21,4 +21,4 @@
 
 ## Не дефекты, а незавершённая область ТЗ
 
-См. [FL_STUDIO_PARITY_PLAN.md](FL_STUDIO_PARITY_PLAN.md): полноценные warp markers/waveform editor, realtime VST3/CLAP host, MIDI hardware и расширенный SoundFont workflow остаются функциональными разрывами. Их нельзя закрыть изменением статуса в этом реестре.
+См. [FL_STUDIO_PARITY_PLAN.md](FL_STUDIO_PARITY_PLAN.md): полноценные warp markers/waveform editor, realtime VST3/CLAP host и расширенный SoundFont workflow остаются функциональными разрывами. MIDI input/live preview/note recording в клипы и тестовый MIDI output добавлены частично; project MIDI playback, CC/clock, hot-plug recovery и физический hardware round-trip остаются открытыми. Их нельзя закрыть изменением статуса в этом реестре.
