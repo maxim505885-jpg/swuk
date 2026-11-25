@@ -103,6 +103,10 @@
       {
         "from": "native/vendor/rtmidi/LICENSE",
         "to": "licenses/rtmidi/LICENSE"
+      },
+      {
+        "from": "native/references/vst3sdk/LICENSE.txt",
+        "to": "licenses/vst3sdk/LICENSE.txt"
       }
     ],
     "win": {
