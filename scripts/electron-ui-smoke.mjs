@@ -177,7 +177,27 @@ try {
   await evaluate("document.querySelector('#redoBtn').click()");
   await waitUntil(()=>evaluate("document.querySelectorAll('.track-lane .clip').length"),n=>n===5,'redo of transient slicing');
   assert.deepEqual(exceptions,[], 'transient slicing and history must not throw renderer exceptions');
-  console.log('Electron UI smoke passed: EQ, retimed split and two transient cuts preserve PCM offsets');
+
+  const markerAdded = await evaluate("(() => { const previous=window.prompt; window.prompt=()=> 'QA Marker'; document.querySelector('#addMarkerBtn').click(); window.prompt=previous; return document.querySelectorAll('.marker-line').length; })()");
+  assert.equal(markerAdded,1,'the marker is visible in Arrangement');
+  await evaluate(`(() => {
+    window.__qaSavedProject=null;
+    const create=URL.createObjectURL, click=HTMLAnchorElement.prototype.click;
+    URL.createObjectURL=blob=>{window.__qaSavedProject=blob;return 'blob:qa-project';};
+    HTMLAnchorElement.prototype.click=()=>{};
+    document.querySelector('#saveProjectBtn').click();
+    URL.createObjectURL=create;HTMLAnchorElement.prototype.click=click;
+  })()`);
+  const savedState = await evaluate("window.__qaSavedProject.text().then(text => { const project=JSON.parse(text); return { clips:project.tracks.reduce((sum,track)=>sum+track.clips.length,0), markers:project.markers.map(marker=>marker.name) }; })");
+  assert.deepEqual(savedState,{clips:5,markers:['QA Marker']},'the .sonora file contains the slices and marker');
+  await evaluate("(() => { const previous=window.confirm; window.confirm=()=>true; document.querySelector('#newProjectBtn').click(); window.confirm=previous; })()");
+  await waitUntil(()=>evaluate("document.querySelectorAll('.track-lane .clip').length"),count=>count===0,'new empty project before reload');
+  const loaded = await evaluate(`(() => { const file=new File([window.__qaSavedProject],'qa-roundtrip.sonora',{type:'application/json'}),transfer=new DataTransfer();transfer.items.add(file);const input=document.querySelector('#projectFile');input.files=transfer.files;input.dispatchEvent(new Event('change',{bubbles:true}));return true; })()`);
+  assert.equal(loaded,true);
+  await waitUntil(()=>evaluate("document.querySelectorAll('.track-lane .clip').length"),count=>count===5,'project audio and slices after reopening');
+  await waitUntil(()=>evaluate("document.querySelector('.marker-line span')?.textContent"),name=>name==='QA Marker','marker after reopening');
+  assert.deepEqual(exceptions,[], 'markers and project save/open must not throw renderer exceptions');
+  console.log('Electron UI smoke passed: EQ, split/slicing, undo/redo and marker project round-trip');
 } finally {
   if (socket && socket.readyState < WebSocket.CLOSING) socket.close();
   if (child.exitCode === null) {
