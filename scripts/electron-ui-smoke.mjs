@@ -203,11 +203,11 @@ try {
   const fadeIn = await evaluate("document.querySelector('#clipFadeIn')?.value");
   assert.ok(fadeIn !== undefined, 'the selected audio clip exposes fade controls');
   await evaluate("(() => { const input=document.querySelector('#clipFadeIn'); input.focus(); input.value='0.12'; input.dispatchEvent(new Event('change',{bubbles:true})); })()");
-  await waitUntil(() => evaluate("Number(document.querySelector('#clipFadeIn')?.value"), value => Math.abs(value - .12) < .001, 'fade-in edit');
+  await waitUntil(() => evaluate("Number(document.querySelector('#clipFadeIn')?.value)"), value => Math.abs(value - .12) < .001, 'fade-in edit');
   await evaluate("document.querySelector('#undoBtn').click()");
-  await waitUntil(() => evaluate("Number(document.querySelector('#clipFadeIn')?.value"), value => Math.abs(value) < .001, 'undo restores fade-in');
+  await waitUntil(() => evaluate("Number(document.querySelector('#clipFadeIn')?.value)"), value => Math.abs(value) < .001, 'undo restores fade-in');
   await evaluate("document.querySelector('#redoBtn').click()");
-  await waitUntil(() => evaluate("Number(document.querySelector('#clipFadeIn')?.value"), value => Math.abs(value - .12) < .001, 'redo restores fade-in');
+  await waitUntil(() => evaluate("Number(document.querySelector('#clipFadeIn')?.value)"), value => Math.abs(value - .12) < .001, 'redo restores fade-in');
   assert.deepEqual(exceptions, [], 'clip move and fade history must not throw renderer exceptions');
   const fixtureFrames = await evaluate(`(() => {
     const sr=48000,frames=sr*2,header=new Uint8Array(44),h=new DataView(header.buffer);
