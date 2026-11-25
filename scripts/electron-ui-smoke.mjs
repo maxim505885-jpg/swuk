@@ -488,9 +488,13 @@ try {
   console.log('Piano Roll chord smoke:', JSON.stringify(chordSnapshot));
   assert.equal(chordSnapshot.notes.length, 3, 'major chord displays its root, third, and fifth together in one octave');
   for (const pitch of [60, 64, 67]) assert.ok(chordSnapshot.notes.some(label => label.includes(`MIDI ${pitch}`)), `Piano Roll displays generated MIDI pitch ${pitch}`);
+  const addedOffGridNote = await evaluate("(() => { const cell=[...document.querySelectorAll('.piano-cell')].find(item => item.getAttribute('aria-label')?.startsWith('Добавить ноту C4') && item.getAttribute('aria-label')?.includes('доля 2')); if (!cell) return false; cell.click(); return true; })()");
+  assert.equal(addedOffGridNote, true, 'Piano Roll smoke fixture adds a note between quantization grid lines');
+  await evaluate("document.querySelector('#pianoQuantizeGrid').value='0.5'");
   await evaluate("document.querySelector('#quantizePianoNotes').click()");
-  const quantizeToast = await evaluate("document.querySelector('#toast')?.textContent");
-  assert.ok(quantizeToast?.includes('квантизированы'), 'Piano Roll quantizes MIDI notes to its selected grid');
+  const quantizeResult = await evaluate("(() => ({toast:document.querySelector('#toast')?.textContent, notes:[...document.querySelectorAll('.piano-note')].map(note=>note.getAttribute('aria-label'))}))()");
+  assert.ok(quantizeResult.toast?.includes('квантизированы'), 'Piano Roll reports successful MIDI quantization');
+  assert.ok(quantizeResult.notes.some(label => label.includes('позиция 0.5 долей')), 'Piano Roll moves the off-grid note to the selected grid');
   assert.deepEqual(exceptions, [], 'Piano Roll chord generation must not throw renderer exceptions');
   console.log(`Electron UI smoke passed: Piano Roll chord generator, sampler editor, probability/ratchet controls, 128-clip Arrangement, zoom, spectrum analyzer, EQ, compressor, limiter, split/slicing, undo/redo, project round-trip, WAV export and loop selection`);
 } finally {
