@@ -494,7 +494,7 @@ try {
   console.log('Piano Roll chord smoke:', JSON.stringify(chordSnapshot));
   assert.equal(chordSnapshot.notes.length, 3, 'major chord displays its root, third, and fifth together in one octave');
   for (const pitch of [60, 64, 67]) assert.ok(chordSnapshot.notes.some(label => label.includes(`MIDI ${pitch}`)), `Piano Roll displays generated MIDI pitch ${pitch}`);
-  const addedOffGridNote = await evaluate("(() => { const cell=[...document.querySelectorAll('.piano-cell')].find(item => item.getAttribute('aria-label')?.startsWith('Добавить ноту C4') && item.getAttribute('aria-label')?.includes('доля 2')); if (!cell) return false; cell.click(); return true; })()");
+  const addedOffGridNote = await evaluate("(() => { const cell=[...document.querySelectorAll('.piano-cell')].find(item => item.getAttribute('aria-label')?.startsWith('Добавить ноту C4') && item.getAttribute('aria-label')?.includes('шаг 2')); if (!cell) return false; cell.click(); return true; })()");
   assert.equal(addedOffGridNote, true, 'Piano Roll smoke fixture adds a note between quantization grid lines');
   const offGridLabels = await evaluate("[...document.querySelectorAll('.piano-note')].map(note=>note.getAttribute('aria-label'))");
   console.log('Piano Roll off-grid fixture:', JSON.stringify(offGridLabels));
@@ -508,7 +508,7 @@ try {
   await evaluate("document.querySelector('#pianoNextBar').click()");
   const secondBarLabel = await evaluate("document.querySelector('#pianoBarReadout')?.textContent");
   assert.equal(secondBarLabel, 'Такт 2 / 2', 'Piano Roll navigates to the second bar');
-  await evaluate("document.querySelector('.piano-cell[aria-label^=\\\"Добавить ноту C4\\\"][aria-label*=\\\"такт 2, доля 1\\\"]')?.click()");
+  await evaluate("document.querySelector('.piano-cell[aria-label^=\\\"Добавить ноту C4\\\"][aria-label*=\\\"такт 2, доля 1, шаг 1\\\"]')?.click()");
   const secondBarNote = await evaluate("[...document.querySelectorAll('.piano-note')].map(note=>note.getAttribute('aria-label')).find(label=>label.includes('позиция 4 долей'))");
   assert.ok(secondBarNote, 'Piano Roll adds notes at the correct beat on a later bar');
   assert.deepEqual(exceptions, [], 'Piano Roll chord generation must not throw renderer exceptions');

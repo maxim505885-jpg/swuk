@@ -1794,10 +1794,10 @@ function renderPianoRoll(body, clip, track) {
   octaves.forEach(note => { const el = document.createElement('div'); el.className = `piano-key ${[1, 3, 6, 8, 10].includes(note % 12) ? 'black' : ''}`; el.textContent = note % 12 === 0 ? `C${Math.floor(note / 12) - 1}` : ''; keys.append(el); });
   for (let row = 0; row < 12; row++) for (let col = 0; col < 16; col++) {
     const beat = pianoPageStartBeat + col / 4;
-    const bar = Math.floor(beat / 4) + 1, beatInBar = Math.floor(beat % 4) + 1;
+    const bar = Math.floor(beat / 4) + 1, beatInBar = Math.floor(beat % 4) + 1, stepInBar = col + 1;
     const cell = document.createElement('button'); cell.className = `piano-cell ${octaves[row] % 12 === 0 ? 'c-note' : ''}`;
     cell.disabled = octaves[row] > 127 || beat >= clip.lengthBeats;
-    cell.setAttribute('aria-label', cell.disabled ? `Высота выше MIDI 127` : `Добавить ноту ${noteLabel(octaves[row])}, такт ${bar}, доля ${beatInBar}`);
+    cell.setAttribute('aria-label', cell.disabled ? `Высота выше MIDI 127` : `Добавить ноту ${noteLabel(octaves[row])}, такт ${bar}, доля ${beatInBar}, шаг ${stepInBar}`);
     cell.addEventListener('click', () => {
       if (cell.disabled) return;
       if (clip.notes.length >= 8192) { showToast('В MIDI-партии достигнут лимит нот (8192)'); return; }
