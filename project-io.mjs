@@ -159,7 +159,7 @@ export function validateProjectDocument(data, limits = PROJECT_LIMITS) {
               (row.ratchets !== undefined && (!Number.isInteger(row.ratchets) || row.ratchets < 1 || row.ratchets > 8)) ||
               row.hits.some(hit => !finiteBetween(hit, 0, 4095)) ||
               (row.stepOverrides !== undefined && (!plainObject(row.stepOverrides) || Object.keys(row.stepOverrides).length > limits.events - eventCount - row.hits.length ||
-                Object.entries(row.stepOverrides).some(([step, settings]) => !/^\\d+$/.test(step) || String(Number(step)) !== step || Number(step) > 4095 || !plainObject(settings) ||
+                Object.entries(row.stepOverrides).some(([step, settings]) => !/^\d+$/.test(step) || String(Number(step)) !== step || Number(step) > 4095 || !plainObject(settings) ||
                   Object.keys(settings).some(key => key !== 'probability' && key !== 'ratchets') ||
                   (settings.probability !== undefined && !finiteBetween(settings.probability, 0, 1)) ||
                   (settings.ratchets !== undefined && (!Number.isInteger(settings.ratchets) || settings.ratchets < 1 || settings.ratchets > 8)) ||

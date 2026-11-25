@@ -83,7 +83,7 @@ export function renderSequencedClip(clip, { instrument = 'soft-keys', synthSetti
         if (drumHitOccurs(clip.id, rowIndex, hit, settings.probability)) acceptedHits.push({ hit, ratchets: settings.ratchets });
       }
       if (row.stepOverrides && Object.entries(row.stepOverrides).some(([step, settings]) =>
-        !/^\\d+$/.test(step) || String(Number(step)) !== step || Number(step) > 4095 || !settings || typeof settings !== 'object' || Array.isArray(settings) ||
+        !/^\d+$/.test(step) || String(Number(step)) !== step || Number(step) > 4095 || !settings || typeof settings !== 'object' || Array.isArray(settings) ||
         Object.keys(settings).some(key => key !== 'probability' && key !== 'ratchets') ||
         (settings.probability !== undefined && (!Number.isFinite(settings.probability) || settings.probability < 0 || settings.probability > 1)) ||
         (settings.ratchets !== undefined && (!Number.isInteger(settings.ratchets) || settings.ratchets < 1 || settings.ratchets > 8)) ||
