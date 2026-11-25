@@ -2944,14 +2944,14 @@ function animateInputMeter() {
 }
 
 async function showAudioSettings() {
-  const content = $('#modalContent'); content.innerHTML = '<div style="color:#9099a5;font-size:11px">Получаю список устройств…</div>'; openModal();
+  const content = $('#modalContent'); content.innerHTML = ''; openModal();
+  content.append(createThemeSettings());
+  if (window.sonoraNative?.midiDevices) content.append(await nativeMidiSettings());
   const nativeDevicesPromise = window.sonoraNative?.audioDevices?.().catch(() => null) ?? Promise.resolve(null);
   let devices = [];
   try { devices = await navigator.mediaDevices.enumerateDevices(); } catch {}
   const nativeResult = await nativeDevicesPromise;
   const inputs = devices.filter(device => device.kind === 'audioinput'), outputs = devices.filter(device => device.kind === 'audiooutput');
-  content.innerHTML = '';
-  content.append(createThemeSettings());
   if (window.sonoraNative?.audioDevices) content.append(await nativeAudioSettings(nativeResult));
   content.append(deviceSelect('Микрофон браузера · Edge/Chrome', inputs, state.inputDeviceId, 'inputSelect'));
   content.append(deviceSelect('Устройство вывода', outputs, state.outputDeviceId, 'outputSelect'));
@@ -3088,7 +3088,6 @@ async function nativeAudioSettings(result) {
   const note = document.createElement('p'); note.className = 'native-engine-note';
   note.textContent = 'Запись WASAPI работает при наличии входного устройства; файл создаётся локально, лимит — 256 МиБ. MIDI и ударные рендерятся в PCM для WASAPI; метроном использует браузерный аудиослой.';
   panel.append(note);
-  if (window.sonoraNative?.midiDevices) panel.append(await nativeMidiSettings());
 
   if (!result?.ok) status.textContent = result?.error || 'Нативный аудиодвижок недоступен. Пересоберите приложение с native:build.';
   else {
