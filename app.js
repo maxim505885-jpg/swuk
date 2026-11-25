@@ -914,9 +914,16 @@ function openWaveformEditor(clip) {
   let window = normalizeWaveWindow(buffer.duration, sourceStart, sourceEnd, minBeatSeconds);
   const peakCount = canvas.width;
   const peaks = new Float32Array(peakCount);
+  const overviewStride = Math.max(1, Math.floor(buffer.length / (peakCount * 256)));
   for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
-    const channelPeaks = sampleWaveformPeaks(buffer.getChannelData(channel), peakCount);
-    for (let index = 0; index < channelPeaks.length; index++) peaks[index] = Math.max(peaks[index], channelPeaks[index]);
+    const samples = buffer.getChannelData(channel);
+    for (let frame = 0; frame < samples.length; frame += overviewStride) {
+      const peakIndex = Math.min(peakCount - 1, Math.floor(frame / samples.length * peakCount));
+      const sample = samples[frame];
+      if (Number.isFinite(sample)) peaks[peakIndex] = Math.max(peaks[peakIndex], Math.min(1, Math.abs(sample)));
+    }
+    const lastSample = samples[samples.length - 1];
+    if (Number.isFinite(lastSample)) peaks[peakCount - 1] = Math.max(peaks[peakCount - 1], Math.min(1, Math.abs(lastSample)));
   }
 
   function drawSelection() {
