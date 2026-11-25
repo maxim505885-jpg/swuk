@@ -27,6 +27,14 @@ test('project validator accepts an empty supported project and generated MIDI st
   assert.equal(validateProjectDocument(midi).ok, true);
 });
 
+test('project validator requires sampler references to point at a bundled audio asset', () => {
+  const sampler = { id: 'sampler-1', type: 'instrument', instrument: 'sampler', samplerAssetId: 'sample-1', samplerRootNote: 60, clips: [] };
+  const assets = [{ id: 'sample-1', wav: pcmWavBase64() }];
+  assert.equal(validateProjectDocument(project({ assets, tracks: [sampler] })).ok, true);
+  assert.equal(validateProjectDocument(project({ tracks: [sampler] })).code, 'invalid-tracks');
+  assert.equal(validateProjectDocument(project({ assets, tracks: [{ ...sampler, samplerRootNote: 128 }] })).code, 'invalid-tracks');
+});
+
 test('project validator saves bounded, ordered track-volume automation points', () => {
   const automation = { id: 'auto-1', name: 'Громкость', kind: 'automation', target: 'volume', startBeat: 0, lengthBeats: 4, points: [{ beat: 0, value: 0 }, { beat: 4, value: 1 }] };
   assert.equal(validateProjectDocument(project({ tracks: [{ id: 'track-1', type: 'audio', clips: [automation] }] })).ok, true);
