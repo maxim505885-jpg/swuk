@@ -101,7 +101,7 @@ test('audio clip fade durations are validated and serialized as project state', 
   const value = project({ tempo: 120, assets: [{ id: 'asset-1', wav }], tracks: [{ id: 'track-1', type: 'audio', clips: [audioClip] }] });
   assert.equal(validateProjectDocument(value).ok, true);
   const invalid = structuredClone(value); invalid.tracks[0].clips[0].fadeInSec = Number.NaN;
-  assert.equal(validateProjectDocument(invalid).code, 'invalid-automation');
+  assert.equal(validateProjectDocument(invalid).code, 'invalid-clips');
 });
 
 test('compressor settings are validated and survive project serialization', () => {
