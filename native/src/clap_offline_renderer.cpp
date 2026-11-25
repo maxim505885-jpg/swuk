@@ -460,7 +460,7 @@ void serveRealtimePlugin(const std::string& pluginPath, const std::wstring_view 
                     }
                     const auto output = std::span<const float>(interleavedOutput.data(),
                         static_cast<std::size_t>(block.frameCount) * sonora::plugin::kPluginAudioChannels);
-                    if (!transport->output.tryPush(block.sequence, output, block.frameCount)) {
+                    if (!transport->output.tryPush(block.sequence, output, block.frameCount, block.projectFrame)) {
                         transport->outputOverruns.fetch_add(1, std::memory_order_relaxed);
                     }
                 }
