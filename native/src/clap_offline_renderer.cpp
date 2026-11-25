@@ -402,7 +402,7 @@ void processWav(const std::string& pluginPath, const std::string& inputPath, con
               << ",\"frames\":" << totalFrames << "}\n";
 }
 
-void serveRealtimePlugin(const std::string& pluginPath, const std::wstring_view mappingName) {
+void serveRealtimePlugin(const std::string& pluginPath, const std::wstring_view mappingName, const DWORD parentProcessId) {
     HANDLE mapping = OpenFileMappingW(FILE_MAP_ALL_ACCESS, FALSE, std::wstring(mappingName).c_str());
     if (mapping == nullptr) throw std::runtime_error("Realtime plugin shared memory could not be opened");
     auto* const transport = static_cast<sonora::plugin::SharedTransport*>(
@@ -412,7 +412,11 @@ void serveRealtimePlugin(const std::string& pluginPath, const std::wstring_view 
         throw std::runtime_error("Realtime plugin shared memory could not be mapped");
     }
 
+    HANDLE parentProcess = nullptr;
     try {
+        if (parentProcessId == 0) throw std::runtime_error("Realtime plugin parent process ID is invalid");
+        parentProcess = OpenProcess(SYNCHRONIZE, FALSE, parentProcessId);
+        if (parentProcess == nullptr) throw std::runtime_error("Realtime plugin parent process could not be monitored");
         if (transport->magic != sonora::plugin::SharedTransport::kMagic ||
             transport->version != sonora::plugin::SharedTransport::kVersion) {
             throw std::runtime_error("Realtime plugin transport version is incompatible");
@@ -430,7 +434,8 @@ void serveRealtimePlugin(const std::string& pluginPath, const std::wstring_view 
                 std::array<float, sonora::plugin::kPluginAudioBlockFrames> rightOutput{};
                 std::array<float, sonora::plugin::kPluginAudioBlockSamples> interleavedOutput{};
                 sonora::plugin::AudioBlock block{};
-                while (transport->status.load(std::memory_order_acquire) == sonora::plugin::HostStatus::ready) {
+                while (transport->status.load(std::memory_order_acquire) == sonora::plugin::HostStatus::ready &&
+                       WaitForSingleObject(parentProcess, 0) == WAIT_TIMEOUT) {
                     if (!transport->input.tryPop(block)) {
                         Sleep(1);
                         continue;
@@ -466,9 +471,13 @@ void serveRealtimePlugin(const std::string& pluginPath, const std::wstring_view 
             plugin.stopProcessing();
         });
 
-        while (transport->status.load(std::memory_order_acquire) == sonora::plugin::HostStatus::starting ||
-               transport->status.load(std::memory_order_acquire) == sonora::plugin::HostStatus::ready) {
+        while ((transport->status.load(std::memory_order_acquire) == sonora::plugin::HostStatus::starting ||
+                transport->status.load(std::memory_order_acquire) == sonora::plugin::HostStatus::ready) &&
+               WaitForSingleObject(parentProcess, 0) == WAIT_TIMEOUT) {
             Sleep(10);
+        }
+        if (WaitForSingleObject(parentProcess, 0) != WAIT_TIMEOUT) {
+            transport->status.store(sonora::plugin::HostStatus::stopping, std::memory_order_release);
         }
         audioThread.join();
         if (processingError) std::rethrow_exception(processingError);
@@ -476,10 +485,12 @@ void serveRealtimePlugin(const std::string& pluginPath, const std::wstring_view 
             throw std::runtime_error("Realtime CLAP host failed");
         }
     } catch (...) {
+        if (parentProcess != nullptr) CloseHandle(parentProcess);
         UnmapViewOfFile(transport);
         CloseHandle(mapping);
         throw;
     }
+    if (parentProcess != nullptr) CloseHandle(parentProcess);
     UnmapViewOfFile(transport);
     CloseHandle(mapping);
 }
@@ -519,7 +530,7 @@ void selfTestRealtimePluginProcess(const std::wstring_view pluginPath) {
             throw std::runtime_error("Realtime plugin self-test could not locate its host executable");
         }
         std::wstring command = L"\"" + std::wstring(executable.data(), executableLength) + L"\" serve \"" +
-            std::wstring(pluginPath) + L"\" \"" + mappingName + L"\"";
+            std::wstring(pluginPath) + L"\" \"" + mappingName + L"\" " + std::to_wstring(GetCurrentProcessId());
         std::vector<wchar_t> mutableCommand(command.begin(), command.end());
         mutableCommand.push_back(L'\0');
         STARTUPINFOW startup{};
@@ -589,8 +600,8 @@ int main() {
         const std::wstring_view command(wideArguments[1]);
         if (command == L"inspect" && argumentCount == 3) {
             std::cout << inspectPlugin(wideToUtf8(wideArguments[2])) << '\n';
-        } else if (command == L"serve" && argumentCount == 4) {
-            serveRealtimePlugin(wideToUtf8(wideArguments[2]), wideArguments[3]);
+        } else if (command == L"serve" && argumentCount == 5) {
+            serveRealtimePlugin(wideToUtf8(wideArguments[2]), wideArguments[3], static_cast<DWORD>(std::stoul(wideArguments[4])));
         } else if (command == L"selftest" && argumentCount == 3) {
             selfTestRealtimePluginProcess(wideArguments[2]);
         } else if (command == L"process" && argumentCount >= 5 && argumentCount <= 133) {
@@ -599,7 +610,7 @@ int main() {
             for (int index = 5; index < argumentCount; ++index) parameters.push_back(parseParameterValue(wideArguments[index]));
             processWav(wideToUtf8(wideArguments[2]), wideToUtf8(wideArguments[3]), wideToUtf8(wideArguments[4]), parameters);
         } else {
-            throw std::runtime_error("Usage: sonora-clap-offline.exe inspect <plugin.clap> | serve <plugin.clap> <shared-memory-name> | selftest <plugin.clap> | process <plugin.clap> <input.wav> <output.wav> [id=value ...]");
+            throw std::runtime_error("Usage: sonora-clap-offline.exe inspect <plugin.clap> | serve <plugin.clap> <shared-memory-name> <parent-pid> | selftest <plugin.clap> | process <plugin.clap> <input.wav> <output.wav> [id=value ...]");
         }
         LocalFree(wideArguments);
         return 0;
