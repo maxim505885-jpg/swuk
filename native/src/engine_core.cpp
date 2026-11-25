@@ -403,11 +403,12 @@ static bool renderRoutedMixBlock(
     }
 
     const auto busIndexFor = [&](const std::size_t trackIndex) noexcept -> std::size_t {
-        const auto busIndex = project.tracks[trackIndex].outputBusIndex;
-        if (project.tracks[trackIndex].isBus || busIndex < -1) return project.trackCount;
-        if (busIndex == -1) return project.trackCount;
-        const auto target = static_cast<std::size_t>(busIndex);
-        if (target >= project.trackCount || !project.tracks[target].isBus || project.tracks[target].outputBusIndex != -1) {
+        const auto& track = project.tracks[trackIndex];
+        if (track.isBus || track.outputBusIndex == -1) return project.trackCount;
+        if (track.outputBusIndex < -1) return project.trackCount;
+        const auto target = static_cast<std::size_t>(track.outputBusIndex);
+        if (target >= project.trackCount || !project.tracks[target].isBus ||
+            project.tracks[target].outputBusIndex != -1) {
             return project.trackCount;
         }
         return target;
@@ -418,14 +419,19 @@ static bool renderRoutedMixBlock(
         const auto& track = project.tracks[index];
         if (track.isBus) {
             if (track.outputBusIndex != -1) return false;
-        } else if (track.outputBusIndex >= 0 && busIndexFor(index) == project.trackCount) {
+        } else if (track.outputBusIndex < -1 ||
+                   (track.outputBusIndex >= 0 && busIndexFor(index) == project.trackCount)) {
             return false;
         }
         anySolo = anySolo || track.solo;
+
         const auto& channel = state->routedChannels[index];
-        if (!channel.runtime || channel.outputScratch.size() < state->maxBlockFrames * 2 ||
-            (track.isBus && (channel.busInputScratch.size() < state->maxBlockFrames * 2 || channel.clips.size() != 1)) ||
-            (!track.isBus && !channel.busInputScratch.empty())) {
+        if (!channel.runtime || channel.outputScratch.size() < state->maxBlockFrames * 2) return false;
+        if (track.isBus) {
+            if (channel.busInputScratch.size() < state->maxBlockFrames * 2 || channel.clips.size() != 1) return false;
+        } else if (channel.busInputScratch.size() != 0 || channel.clips.empty() ||
+                   channel.silenceScratch.size() < state->maxBlockFrames * 2 ||
+                   channel.silenceView.samples != channel.silenceScratch.data()) {
             return false;
         }
     }
@@ -439,6 +445,7 @@ static bool renderRoutedMixBlock(
         }
     }
 
+    const auto blockEndFrame = firstProjectFrame + frameCount;
     for (std::size_t trackIndex = 0; trackIndex < project.trackCount; ++trackIndex) {
         const auto& track = project.tracks[trackIndex];
         if (track.isBus) continue;
@@ -447,8 +454,27 @@ static bool renderRoutedMixBlock(
         if (track.mute || (anySolo && !track.solo && !soloedDestination)) continue;
 
         auto& channel = state->routedChannels[trackIndex];
+        const auto actualClipCount = channel.clips.size() - 1;
+        const bool hasActiveClip = std::any_of(channel.clips.begin(), channel.clips.begin() + actualClipCount,
+            [&](const AudioClipView& clip) {
+                return clip.durationFrames > 0 && clip.startFrame < blockEndFrame &&
+                    clip.startFrame <= std::numeric_limits<std::uint64_t>::max() - clip.durationFrames &&
+                    firstProjectFrame < clip.startFrame + clip.durationFrames;
+            });
+        const bool renderEffectTail = !hasActiveClip && (channel.settings.reverb || channel.settings.delay);
+        auto clipCount = actualClipCount;
+        if (renderEffectTail) {
+            channel.silenceView.frameCount = state->maxBlockFrames;
+            auto& silence = channel.clips.back();
+            silence = channel.silenceClip;
+            silence.source = &channel.silenceView;
+            silence.startFrame = firstProjectFrame;
+            silence.durationFrames = frameCount;
+            clipCount += 1;
+        }
+
         float peak = 0.0F;
-        const ProjectMixView isolated{&channel.settings, 1, channel.clips.data(), channel.clips.size(), 1.0F};
+        const ProjectMixView isolated{&channel.settings, 1, channel.clips.data(), clipCount, 1.0F};
         if (!renderMixBlock(channel.outputScratch.data(), frameCount, outputSampleRate, firstProjectFrame,
                 isolated, channel.runtime.get(), trackPeaks != nullptr ? &peak : nullptr, trackPeaks != nullptr ? 1 : 0)) {
             return false;
@@ -466,15 +492,18 @@ static bool renderRoutedMixBlock(
     for (std::size_t busIndex = 0; busIndex < project.trackCount; ++busIndex) {
         const auto& bus = project.tracks[busIndex];
         if (!bus.isBus) continue;
-        if (bus.mute || (anySolo && !bus.solo && [&]() noexcept {
-                for (std::size_t trackIndex = 0; trackIndex < project.trackCount; ++trackIndex) {
-                    if (!project.tracks[trackIndex].isBus && project.tracks[trackIndex].solo &&
-                        busIndexFor(trackIndex) == busIndex) return false;
+
+        bool soloedInput = false;
+        if (anySolo && !bus.solo) {
+            for (std::size_t trackIndex = 0; trackIndex < project.trackCount; ++trackIndex) {
+                if (!project.tracks[trackIndex].isBus && project.tracks[trackIndex].solo &&
+                    busIndexFor(trackIndex) == busIndex) {
+                    soloedInput = true;
+                    break;
                 }
-                return true;
-            }())) {
-            continue;
+            }
         }
+        if (bus.mute || (anySolo && !bus.solo && !soloedInput)) continue;
 
         auto& channel = state->routedChannels[busIndex];
         channel.busInputView.frameCount = state->maxBlockFrames;
@@ -538,6 +567,11 @@ bool configureProjectMixState(ProjectMixState& state, const ProjectMixView& proj
                     channel.busInputClip={&channel.busInputView,0,0,0,kMaxBlockFrames,1.0,1.0F,0.0F};
                     channel.clips.push_back(channel.busInputClip);
                     channel.settings.gainAutomation.clear(); channel.settings.panAutomation.clear();
+                } else {
+                    channel.silenceScratch.assign(kMaxBlockFrames*2,0.0F);
+                    channel.silenceView={channel.silenceScratch.data(),kMaxBlockFrames,2,48'000.0};
+                    channel.silenceClip={&channel.silenceView,0,0,0,kMaxBlockFrames,1.0,1.0F,0.0F};
+                    channel.clips.push_back(channel.silenceClip);
                 }
                 channel.runtime=std::make_unique<ProjectMixState>();
                 const ProjectMixView isolated{&channel.settings,1,channel.clips.data(),channel.clips.size(),1.0F};
