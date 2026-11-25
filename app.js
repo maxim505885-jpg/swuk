@@ -899,14 +899,14 @@ function beginClipDrag(event, clip, element) {
   if (splitMode) { splitClip(clip); splitMode = false; $('#splitTool').classList.remove('selected'); return; }
   state.selectedClipId = clip.id; state.selectedTrackId = getClip(clip.id).track?.id;
   const handle = event.target.closest('[data-handle]')?.dataset.handle || '';
-  recordUndo(); dragState = { clip, element, handle, x: event.clientX, startBeat: clip.startBeat, lengthBeats: clip.lengthBeats, offsetSec: clip.offsetSec || 0, changed: false };
+  dragState = { clip, element, handle, x: event.clientX, startBeat: clip.startBeat, lengthBeats: clip.lengthBeats, offsetSec: clip.offsetSec || 0, changed: false };
   element.setPointerCapture?.(event.pointerId); element.classList.add('selected'); element.addEventListener('pointermove', moveClipDrag); element.addEventListener('pointerup', endClipDrag, { once: true }); element.addEventListener('pointercancel', endClipDrag, { once: true });
   renderEditor();
 }
 
 function moveClipDrag(event) {
   if (!dragState) return; const dx = event.clientX - dragState.x, delta = pxToBeats(dx), clip = dragState.clip;
-  if (Math.abs(dx) > 3) dragState.changed = true;
+  if (Math.abs(dx) > 3 && !dragState.changed) { recordUndo(); dragState.changed = true; }
   if (dragState.handle === 'right') { clip.lengthBeats = Math.max(.25, snapBeat(dragState.lengthBeats + delta)); }
   else if (dragState.handle === 'left') { const move = clamp(snapBeat(delta), -dragState.startBeat, dragState.lengthBeats - .25); clip.startBeat = dragState.startBeat + move; clip.lengthBeats = Math.max(.25, snapBeat(dragState.lengthBeats - move)); if (!clip.kind) clip.offsetSec = Math.max(0, dragState.offsetSec + move * beatSeconds()); }
   else clip.startBeat = Math.max(0, snapBeat(dragState.startBeat + delta));
