@@ -10,6 +10,12 @@
 namespace sonora::audio {
 
 inline constexpr std::uint32_t kProtocolVersion = 1;
+inline constexpr std::size_t kEqualizerBandCount = 7;
+struct EqualizerBandSettings { float frequencyHz{1000.0F}; float gainDb{}; float q{1.0F}; };
+inline constexpr std::array<EqualizerBandSettings, kEqualizerBandCount> kDefaultEqualizerBands{{
+    {60.0F, 0.0F, 1.0F}, {150.0F, 0.0F, 1.0F}, {400.0F, 0.0F, 1.0F}, {1000.0F, 0.0F, 1.0F},
+    {2400.0F, 0.0F, 1.0F}, {6000.0F, 0.0F, 1.0F}, {14000.0F, 0.0F, 1.0F},
+}};
 
 // Writes a mono oscillator value to each interleaved output channel. The phase
 // is normalized to [0, 1) and belongs to the audio callback thread.
@@ -58,7 +64,7 @@ struct TrackMixSettings {
         const float eqQuality = 1.0F)
         : gain(trackGain), pan(trackPan), mute(isMuted), solo(isSolo), reverb(hasReverb), delay(hasDelay),
           gainAutomation(std::move(gainPoints)), equalizer(hasEqualizer), equalizerFrequencyHz(eqFrequency),
-          equalizerGainDb(eqGain), equalizerQ(eqQuality) {}
+          equalizerGainDb(eqGain), equalizerQ(eqQuality) { equalizerBands[3] = {eqFrequency, eqGain, eqQuality}; }
 
     float gain{1.0F};
     float pan{};
@@ -71,6 +77,7 @@ struct TrackMixSettings {
     float equalizerFrequencyHz{1000.0F};
     float equalizerGainDb{};
     float equalizerQ{1.0F};
+    std::array<EqualizerBandSettings, kEqualizerBandCount> equalizerBands{kDefaultEqualizerBands};
 };
 
 struct AudioClipView {
@@ -104,9 +111,9 @@ struct ProjectMixState {
         std::vector<float> reverbBuffer;
         std::array<std::size_t, 4> reverbLengths{};
         std::array<std::size_t, 4> reverbPositions{};
-        std::array<float, 5> equalizerCoefficients{};
-        std::array<float, 2> equalizerZ1{};
-        std::array<float, 2> equalizerZ2{};
+        std::array<std::array<float, 5>, kEqualizerBandCount> equalizerCoefficients{};
+        std::array<std::array<float, 2>, kEqualizerBandCount> equalizerZ1{};
+        std::array<std::array<float, 2>, kEqualizerBandCount> equalizerZ2{};
         bool equalizer{};
         bool reverb{};
         bool delay{};
