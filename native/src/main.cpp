@@ -673,7 +673,7 @@ public:
         if (clapInsert_.isActive()) clapInsert_.reset(safeStartFrame);
         if (vst3Insert_.isActive()) vst3Insert_.reset(safeStartFrame);
         trackPluginRack_.reset(safeStartFrame);
-        if (projectMixState) sonora::audio::resetProjectMixState(*projectMixState_);
+        if (projectMixState_) sonora::audio::resetProjectMixState(*projectMixState_);
         remainingToneFrames_.store(0, std::memory_order_relaxed);
         projectPeak_.store(0.0F, std::memory_order_relaxed);
         if (!deviceStarted_) {
@@ -833,6 +833,16 @@ private:
         for (auto& band : spectrumBands_) band.store(0.0F, std::memory_order_relaxed);
     }
 
+    static void trackPluginProcessorThunk(
+        void* context, const std::size_t trackIndex, float* interleavedStereo,
+        const std::size_t frameCount, const std::uint64_t firstProjectFrame) noexcept {
+        auto* const host = static_cast<AudioHost*>(context);
+        if (host == nullptr || interleavedStereo == nullptr) return;
+        const auto* const project = host->activeProject_.load(std::memory_order_acquire);
+        if (project == nullptr || trackIndex >= project->view.trackCount || project->tracks[trackIndex].isBus) return;
+        host->trackPluginRack_.process(trackIndex, interleavedStereo, frameCount, firstProjectFrame);
+    }
+
     static void captureDataCallback(ma_device* device, void*, const void* input, const ma_uint32 frameCount) noexcept {
         auto* const host = static_cast<AudioHost*>(device->pUserData);
         if (host == nullptr || input == nullptr || !host->captureRecorder_) return;
@@ -871,7 +881,6 @@ private:
         const bool hasVst3Insert = host->vst3Insert_.isActive();
         const bool hasTrackPluginInsert = host->trackPluginRack_.isActive();
         const bool hasMasterPluginInsert = hasClapInsert || hasVst3Insert;
-        const bool hasPluginInsert = hasMasterPluginInsert || hasTrackPluginInsert;
         const auto firstFrame = host->projectRenderFrame_.load(std::memory_order_relaxed);
         const auto renderLimit = project->durationFrames +
             (hasTrackPluginInsert ? sonora::plugin::RealtimeTrackPluginRack::kPipelineLatencyFrames : 0) +
