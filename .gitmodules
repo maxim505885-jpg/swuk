@@ -1,0 +1,20 @@
+[submodule "signalsmith-stretch"]
+	path = native/vendor/signalsmith-stretch
+	url = https://github.com/Signalsmith-Audio/signalsmith-stretch.git
+	shallow = true
+[submodule "clap-host"]
+	path = native/references/clap-host
+	url = https://github.com/free-audio/clap-host.git
+	shallow = true
+[submodule "rtmidi"]
+	path = native/vendor/rtmidi
+	url = https://github.com/thestk/rtmidi.git
+	shallow = true
+[submodule "fluidsynth"]
+	path = native/vendor/fluidsynth
+	url = https://github.com/FluidSynth/fluidsynth.git
+	shallow = true
+[submodule "vst3sdk"]
+	path = native/references/vst3sdk
+	url = https://github.com/steinbergmedia/vst3sdk.git
+	shallow = true
