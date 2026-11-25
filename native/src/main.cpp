@@ -321,13 +321,15 @@ public:
         const bool equalizer = false,
         const float equalizerFrequencyHz = 1000.0F,
         const float equalizerGainDb = 0.0F,
-        const float equalizerQ = 1.0F) {
+        const float equalizerQ = 1.0F,
+        const std::array<sonora::audio::EqualizerBandSettings, sonora::audio::kEqualizerBandCount> equalizerBands = sonora::audio::kDefaultEqualizerBands) {
         if (index >= kMaxProjectTracks) return errorJson("Track index exceeds the project limit");
         if (!std::isfinite(gain) || gain < 0.0F || gain > 4.0F || !std::isfinite(pan) || pan < -1.0F || pan > 1.0F) {
             return errorJson("Track mix values are outside the supported range");
         }
         if (builderTracks_.size() <= index) builderTracks_.resize(static_cast<std::size_t>(index) + 1);
         builderTracks_[index] = {gain, pan, mute, solo, reverb, delay, std::move(gainAutomation), equalizer, equalizerFrequencyHz, equalizerGainDb, equalizerQ};
+        builderTracks_[index].equalizerBands = equalizerBands;
         return "{\"version\":1,\"ok\":true}";
     }
 
@@ -780,6 +782,20 @@ private:
         const auto equalizerFrequencyHz = numberField<float>(line, "equalizerFrequencyHz").value_or(1000.0F);
         const auto equalizerGainDb = numberField<float>(line, "equalizerGainDb").value_or(0.0F);
         const auto equalizerQ = numberField<float>(line, "equalizerQ").value_or(1.0F);
+        auto equalizerBands = sonora::audio::kDefaultEqualizerBands;
+        if (line.find("\"equalizerBands\"") != std::string_view::npos) {
+            const auto values = numberArrayField(line, "equalizerBands", sonora::audio::kEqualizerBandCount * 3);
+            if (!values || values->size() != sonora::audio::kEqualizerBandCount * 3) return errorJson("set_track equalizerBands must contain seven frequency/gain/Q triples");
+            for (std::size_t bandIndex = 0; bandIndex < sonora::audio::kEqualizerBandCount; ++bandIndex) {
+                equalizerBands[bandIndex] = {
+                    static_cast<float>((*values)[bandIndex * 3]),
+                    static_cast<float>((*values)[bandIndex * 3 + 1]),
+                    static_cast<float>((*values)[bandIndex * 3 + 2]),
+                };
+            }
+        } else {
+            equalizerBands[3] = {equalizerFrequencyHz, equalizerGainDb, equalizerQ};
+        }
         std::vector<sonora::audio::AutomationPoint> gainAutomation;
         if (line.find("\"gainAutomation\"") != std::string_view::npos) {
             const auto values = numberArrayField(line, "gainAutomation", 16'384);
@@ -790,7 +806,7 @@ private:
         }
         if (!index || !gain || !pan || !mute || !solo) return errorJson("set_track requires index, gain, pan, mute and solo");
         return host.setTrackMix(*index, *gain, *pan, *mute, *solo, reverb.value_or(false), delay.value_or(false), std::move(gainAutomation),
-            equalizer.value_or(false), equalizerFrequencyHz, equalizerGainDb, equalizerQ);
+            equalizer.value_or(false), equalizerFrequencyHz, equalizerGainDb, equalizerQ, equalizerBands);
     }
     if (*operation == "add_clip") {
         const auto assetId = stringField(line, "assetId");
