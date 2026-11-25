@@ -8,9 +8,11 @@
 #include <atomic>
 #include <cstdint>
 #include <filesystem>
+#include <memory>
 #include <span>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <vector>
 
 namespace sonora::plugin {
@@ -33,7 +35,12 @@ public:
             return false;
         }
 
-        const auto helperPath = currentDirectory() / L"sonora-clap-offline.exe";
+        const auto moduleDirectory = currentDirectory();
+        if (moduleDirectory.empty()) {
+            error = "Could not locate the audio engine executable directory";
+            return false;
+        }
+        const auto helperPath = moduleDirectory / L"sonora-clap-offline.exe";
         if (!std::filesystem::is_regular_file(helperPath, filesystemError) || filesystemError) {
             error = "The isolated CLAP host executable is missing";
             return false;
@@ -72,7 +79,18 @@ public:
         const ULONGLONG deadline = GetTickCount64() + 15'000;
         while (GetTickCount64() < deadline) {
             const auto status = transport_->status.load(std::memory_order_acquire);
-            if (status == HostStatus::ready) return true;
+            if (status == HostStatus::ready) {
+                processAlive_.store(true, std::memory_order_release);
+                processMonitor_ = std::jthread([this](const std::stop_token stopToken) {
+                    while (!stopToken.stop_requested() && process_.hProcess != nullptr) {
+                        if (WaitForSingleObject(process_.hProcess, 50) == WAIT_OBJECT_0) {
+                            processAlive_.store(false, std::memory_order_release);
+                            return;
+                        }
+                    }
+                });
+                return true;
+            }
             if (status == HostStatus::failed || WaitForSingleObject(process_.hProcess, 0) == WAIT_OBJECT_0) {
                 error = "The CLAP plug-in failed during initialization";
                 stop();
@@ -87,6 +105,8 @@ public:
 
     void stop() noexcept {
         if (transport_ != nullptr) transport_->status.store(HostStatus::stopping, std::memory_order_release);
+        processMonitor_.request_stop();
+        if (processMonitor_.joinable()) processMonitor_.join();
         if (process_.hProcess != nullptr) {
             if (WaitForSingleObject(process_.hProcess, 3'000) == WAIT_TIMEOUT) {
                 TerminateProcess(process_.hProcess, 1);
@@ -106,11 +126,12 @@ public:
             mapping_ = nullptr;
         }
         mappingName_.clear();
+        processAlive_.store(false, std::memory_order_release);
     }
 
     [[nodiscard]] bool isReady() const noexcept {
         return transport_ != nullptr && transport_->status.load(std::memory_order_acquire) == HostStatus::ready &&
-            process_.hProcess != nullptr && WaitForSingleObject(process_.hProcess, 0) == WAIT_TIMEOUT;
+            processAlive_.load(std::memory_order_acquire);
     }
 
     [[nodiscard]] SharedTransport* transport() noexcept { return transport_; }
@@ -172,6 +193,9 @@ private:
     SharedTransport* transport_{};
     PROCESS_INFORMATION process_{};
     std::wstring mappingName_;
+    std::atomic<bool> processAlive_{};
+    std::jthread processMonitor_;
 };
 
 } // namespace sonora::plugin
+
