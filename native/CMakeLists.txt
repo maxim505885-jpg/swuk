@@ -11,13 +11,13 @@ target_compile_options(sonora_engine_core PRIVATE
     $<$<CXX_COMPILER_ID:MSVC>:/W4>
     $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall;-Wextra;-Wpedantic>)
 
-add_executable(sonora-audio-engine src/main.cpp)
-target_include_directories(sonora-audio-engine PRIVATE src vendor/miniaudio)
+add_executable(sonora-audio-engine src/main.cpp vendor/rtmidi/RtMidi.cpp)
+target_include_directories(sonora-audio-engine PRIVATE src vendor/miniaudio vendor/rtmidi)
 target_link_libraries(sonora-audio-engine PRIVATE sonora_engine_core)
 target_compile_options(sonora-audio-engine PRIVATE
     $<$<CXX_COMPILER_ID:MSVC>:/W4>
     $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall;-Wextra;-Wpedantic>)
-target_compile_definitions(sonora-audio-engine PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
+target_compile_definitions(sonora-audio-engine PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX __WINDOWS_MM__)
 target_link_libraries(sonora-audio-engine PRIVATE ole32 oleaut32 winmm uuid avrt ksuser psapi)
 
 if(WIN32)

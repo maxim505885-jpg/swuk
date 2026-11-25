@@ -91,6 +91,10 @@
       {
         "from": "native/vendor/signalsmith-stretch/LICENSE.txt",
         "to": "licenses/signalsmith-stretch/LICENSE.txt"
+      },
+      {
+        "from": "native/vendor/rtmidi/LICENSE",
+        "to": "licenses/rtmidi/LICENSE"
       }
     ],
     "win": {
