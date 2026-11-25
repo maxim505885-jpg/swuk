@@ -105,3 +105,14 @@ body, .app-shell { background: var(--bg); color: var(--text); }
   .editor-panel:has(.piano-wrap) { height: min(400px,49vh); flex-basis: min(400px,49vh); }
 }
 @media (max-width: 520px) { .theme-choices { grid-template-columns: 1fr; } .appearance-footer { align-items: flex-start; flex-direction: column; } }
+
+/* Per-track realtime insert controls */
+.track-plugin-control{grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1fr);gap:3px;min-width:0;padding-top:4px;border-top:1px solid var(--line)}
+.track-plugin-actions{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) 20px;gap:2px;min-width:0}
+.track-plugin-actions .button{height:22px;min-width:0;padding:0 2px;font-size:8px;line-height:1;white-space:nowrap}
+.track-plugin-actions .track-plugin-unload{width:20px;padding:0;font-size:14px;color:var(--meter-clip)}
+.track-plugin-actions [hidden]{display:none}
+.track-plugin-actions button:disabled{opacity:.48;cursor:not-allowed}
+.track-plugin-actions button[aria-busy=true]{cursor:wait}
+.track-plugin-status{display:block;min-width:0;overflow:hidden;color:var(--muted);font-size:8px;line-height:1.25;text-overflow:ellipsis;white-space:nowrap}
+.mixer-strip{grid-auto-rows:min-content}
