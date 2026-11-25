@@ -138,7 +138,9 @@ async function loadNativeProject(project) {
   for (const track of project.tracks) {
     if (!isFiniteRange(track?.gain, 0, 4) || !isFiniteRange(track?.pan, -1, 1) || typeof track.mute !== 'boolean' || typeof track.solo !== 'boolean' ||
         typeof track.reverb !== 'boolean' || typeof track.delay !== 'boolean' || typeof track.equalizer !== 'boolean' ||
-        !isFiniteRange(track.equalizerFrequencyHz, 20, 20_000) || !isFiniteRange(track.equalizerGainDb, -24, 24) || !isFiniteRange(track.equalizerQ, 0.1, 18)) {
+        !isFiniteRange(track.equalizerFrequencyHz, 20, 20_000) || !isFiniteRange(track.equalizerGainDb, -24, 24) || !isFiniteRange(track.equalizerQ, 0.1, 18) ||
+        !Array.isArray(track.equalizerBands) || track.equalizerBands.length !== 21 || track.equalizerBands.some((value, index) =>
+          !isFiniteRange(value, index % 3 === 0 ? 20 : index % 3 === 1 ? -24 : 0.1, index % 3 === 0 ? 20_000 : index % 3 === 1 ? 24 : 18))) {
       return { ok: false, error: 'В native-проекте есть некорректный микшерный канал' };
     }
     const points = track.gainAutomation ?? [];
@@ -162,6 +164,7 @@ async function loadNativeProject(project) {
     result = await requestAudioEngine('set_track', {
       index, gain: track.gain, pan: track.pan, mute: track.mute, solo: track.solo, reverb: track.reverb, delay: track.delay,
       equalizer: track.equalizer, equalizerFrequencyHz: track.equalizerFrequencyHz, equalizerGainDb: track.equalizerGainDb, equalizerQ: track.equalizerQ,
+      equalizerBands: track.equalizerBands,
       gainAutomation: (track.gainAutomation ?? []).flatMap(point => [point.frame, point.value]),
     });
     if (!result.ok) return result;
