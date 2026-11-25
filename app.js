@@ -884,6 +884,7 @@ function openWaveformEditor(clip) {
   if (!buffer || buffer.duration < 0.02) { showToast('Для редактора нужна доступная аудиоволна'); return; }
 
   const dialog = document.createElement('dialog');
+  dialog.id = 'waveformEditorDialog';
   dialog.className = 'waveform-editor-dialog';
   dialog.setAttribute('aria-labelledby', 'waveEditorTitle');
   dialog.setAttribute('aria-describedby', 'waveEditorHelp');
