@@ -11,7 +11,7 @@
 | Arrangement / Playlist | Частичная работа с аудио, MIDI, drum и automation clips; grid/snap, перемещение, split и fades | Верифицированные marker/selection сценарии, клиповая огибающая, slicing, tempo-aware time stretch, полный save/open/export и undo acceptance |
 | Step Sequencer / Channel Rack | 16 шагов, паттерны ударных, velocity | Развитые channel instruments, step probability/ratchets, полная UI-аудио регрессия, удобная работа с несколькими паттернами |
 | Piano Roll | Редактирование MIDI нот, velocity, клавиатурная навигация по диапазону 0–127 | Выразительные инструменты редактирования/квантизации, масштабирование и полный сценарный acceptance; внешний MIDI input/output |
-| Audio Browser / Editor | Локальные категории, импорт, preview, waveform, запись; pitch shift и autotune math | Полноценные waveform editor операции, transient/slice workflow, timestretch/warp, denoise/repair, tuner/phase acceptance на реальном аудио |
+| Audio Browser / Editor | Локальные категории, импорт, preview, waveform, запись; pitch shift, autotune и tempo-aware WSOLA stretch с сохранением высоты | Полноценные waveform editor операции, transient/slice workflow, warp markers, denoise/repair, tuner/phase acceptance на реальном аудио; субъективная оценка stretch на вокале и транзиентах |
 | Микшер | Уровень, панорама, mute/solo, meters, volume automation, reverb/delay и одна peaking EQ полоса в браузерном/WAV и native source path | Семиполосный EQ с анализатором, compressor/limiter, sends/buses, routing matrix, slot-based effect chain, parameter automation |
 | Встроенные инструменты | Базовый синтезатор с waveform/filter/envelope/detune, presets и drum synthesis | Полноценный sampler/SF2/SFZ workflow, многослойные/многотембральные инструменты, modulation, широкая библиотека и preset browser |
 | Эффекты | Reverb/delay; CLAP effect только offline-render | Realtime plugin/effect graph, VST3/CLAP host, plugin UI/state/scan, компрессор/лимитер, saturation/distortion, chorus/flanger/phaser, transient shaping, stereo tools, frequency splitting |
@@ -32,4 +32,4 @@
 
 ## GitHub-кандидаты
 
-Кандидаты и лицензионные замечания собраны в [обзоре GitHub-аудиокомпонентов](docs/GITHUB_AUDIO_COMPONENTS_REVIEW.md). Код не скачивался и не добавлялся в проект в ходе этой сверки. Рекомендуемый следующий внешний компонент для прототипа — Signalsmith Stretch для time-stretch/pitch; сначала проверить latency, качество на вокале/транзиентах и полное лицензирование его FFT/submodule зависимостей.
+Кандидаты и лицензии описаны в [обзоре GitHub-аудиокомпонентов](docs/GITHUB_AUDIO_COMPONENTS_REVIEW.md); точные версии добавленных upstream submodules указаны в [реестре аудиокомпонентов](docs/UPSTREAM_COMPONENTS.md). В проекте реализован локальный WSOLA time-stretch в DSP worker. Signalsmith Stretch закреплён для сравнительного прототипа; его исходник ещё не подключён к DSP pipeline и требует отдельной оценки latency/качества на вокале и транзиентах.

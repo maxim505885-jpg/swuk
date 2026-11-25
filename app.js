@@ -938,10 +938,11 @@ function renderEditor() {
   }
   if (selected.clip && !selected.clip.kind) {
     eyebrow.textContent = 'СВОЙСТВА КЛИПА'; title.textContent = selected.clip.name; actions.innerHTML = `${selected.clip.renderedAssetId ? `<button class="button quiet compact" id="toggleClipProcessingBtn">${selected.clip.bypassProcessing ? 'Слушать обработку' : 'Слушать оригинал'}</button>` : ''}<button class="button quiet compact" id="resetPitchBtn">Сбросить тон</button><button class="button quiet compact" id="deleteClipBtn">Удалить клип</button>`;
-    const clip = selected.clip, asset = state.assets.get(clip.assetId);
+    const clip = selected.clip, asset = state.assets.get(clip.assetId), activeAsset = state.assets.get(clip.renderedAssetId && !clip.bypassProcessing ? clip.renderedAssetId : clip.assetId) || asset;
     body.innerHTML = `<div class="properties">
       <div class="property"><label>ВЫСОТА · ПОЛУТОНЫ</label><input id="clipPitch" type="number" min="-24" max="24" value="${clip.pitch || 0}" /></div>
       <div class="property"><label>СКОРОСТЬ · ${Math.round((clip.rate || 1) * 100)}%</label><input id="clipRate" type="range" min="0.5" max="2" step="0.01" value="${clip.rate || 1}" /></div>
+      <div class="property"><label>ТЕМП ИСТОЧНИКА · BPM</label><input id="clipSourceTempo" type="number" min="40" max="240" step="1" value="${clip.timeStretchSourceTempo || Math.round(state.tempo)}" /><small class="field-help">Растянуть к темпу проекта (${Math.round(state.tempo)} BPM), сохранив высоту.</small><button class="button quiet compact" id="applyTimeStretchBtn">Подогнать к темпу проекта</button></div>
       <div class="property"><label>ОБРАБОТКА</label><button class="button quiet compact" id="applyPitchBtn">Применить высоту</button></div>
       <div class="property clap-property"><label>CLAP · СТЕРЕОЭФФЕКТ</label><button class="button quiet compact" id="selectClapBtn">Выбрать CLAP-плагин…</button><small class="field-help">Параметры можно изменить перед offline-рендером. Оригинал сохранится для A/B.</small><div id="clapControls"></div><button class="button compact" id="applyClapBtn" disabled>Выберите плагин</button></div>
       <div class="property"><label>ТОНАЛЬНОСТЬ AUTOTUNE</label><input readonly value="${escapeHtml(clip.autoTune?.key || state.key)}" /></div>
@@ -958,6 +959,8 @@ function renderEditor() {
     </div>`;
     $('#clipPitch').addEventListener('change', event => { event.target.value = clamp(Number(event.target.value) || 0, -24, 24); });
     $('#applyPitchBtn').onclick = () => applyClipPitch(clip, Number($('#clipPitch').value) || 0);
+    $('#applyTimeStretchBtn').onclick = () => applyClipTimeStretch(clip, Number($('#clipSourceTempo').value));
+    $('#clipSourceTempo').addEventListener('focus', recordUndo, { once: true });
     $('#selectClapBtn').onclick = () => inspectClipClap(clip);
     $('#applyClapBtn').onclick = () => applyClipClap(clip);
     $('#applyAutotuneBtn').onclick = () => applyClipAutotune(clip, { enabled: true, key: state.key, strength: Number($('#autotuneStrength').value) / 100, speed: Number($('#autotuneSpeed').value) / 100 });
@@ -974,16 +977,17 @@ function renderEditor() {
     $('#clipFadeIn').addEventListener('change', updateClipFades); $('#clipFadeOut').addEventListener('change', updateClipFades);
     $('#clipRate').addEventListener('input', event => {
       clip.rate = Number(event.target.value); markProjectDirty();
-      const duration = Math.max(.02, asset.buffer.duration - (clip.offsetSec || 0) - (clip.trimEndSec || 0));
-      clip.lengthBeats = Math.max(.25, duration / clip.rate * state.tempo / 60);
-      const source = liveClipSources.get(clip.id); if (source) source.playbackRate.setTargetAtTime((clip.renderedAssetId && !clip.bypassProcessing ? 1 : (clip.bypassProcessing ? 1 : 2 ** ((clip.pitch || 0) / 12))) * clip.rate, getAudioContext().currentTime, .015);
+      const usesRendered = Boolean(clip.renderedAssetId && !clip.bypassProcessing);
+      const duration = Math.max(.02, activeAsset.buffer.duration - getClipSourceOffsetSec(clip) - getClipSourceTrimEndSec(clip));
+      clip.lengthBeats = Math.max(.25, duration / getClipPlaybackRate(clip, usesRendered) * state.tempo / 60);
+      const source = liveClipSources.get(clip.id); if (source) source.playbackRate.setTargetAtTime(getClipPlaybackRate(clip, usesRendered), getAudioContext().currentTime, .015);
       event.target.closest('.property').querySelector('label').textContent = `СКОРОСТЬ · ${Math.round(clip.rate * 100)}%`;
       renderTimeline();
     });
-    $('#clipOffset').addEventListener('change', event => { clip.offsetSec = clamp(Number(event.target.value) || 0, 0, asset.buffer.duration - .05); renderAll(); });
+    $('#clipOffset').addEventListener('change', event => { clip.offsetSec = clamp(Number(event.target.value) || 0, 0, activeAsset.buffer.duration - .05); renderAll(); });
     for (const field of ['clipVolume', 'clipPan', 'clipOffset', 'clipRate', 'clipFadeIn', 'clipFadeOut']) $(`#${field}`).addEventListener('focus', recordUndo, { once: true });
     $('#resetPitchBtn').textContent = 'Сбросить обработку';
-    $('#resetPitchBtn').onclick = () => { recordUndo(); clip.pitch = 0; clip.autoTune = null; clip.renderedAssetId = null; if (clip.clapPluginName) { clip.lengthBeats = clip.clapOriginalLengthBeats ?? clip.lengthBeats; clip.offsetSec = clip.clapOriginalOffsetSec ?? clip.offsetSec; clip.trimEndSec = clip.clapOriginalTrimEndSec ?? clip.trimEndSec; } clip.clapPluginName = null; clip.clapPluginId = null; clip.clapParameters = null; clip.clapSourceAssetId = null; clip.clapSourceOffsetSec = null; clip.clapSourceTrimEndSec = null; clip.clapOriginalLengthBeats = null; clip.clapOriginalOffsetSec = null; clip.clapOriginalTrimEndSec = null; clapSelections.delete(clip.id); clip.bypassProcessing = false; restartPlaybackIfActive(); renderAll(); };
+    $('#resetPitchBtn').onclick = () => { recordUndo(); clip.pitch = 0; clip.autoTune = null; clip.renderedAssetId = null; if (clip.timeStretchRatio) { clip.lengthBeats = clip.stretchOriginalLengthBeats ?? clip.lengthBeats; clip.offsetSec = clip.stretchOriginalOffsetSec ?? clip.offsetSec; clip.trimEndSec = clip.stretchOriginalTrimEndSec ?? clip.trimEndSec; } if (clip.clapPluginName) { clip.lengthBeats = clip.clapOriginalLengthBeats ?? clip.lengthBeats; clip.offsetSec = clip.clapOriginalOffsetSec ?? clip.offsetSec; clip.trimEndSec = clip.clapOriginalTrimEndSec ?? clip.trimEndSec; } clip.timeStretchRatio = null; clip.timeStretchSourceTempo = null; clip.stretchOriginalLengthBeats = null; clip.stretchOriginalOffsetSec = null; clip.stretchOriginalTrimEndSec = null; clip.clapPluginName = null; clip.clapPluginId = null; clip.clapParameters = null; clip.clapSourceAssetId = null; clip.clapSourceOffsetSec = null; clip.clapSourceTrimEndSec = null; clip.clapOriginalLengthBeats = null; clip.clapOriginalOffsetSec = null; clip.clapOriginalTrimEndSec = null; clapSelections.delete(clip.id); clip.bypassProcessing = false; restartPlaybackIfActive(); renderAll(); };
     $('#deleteClipBtn').onclick = deleteSelectedClip;
     renderClapControls(clip);
     return;
@@ -1203,6 +1207,68 @@ function updateSynthOutput(root, key, value) {
 
 function bindEditorActions() { $('#createPatternBtn')?.addEventListener('click', createDrumPattern); $('#createNotesBtn')?.addEventListener('click', createMidiPattern); $('#createAutomationEmptyBtn')?.addEventListener('click', createAutomationClip); }
 
+function getClipPlaybackRate(clip, usesRendered = Boolean(clip.renderedAssetId && !clip.bypassProcessing)) {
+  const rate = clip.rate || 1;
+  if (usesRendered) return rate;
+  if (clip.bypassProcessing) return rate / (clip.timeStretchRatio || 1);
+  return rate * 2 ** ((clip.pitch || 0) / 12);
+}
+
+function getClipSourceOffsetSec(clip) {
+  const scale = clip.bypassProcessing && clip.timeStretchRatio ? 1 / clip.timeStretchRatio : 1;
+  return Math.max(0, (clip.offsetSec || 0) * scale);
+}
+
+function getClipSourceTrimEndSec(clip) {
+  const scale = clip.bypassProcessing && clip.timeStretchRatio ? 1 / clip.timeStretchRatio : 1;
+  return Math.max(0, (clip.trimEndSec || 0) * scale);
+}
+
+async function applyClipTimeStretch(clip, sourceTempo) {
+  if (!Number.isFinite(sourceTempo) || sourceTempo < 40 || sourceTempo > 240) { showToast('Темп исходника должен быть от 40 до 240 BPM'); return; }
+  if (pitchPendingClips.has(clip.id)) return;
+  const ratio = sourceTempo / state.tempo;
+  if (!Number.isFinite(ratio) || ratio < .5 || ratio > 2) { showToast('Слишком большая разница темпов: допустимо от 50% до 200%'); return; }
+  const button = $('#applyTimeStretchBtn');
+  const source = clip.clapPluginName && clip.renderedAssetId
+    ? state.assets.get(clip.renderedAssetId)
+    : state.assets.get(clip.assetId);
+  if (!source?.buffer) { showToast('Исходный аудиофайл клипа не найден'); return; }
+  pitchPendingClips.add(clip.id);
+  if (button) { button.disabled = true; button.textContent = 'Растягиваю аудио…'; }
+  recordUndo(); showToast(`Подгоняю аудио ${Math.round(sourceTempo)} → ${Math.round(state.tempo)} BPM без изменения высоты…`);
+  try {
+    let buffer = source.buffer;
+    if (!clip.clapPluginName) {
+      if (clip.autoTune?.enabled) buffer = await createAutoTune(buffer, clip.autoTune);
+      if (clip.pitch) buffer = await createPitchShift(buffer, clip.pitch);
+    }
+    const incrementalRatio = clip.clapPluginName && clip.timeStretchRatio ? ratio / clip.timeStretchRatio : ratio;
+    if (incrementalRatio < .5 || incrementalRatio > 2) { showToast('Измените темп проекта или исходника ближе к текущему растяжению и повторите'); return; }
+    buffer = await createTimeStretch(buffer, incrementalRatio);
+    if (getClip(clip.id).clip !== clip) return;
+    const id = uid('stretch');
+    if (!canStoreAudioAsset(buffer, id)) return;
+    if (!clip.timeStretchRatio) {
+      clip.stretchOriginalLengthBeats = clip.lengthBeats;
+      clip.stretchOriginalOffsetSec = clip.offsetSec || 0;
+      clip.stretchOriginalTrimEndSec = clip.trimEndSec || 0;
+    }
+    clip.timeStretchSourceTempo = sourceTempo; clip.timeStretchRatio = ratio;
+    clip.offsetSec = clip.stretchOriginalOffsetSec * ratio; clip.trimEndSec = clip.stretchOriginalTrimEndSec * ratio;
+    state.assets.set(id, { id, name: `${source.name} · ${Math.round(sourceTempo)}→${Math.round(state.tempo)} BPM`, buffer, source: 'processed', type: 'audio', mime: 'audio/wav', fileName: source.fileName });
+    clip.renderedAssetId = id; clip.bypassProcessing = false;
+    clip.lengthBeats = Math.max(.25, (buffer.duration - clip.offsetSec - clip.trimEndSec) / (clip.rate || 1) * state.tempo / 60);
+    clip.timeStretchRatio = ratio;
+    restartPlaybackIfActive(); renderAll(); showToast(`Аудио подогнано к ${Math.round(state.tempo)} BPM`);
+  } catch (error) {
+    console.error(error); showToast('Не удалось растянуть аудио');
+  } finally {
+    pitchPendingClips.delete(clip.id);
+    if (button?.isConnected) { button.disabled = false; button.textContent = 'Подогнать к темпу проекта'; }
+  }
+}
+
 async function applyClipPitch(clip, requestedSemitones) {
   const semitones = Math.round(clamp(Number(requestedSemitones) || 0, -24, 24));
   if (pitchPendingClips.has(clip.id)) return;
@@ -1333,6 +1399,7 @@ async function applyClipProcessing(clip, semitones, autoTune, progressMessage, b
     let buffer = original.buffer;
     if (autoTune?.enabled) buffer = await createAutoTune(buffer, autoTune);
     if (semitones) buffer = await createPitchShift(buffer, semitones);
+    if (clip.timeStretchRatio) buffer = await createTimeStretch(buffer, clip.timeStretchRatio);
     if (getClip(clip.id).clip !== clip) return;
     const id = uid('processed'), pitchLabel = semitones ? ` ${semitones > 0 ? '+' : ''}${semitones} st` : '';
     if (!canStoreAudioAsset(buffer, id)) {
@@ -1364,6 +1431,7 @@ function runDspWorker(buffer, options) {
 
 function createPitchShift(buffer, semitones) { return runDspWorker(buffer, { mode: 'pitch', semitones }); }
 function createAutoTune(buffer, settings) { return runDspWorker(buffer, { mode: 'autotune', key: settings.key, strength: settings.strength, speed: settings.speed }); }
+function createTimeStretch(buffer, factor) { return runDspWorker(buffer, { mode: 'stretch', factor }); }
 
 function restartPlaybackIfActive() {
   if (!state.playing) return;
@@ -1565,8 +1633,8 @@ function scheduleProject(context, fromBeat = 0, destination = context.destinatio
         const useRendered = Boolean(clip.renderedAssetId && !clip.bypassProcessing);
         const asset = state.assets.get(useRendered ? clip.renderedAssetId : clip.assetId); if (!asset) continue;
         const buffer = asset.buffer;
-        const playbackRate = (useRendered || clip.bypassProcessing ? 1 : 2 ** ((clip.pitch || 0) / 12)) * (clip.rate || 1);
-        const offset = Math.max(0, (clip.offsetSec || 0) + Math.max(0, fromBeat - clipStart) * secondsPerBeat * playbackRate), remaining = Math.max(.02, buffer.duration - offset - (clip.trimEndSec || 0));
+        const playbackRate = getClipPlaybackRate(clip, useRendered);
+        const offset = Math.max(0, getClipSourceOffsetSec(clip) + Math.max(0, fromBeat - clipStart) * secondsPerBeat * playbackRate), remaining = Math.max(.02, buffer.duration - offset - getClipSourceTrimEndSec(clip));
         if (offset >= buffer.duration) continue;
         const source = context.createBufferSource(), clipGain = context.createGain(); source.buffer = buffer; source.playbackRate.value = playbackRate;
         if (context === audioContext) liveClipSources.set(clip.id, source);
@@ -1772,9 +1840,9 @@ function buildNativeProjectPlan() {
       const asset = state.assets.get(assetId);
       if (!asset?.buffer) return null;
 
-      const offsetSec = Math.max(0, clip.offsetSec || 0);
-      const trimEndSec = Math.max(0, clip.trimEndSec || 0);
-      const playbackRate = (usesRendered || clip.bypassProcessing ? 1 : 2 ** ((clip.pitch || 0) / 12)) * (clip.rate || 1);
+      const offsetSec = getClipSourceOffsetSec(clip);
+      const trimEndSec = getClipSourceTrimEndSec(clip);
+      const playbackRate = getClipPlaybackRate(clip, usesRendered);
       if (!Number.isFinite(playbackRate) || playbackRate < .01 || playbackRate > 8) return null;
       const availableSeconds = Math.max(0, asset.buffer.duration - offsetSec - trimEndSec);
       if (availableSeconds <= 0) continue;

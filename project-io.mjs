@@ -91,7 +91,13 @@ export function validateProjectDocument(data, limits = PROJECT_LIMITS) {
           (clip.trimEndSec !== undefined && !finiteBetween(clip.trimEndSec, 0, 86_400)) ||
           (clip.fadeInSec !== undefined && !finiteBetween(clip.fadeInSec, 0, 86_400)) ||
           (clip.fadeOutSec !== undefined && !finiteBetween(clip.fadeOutSec, 0, 86_400)) ||
-          (clip.kind !== undefined && !['midi', 'drums', 'automation'].includes(clip.kind))) return { ok: false, code: 'invalid-clips' };
+          (clip.kind !== undefined && !['midi', 'drums', 'automation'].includes(clip.kind)) ||
+          ((clip.timeStretchRatio !== undefined || clip.timeStretchSourceTempo !== undefined || clip.stretchOriginalLengthBeats !== undefined ||
+            clip.stretchOriginalOffsetSec !== undefined || clip.stretchOriginalTrimEndSec !== undefined) &&
+           (clip.kind === 'midi' || clip.kind === 'drums' || !finiteBetween(clip.timeStretchRatio, .5, 2) ||
+            !finiteBetween(clip.timeStretchSourceTempo, 40, 240) || !finiteBetween(clip.stretchOriginalLengthBeats, Number.EPSILON, 1_000_000) ||
+            !finiteBetween(clip.stretchOriginalOffsetSec, 0, 86_400) || !finiteBetween(clip.stretchOriginalTrimEndSec, 0, 86_400) ||
+            !idValue(clip.renderedAssetId) || !assetIds.has(clip.renderedAssetId)))) return { ok: false, code: 'invalid-clips' };
       clipIds.add(clip.id);
 
       if (clip.kind === 'midi') {

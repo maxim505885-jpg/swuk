@@ -146,3 +146,19 @@ test('project validator rejects malformed MIDI, drum patterns and markers', () =
   assert.equal(validateProjectDocument(project({ tracks: [{ id: 'track-1', type: 'audio', volume: 'loud', clips: [] }] })).code, 'invalid-tracks');
   assert.equal(validateProjectDocument(project({ tracks: [{ id: 'track-1', type: 'audio', clips: [{ id: 'clip-1', startBeat: 0, lengthBeats: 1, assetId: 'asset', rate: 0 }] }] })).code, 'invalid-clips');
 });
+
+
+test('project validator persists bounded tempo-stretch metadata only with its rendered asset', () => {
+  const wav = pcmWavBase64({ frames: 96 });
+  const clip = {
+    id: 'clip-stretched', startBeat: 0, lengthBeats: 5, assetId: 'asset-source', renderedAssetId: 'asset-render',
+    timeStretchRatio: 1.25, timeStretchSourceTempo: 150, stretchOriginalLengthBeats: 4,
+    stretchOriginalOffsetSec: .1, stretchOriginalTrimEndSec: .2,
+  };
+  const value = project({ assets: [{ id: 'asset-source', wav }, { id: 'asset-render', wav }], tracks: [{ id: 'track-1', type: 'audio', clips: [clip] }] });
+  assert.equal(validateProjectDocument(value).ok, true);
+  const invalidRatio = structuredClone(value); invalidRatio.tracks[0].clips[0].timeStretchRatio = 3;
+  assert.equal(validateProjectDocument(invalidRatio).code, 'invalid-clips');
+  const missingRender = structuredClone(value); missingRender.tracks[0].clips[0].renderedAssetId = 'missing';
+  assert.equal(validateProjectDocument(missingRender).code, 'invalid-clips');
+});

@@ -26,6 +26,17 @@ export function pitchShiftChannels(channels, sampleRate, semitones) {
   });
 }
 
+/** Tempo-stretches PCM while preserving its pitch. Ratio is output duration / input duration. */
+export function timeStretchChannels(channels, ratio) {
+  if (!Array.isArray(channels) || !channels.length || !channels[0]?.length) throw new TypeError('At least one non-empty channel is required');
+  const inputLength = channels[0].length;
+  if (channels.some(channel => channel.length !== inputLength)) throw new RangeError('All channels must have the same length');
+  if (!Number.isFinite(ratio) || ratio < 0.5 || ratio > 2) throw new RangeError('Time-stretch ratio must be between 0.5 and 2');
+  if (inputLength * ratio * channels.length * Float32Array.BYTES_PER_ELEMENT > 320 * 1024 * 1024) throw new RangeError('Stretched audio exceeds the 320 MiB processing limit');
+  if (ratio === 1) return channels.map(channel => channel.slice());
+  return stretchWsola(channels, ratio, true);
+}
+
 /** Basic monophonic vocal correction to a named major/minor scale. */
 export function autoTuneChannels(channels, sampleRate, key = 'До мажор', strength = 1, speed = .75) {
   if (!Array.isArray(channels) || !channels.length || !channels[0]?.length) throw new TypeError('At least one non-empty channel is required');
@@ -140,20 +151,36 @@ function nearestScaleNote(midi, root, intervals) {
   return best;
 }
 
-function stretchWsola(channels, factor) {
+function stretchWsola(channels, factor, exactLength = false) {
   const inputLength = channels[0].length;
-  const outputLength = Math.max(WINDOW_SIZE, Math.round(inputLength * factor));
+  const outputLength = exactLength ? Math.max(1, Math.round(inputLength * factor)) : Math.max(WINDOW_SIZE, Math.round(inputLength * factor));
+  if (inputLength < 8) {
+    return channels.map(channel => {
+      const output = new Float32Array(outputLength);
+      for (let index = 0; index < outputLength; index++) {
+        const position = outputLength < 2 ? 0 : index * (inputLength - 1) / (outputLength - 1);
+        const lower = Math.floor(position), upper = Math.min(inputLength - 1, lower + 1), fraction = position - lower;
+        output[index] = channel[lower] * (1 - fraction) + channel[upper] * fraction;
+      }
+      return output;
+    });
+  }
+  const windowSize = Math.min(WINDOW_SIZE, 2 ** Math.floor(Math.log2(inputLength)));
+  const synthesisHop = Math.max(1, windowSize >> 1);
+  const searchRadius = Math.min(SEARCH_RADIUS, Math.max(1, windowSize >> 3));
+  const searchStep = Math.max(1, Math.floor(windowSize / 512) * SEARCH_STEP);
+  const correlationStep = Math.max(1, Math.floor(synthesisHop / 64));
   const output = channels.map(() => new Float32Array(outputLength));
   const weights = new Float32Array(outputLength);
-  const window = new Float32Array(WINDOW_SIZE);
-  for (let i = 0; i < WINDOW_SIZE; i++) window[i] = .5 - .5 * Math.cos(2 * Math.PI * i / (WINDOW_SIZE - 1));
+  const window = new Float32Array(windowSize);
+  for (let i = 0; i < windowSize; i++) window[i] = .5 - .5 * Math.cos(2 * Math.PI * i / (windowSize - 1));
 
-  const maxStart = Math.max(0, inputLength - WINDOW_SIZE);
+  const maxStart = Math.max(0, inputLength - windowSize);
   let sourcePosition = 0;
-  for (let outputPosition = 0; outputPosition < outputLength; outputPosition += SYNTHESIS_HOP) {
+  for (let outputPosition = 0; outputPosition < outputLength; outputPosition += synthesisHop) {
     const predicted = Math.round(outputPosition / factor);
-    sourcePosition = outputPosition === 0 ? 0 : findBestOffset(channels, output, weights, outputPosition, predicted, maxStart);
-    const end = Math.min(WINDOW_SIZE, outputLength - outputPosition, inputLength - sourcePosition);
+    sourcePosition = outputPosition === 0 ? 0 : findBestOffset(channels, output, weights, outputPosition, predicted, maxStart, windowSize, synthesisHop, searchRadius, searchStep, correlationStep);
+    const end = Math.min(windowSize, outputLength - outputPosition, inputLength - sourcePosition);
     for (let i = 0; i < end; i++) {
       const weight = window[i], target = outputPosition + i;
       weights[target] += weight;
@@ -167,13 +194,13 @@ function stretchWsola(channels, factor) {
   return output;
 }
 
-function findBestOffset(channels, output, weights, outputPosition, predicted, maxStart) {
-  const low = Math.max(0, Math.min(maxStart, predicted - SEARCH_RADIUS));
-  const high = Math.max(low, Math.min(maxStart, predicted + SEARCH_RADIUS));
+function findBestOffset(channels, output, weights, outputPosition, predicted, maxStart, windowSize, synthesisHop, searchRadius, searchStep, correlationStep) {
+  const low = Math.max(0, Math.min(maxStart, predicted - searchRadius));
+  const high = Math.max(low, Math.min(maxStart, predicted + searchRadius));
   let best = Math.max(0, Math.min(maxStart, predicted)), bestScore = -Infinity;
-  for (let candidate = low; candidate <= high; candidate += SEARCH_STEP) {
+  for (let candidate = low; candidate <= high; candidate += searchStep) {
     let dot = 0, targetEnergy = 0, candidateEnergy = 0;
-    for (let i = 0; i < SYNTHESIS_HOP; i += CORRELATION_STEP) {
+    for (let i = 0; i < synthesisHop; i += correlationStep) {
       const index = outputPosition + i;
       if (index >= weights.length || weights[index] <= .05) continue;
       let target = 0, sample = 0;
