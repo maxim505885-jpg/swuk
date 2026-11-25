@@ -5,6 +5,7 @@ import { normalizeTheme, readTheme, THEMES, THEME_KEY } from './theme-core.mjs';
 import { analyzeMeter, presentMeter } from './audio-meter.mjs?v=1';
 import { sampleWaveformPeaks } from './waveform-core.mjs?v=2';
 import { moveWaveWindowEdge, normalizeWaveWindow, waveWindowSecondsAtX } from './wave-window-core.mjs?v=1';
+import { resolveRecordingStartBeat } from './recording-core.mjs?v=1';
 import { detectTransientFrames } from './transient-core.mjs?v=1';
 import { clampMidiPitch, generateChordPitches, midiOctaveStart, quantizeMidiNotes, shiftMidiOctave } from './midi-edit-core.mjs?v=3';
 import { normalizeClipFades } from './clip-fade-core.mjs?v=1';
@@ -2770,21 +2771,24 @@ async function importFilesBatch(files) {
 async function startRecording() {
   if (state.recording) { stopRecording(); return; }
   if (recordingPending) return;
+  recordingPending = true;
+  const recordButton = $('#recordBtn');
+  recordButton.disabled = true; recordButton.setAttribute('aria-busy', 'true'); recordButton.title = 'Подготовка записи';
   const channelMode = ['mono', 'left', 'right', 'stereo'].includes(state.recordChannelMode) ? state.recordChannelMode : 'mono';
   recordingChannelMode = channelMode;
-  recordingStartBeat = state.playheadBeat; recordingTargetTrackId = state.recordingTargetTrackId;
+  recordingTargetTrackId = state.recordingTargetTrackId;
   if (window.sonoraNative?.startCapture) {
     const deviceResponse = await window.sonoraNative.audioDevices().catch(() => null);
     nativeCaptureDevices = deviceResponse?.ok ? deviceResponse.devices?.capture || [] : [];
     if (nativeCaptureDevices.length) {
-      recordingPending = true;
-      const button = $('#recordBtn'); button.disabled = true; button.setAttribute('aria-busy', 'true'); button.title = 'Открытие входа WASAPI';
+      recordButton.title = 'Открытие входа WASAPI';
       const device = nativeCaptureDevices.find(item => item.index === nativeInputDeviceIndex) || nativeCaptureDevices.find(item => item.default) || nativeCaptureDevices[0];
       nativeInputDeviceIndex = device.index;
+      recordingStartBeat = getRecordingStartBeat();
       const response = await window.sonoraNative.startCapture(device.index, state.sampleRate, channelMode).catch(error => ({ ok: false, error: error.message }));
-      recordingPending = false; button.disabled = false; button.removeAttribute('aria-busy'); button.title = 'Остановить запись';
+      recordingPending = false; recordButton.disabled = false; recordButton.removeAttribute('aria-busy'); recordButton.title = state.recording ? 'Остановить запись' : 'Запись с микрофона';
       if (!response?.ok) {
-        button.title = 'Запись с микрофона';
+        recordButton.title = 'Запись с микрофона';
         showToast(response?.error || 'Не удалось начать запись через WASAPI');
         return;
       }
@@ -2794,11 +2798,17 @@ async function startRecording() {
       return;
     }
   }
-  if (!navigator.mediaDevices?.getUserMedia) { showToast('Запись доступна в Edge/Chrome на localhost'); return; }
+  if (!navigator.mediaDevices?.getUserMedia) {
+    recordingPending = false; recordButton.disabled = false; recordButton.removeAttribute('aria-busy'); recordButton.title = 'Запись с микрофона';
+    showToast('Запись доступна в Edge/Chrome на localhost'); return;
+  }
   let context;
-  try { context = getAudioContext(); } catch { showToast('В этом браузере нет поддержки Web Audio'); return; }
-  recordingPending = true;
-  const recordButton = $('#recordBtn'); recordButton.disabled = true; recordButton.setAttribute('aria-busy', 'true'); recordButton.title = 'Ожидание разрешения на доступ к микрофону';
+  try { context = getAudioContext(); }
+  catch {
+    recordingPending = false; recordButton.disabled = false; recordButton.removeAttribute('aria-busy'); recordButton.title = 'Запись с микрофона';
+    showToast('В этом браузере нет поддержки Web Audio'); return;
+  }
+  recordButton.title = 'Ожидание разрешения на доступ к микрофону';
   const requestedChannels = channelMode === 'mono' ? 1 : 2;
   const audioConstraints = { channelCount: { ideal: requestedChannels } };
   if (state.inputDeviceId) audioConstraints.deviceId = { exact: state.inputDeviceId };
@@ -2813,7 +2823,6 @@ async function startRecording() {
       stream.getTracks().forEach(track => track.stop());
       throw error;
     }
-    recordingPending = false; recordButton.disabled = false; recordButton.removeAttribute('aria-busy'); recordButton.title = 'Остановить запись';
     recordingStream = stream; recordingChunks = [];
     recordAnalyser = context.createAnalyser(); recordInput = context.createMediaStreamSource(stream); recordInput.connect(recordAnalyser);
     recordProcessor = new AudioWorkletNode(context, 'sonora-record-processor', {
@@ -2825,8 +2834,11 @@ async function startRecording() {
       else if ((state.recording || recordingStopping) && event.data?.type === 'audio' && Array.isArray(event.data.channels)) recordingChunks.push(event.data.channels);
       else if (event.data?.type === 'stopped') recordingStopResolver?.();
     };
-    const silent = context.createGain(); silent.gain.value = 0; recordInput.connect(recordProcessor); recordProcessor.connect(silent); silent.connect(context.destination); recordProcessor._silent = silent;
-    state.recording = true; $('#timelineScroll').classList.add('recording'); updateTransport(); showToast('Идёт запись микрофона'); animateInputMeter();
+    const silent = context.createGain(); silent.gain.value = 0;
+    recordingStartBeat = getRecordingStartBeat();
+    recordInput.connect(recordProcessor); recordProcessor.connect(silent); silent.connect(context.destination); recordProcessor._silent = silent;
+    state.recording = true; recordingPending = false; recordButton.disabled = false; recordButton.removeAttribute('aria-busy'); recordButton.title = 'Остановить запись';
+    $('#timelineScroll').classList.add('recording'); updateTransport(); showToast('Идёт запись микрофона'); animateInputMeter();
   } catch (error) {
     recordingPending = false; recordButton.disabled = false; recordButton.removeAttribute('aria-busy'); recordButton.title = 'Запись с микрофона';
     console.error(error);
@@ -2834,6 +2846,13 @@ async function startRecording() {
   }
 }
 let recordingStartBeat = 0;
+function getRecordingStartBeat() {
+  const currentTime = nativePlaybackActive ? performance.now() / 1000 : audioContext?.currentTime;
+  return resolveRecordingStartBeat({
+    playheadBeat: state.playheadBeat, playing: state.playing, currentTime, playStartTime, playStartBeat,
+    secondsPerBeat: beatSeconds(), loop: state.loop, loopStartBeat: state.loopStartBeat, loopEndBeat: state.loopEndBeat,
+  });
+}
 function setRecording(value) { state.recording = value; updateTransport(); }
 async function stopRecording() {
   if (!state.recording || recordingStopping) return;
