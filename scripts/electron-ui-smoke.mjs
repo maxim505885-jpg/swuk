@@ -100,6 +100,11 @@ try {
   await evaluate("(() => { const values={thresholdDb:'-24',ratio:'6',attackMs:'5',releaseMs:'240',makeupDb:'2'}; for(const input of document.querySelectorAll('[data-compressor]')){input.value=values[input.dataset.compressor];input.dispatchEvent(new Event('input',{bubbles:true}));} })()");
   const compressorState=await evaluate("(()=>Object.fromEntries([...document.querySelectorAll('[data-compressor]')].map(input=>[input.dataset.compressor,Number(input.value)])))()");
   assert.deepEqual(compressorState,{thresholdDb:-24,ratio:6,attackMs:5,releaseMs:240,makeupDb:2});
+  await evaluate("document.querySelector('[data-inspector-effect=limiter]').click()");
+  const limiterControls=await waitUntil(()=>evaluate("document.querySelectorAll('[data-limiter]').length"),count=>count===2,'limiter ceiling and release controls');
+  assert.equal(limiterControls,2);
+  await evaluate("(() => { const values={ceilingDb:'-3.5',releaseMs:'125'}; for(const input of document.querySelectorAll('[data-limiter]')){input.value=values[input.dataset.limiter];input.dispatchEvent(new Event('input',{bubbles:true}));} })()");
+  assert.deepEqual(await evaluate("(()=>Object.fromEntries([...document.querySelectorAll('[data-limiter]')].map(input=>[input.dataset.limiter,Number(input.value)])))()"),{ceilingDb:-3.5,releaseMs:125});
   await delay(200);
   assert.deepEqual(exceptions, [], 'the EQ interaction must not throw renderer exceptions');
   const imported = await evaluate(`(() => {
@@ -194,8 +199,8 @@ try {
     document.querySelector('#saveProjectBtn').click();
     URL.createObjectURL=create;HTMLAnchorElement.prototype.click=click;
   })()`);
-  const savedState = await evaluate("window.__qaSavedProject.text().then(text => { const project=JSON.parse(text); const track=project.tracks.find(item=>item.effects?.compressor);return { clips:project.tracks.reduce((sum,item)=>sum+item.clips.length,0), markers:project.markers.map(marker=>marker.name), compressor:track?{enabled:track.effects.compressor,...track.compressorSettings}:null }; })");
-  assert.deepEqual(savedState,{clips:5,markers:['QA Marker'],compressor:{enabled:true,thresholdDb:-24,ratio:6,attackMs:5,releaseMs:240,makeupDb:2}},'the .sonora file contains slices, marker, and compressor settings');
+  const savedState = await evaluate("window.__qaSavedProject.text().then(text => { const project=JSON.parse(text); const track=project.tracks.find(item=>item.effects?.compressor);return { clips:project.tracks.reduce((sum,item)=>sum+item.clips.length,0), markers:project.markers.map(marker=>marker.name), compressor:track?{enabled:track.effects.compressor,...track.compressorSettings}:null, limiter:track?{enabled:track.effects.limiter,...track.limiterSettings}:null }; })");
+  assert.deepEqual(savedState,{clips:5,markers:['QA Marker'],compressor:{enabled:true,thresholdDb:-24,ratio:6,attackMs:5,releaseMs:240,makeupDb:2},limiter:{enabled:true,ceilingDb:-3.5,releaseMs:125}},'the .sonora file contains slices, marker, compressor, and limiter settings');
   await evaluate("(() => { const previous=window.confirm; window.confirm=()=>true; document.querySelector('#newProjectBtn').click(); window.confirm=previous; })()");
   await waitUntil(()=>evaluate("document.querySelectorAll('.track-lane .clip').length"),count=>count===0,'new empty project before reload');
   const loaded = await evaluate(`(() => { const file=new File([window.__qaSavedProject],'qa-roundtrip.sonora',{type:'application/json'}),transfer=new DataTransfer();transfer.items.add(file);const input=document.querySelector('#projectFile');input.files=transfer.files;input.dispatchEvent(new Event('change',{bubbles:true}));return true; })()`);
@@ -204,6 +209,8 @@ try {
   await waitUntil(()=>evaluate("document.querySelector('.marker-line span')?.textContent"),name=>name==='QA Marker','marker after reopening');
   assert.equal(await waitUntil(()=>evaluate("document.querySelector('[data-inspector-effect=compressor]')?.getAttribute('aria-pressed')"),value=>value==='true','compressor after reopening'),'true');
   assert.equal(await evaluate("Number(document.querySelector('#compressorRatio').value)"),6,'compressor controls after reopening');
+  assert.equal(await waitUntil(()=>evaluate("document.querySelector('[data-inspector-effect=limiter]')?.getAttribute('aria-pressed')"),value=>value==='true','limiter after reopening'),'true');
+  assert.deepEqual(await evaluate("(()=>({ceilingDb:Number(document.querySelector('#limiterCeiling').value),releaseMs:Number(document.querySelector('#limiterRelease').value}))())"),{ceilingDb:-3.5,releaseMs:125},'limiter controls after reopening');
   assert.deepEqual(exceptions,[], 'markers and project save/open must not throw renderer exceptions');
   await evaluate(`(() => {
     window.__qaWavBlob=null;window.__qaWavDownload=null;
@@ -238,7 +245,7 @@ try {
   await evaluate("document.querySelector('#loopBtn').click()");
   assert.deepEqual(await evaluate("(()=>({pressed:document.querySelector('#loopBtn').getAttribute('aria-pressed'),active:document.querySelector('#loopRegion').classList.contains('is-looping')}))()"),{pressed:'true',active:true},'selected range can be enabled as the playback loop');
   assert.deepEqual(exceptions,[], 'Arrangement range selection must not throw renderer exceptions');
-  console.log('Electron UI smoke passed: EQ, compressor, split/slicing, undo/redo, project round-trip, WAV export and loop selection');
+  console.log('Electron UI smoke passed: EQ, compressor, limiter, split/slicing, undo/redo, project round-trip, WAV export and loop selection');
 } finally {
   if (socket && socket.readyState < WebSocket.CLOSING) socket.close();
   if (child.exitCode === null) {
