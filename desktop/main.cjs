@@ -151,7 +151,13 @@ async function loadNativeProject(project) {
     }
   }
   let automationPointCount = 0;
+  const channelIds = new Set();
   for (const track of project.tracks) {
+    if (track?.trackId !== undefined && (typeof track.trackId !== 'string' || track.trackId.length > 128 ||
+        (track.trackId && channelIds.has(track.trackId)))) {
+      return { ok: false, error: 'Идентификатор канала native-проекта некорректен или повторяется' };
+    }
+    if (track.trackId) channelIds.add(track.trackId);
     if (!isFiniteRange(track?.gain, 0, 4) || !isFiniteRange(track?.pan, -1, 1) || typeof track.mute !== 'boolean' || typeof track.solo !== 'boolean' ||
         typeof track.isBus !== 'boolean' || !Number.isInteger(track.outputBusIndex) || track.outputBusIndex < -1 ||
         typeof track.reverb !== 'boolean' || typeof track.delay !== 'boolean' || typeof track.equalizer !== 'boolean' ||
@@ -199,7 +205,7 @@ async function loadNativeProject(project) {
   for (const [index, track] of project.tracks.entries()) {
     result = await requestAudioEngine('set_track', {
       index, gain: track.gain, pan: track.pan, mute: track.mute, solo: track.solo, reverb: track.reverb, delay: track.delay,
-      isBus: track.isBus, outputBusIndex: track.outputBusIndex,
+      isBus: track.isBus, outputBusIndex: track.outputBusIndex, trackId: track.trackId ?? '',
       equalizer: track.equalizer, equalizerFrequencyHz: track.equalizerFrequencyHz, equalizerGainDb: track.equalizerGainDb, equalizerQ: track.equalizerQ,
       compressor: track.compressor, compressorThresholdDb: track.compressorThresholdDb, compressorRatio: track.compressorRatio,
       compressorAttackMs: track.compressorAttackMs, compressorReleaseMs: track.compressorReleaseMs, compressorMakeupDb: track.compressorMakeupDb,
