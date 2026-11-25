@@ -287,14 +287,17 @@ bool renderMixBlock(
                     right = right * 0.88F + delayedRight * 0.2F;
                 }
                 if (track.equalizer) {
-                    const auto& coefficients = trackState.equalizerCoefficients;
-                    const auto filter = [&](const float inputSample, const std::size_t channel) noexcept {
-                        const float outputSample = coefficients[0] * inputSample + state->tracks[trackIndex].equalizerZ1[channel];
-                        state->tracks[trackIndex].equalizerZ1[channel] = coefficients[1] * inputSample - coefficients[3] * outputSample + state->tracks[trackIndex].equalizerZ2[channel];
-                        state->tracks[trackIndex].equalizerZ2[channel] = coefficients[2] * inputSample - coefficients[4] * outputSample;
-                        return outputSample;
-                    };
-                    left = filter(left, 0); right = filter(right, 1);
+                    auto& mutableTrackState = state->tracks[trackIndex];
+                    for (std::size_t bandIndex = 0; bandIndex < kEqualizerBandCount; ++bandIndex) {
+                        const auto& coefficients = trackState.equalizerCoefficients[bandIndex];
+                        const auto filter = [&](const float inputSample, const std::size_t channel) noexcept {
+                            const float outputSample = coefficients[0] * inputSample + mutableTrackState.equalizerZ1[bandIndex][channel];
+                            mutableTrackState.equalizerZ1[bandIndex][channel] = coefficients[1] * inputSample - coefficients[3] * outputSample + mutableTrackState.equalizerZ2[bandIndex][channel];
+                            mutableTrackState.equalizerZ2[bandIndex][channel] = coefficients[2] * inputSample - coefficients[4] * outputSample;
+                            return outputSample;
+                        };
+                        left = filter(left, 0); right = filter(right, 1);
+                    }
                 }
                 if (collectTrackPeaks) {
                     input[frame * 2] = left;
@@ -344,17 +347,20 @@ bool configureProjectMixState(ProjectMixState& state, const ProjectMixView& proj
             trackState.delay = settings.delay;
             trackState.equalizer = settings.equalizer;
             if (settings.equalizer) {
-                if (!std::isfinite(settings.equalizerFrequencyHz) || settings.equalizerFrequencyHz < 20.0F || settings.equalizerFrequencyHz > 20'000.0F ||
-                    !std::isfinite(settings.equalizerGainDb) || settings.equalizerGainDb < -24.0F || settings.equalizerGainDb > 24.0F ||
-                    !std::isfinite(settings.equalizerQ) || settings.equalizerQ < 0.1F || settings.equalizerQ > 18.0F) return false;
-                const float amplitude = std::pow(10.0F, settings.equalizerGainDb / 40.0F);
-                const float omega = 2.0F * std::numbers::pi_v<float> * settings.equalizerFrequencyHz / 48'000.0F;
-                const float cosine = std::cos(omega), alpha = std::sin(omega) / (2.0F * settings.equalizerQ);
-                const float a0 = 1.0F + alpha / amplitude;
-                trackState.equalizerCoefficients = {
-                    (1.0F + alpha * amplitude) / a0, (-2.0F * cosine) / a0, (1.0F - alpha * amplitude) / a0,
-                    (-2.0F * cosine) / a0, (1.0F - alpha / amplitude) / a0,
-                };
+                for (std::size_t bandIndex = 0; bandIndex < kEqualizerBandCount; ++bandIndex) {
+                    const auto& band = settings.equalizerBands[bandIndex];
+                    if (!std::isfinite(band.frequencyHz) || band.frequencyHz < 20.0F || band.frequencyHz > 20'000.0F ||
+                        !std::isfinite(band.gainDb) || band.gainDb < -24.0F || band.gainDb > 24.0F ||
+                        !std::isfinite(band.q) || band.q < 0.1F || band.q > 18.0F) return false;
+                    const float amplitude = std::pow(10.0F, band.gainDb / 40.0F);
+                    const float omega = 2.0F * std::numbers::pi_v<float> * band.frequencyHz / 48'000.0F;
+                    const float cosine = std::cos(omega), alpha = std::sin(omega) / (2.0F * band.q);
+                    const float a0 = 1.0F + alpha / amplitude;
+                    trackState.equalizerCoefficients[bandIndex] = {
+                        (1.0F + alpha * amplitude) / a0, (-2.0F * cosine) / a0, (1.0F - alpha * amplitude) / a0,
+                        (-2.0F * cosine) / a0, (1.0F - alpha / amplitude) / a0,
+                    };
+                }
             }
             if (!settings.gainAutomation.empty()) trackState.gainAutomationValues.assign(prepared.maxBlockFrames, settings.gain);
             if (!settings.reverb && !settings.delay && !settings.equalizer) continue;
@@ -381,8 +387,8 @@ void resetProjectMixState(ProjectMixState& state) noexcept {
         track.delayPosition = 0;
         std::fill(track.gainAutomationValues.begin(), track.gainAutomationValues.end(), 0.0F);
         std::fill(track.reverbBuffer.begin(), track.reverbBuffer.end(), 0.0F);
-        track.equalizerZ1.fill(0.0F);
-        track.equalizerZ2.fill(0.0F);
+        for (auto& band : track.equalizerZ1) band.fill(0.0F);
+        for (auto& band : track.equalizerZ2) band.fill(0.0F);
         track.reverbPositions.fill(0);
     }
 }
