@@ -31,3 +31,21 @@ export function generateChordPitches(rootNote, quality = 'major') {
   if (!Number.isInteger(rootNote) || rootNote < 0 || rootNote > 127 || !Object.hasOwn(CHORD_INTERVALS, quality)) return null;
   return CHORD_INTERVALS[quality].map(interval => rootNote + interval).filter(note => note <= 127);
 }
+
+
+export function quantizeMidiNotes(notes, gridBeats = .25, strength = 1, clipLengthBeats = 1_000_000) {
+  if (!Array.isArray(notes) || !Number.isFinite(gridBeats) || gridBeats <= 0 ||
+      !Number.isFinite(strength) || strength < 0 || strength > 1 ||
+      !Number.isFinite(clipLengthBeats) || clipLengthBeats <= 0) return null;
+  const quantized = [];
+  for (const note of notes) {
+    if (!note || typeof note !== 'object' || Array.isArray(note) ||
+        !Number.isFinite(note.beat) || note.beat < 0 ||
+        !Number.isFinite(note.length) || note.length <= 0) return null;
+    const target = Math.round(note.beat / gridBeats) * gridBeats;
+    const maximumStart = Math.max(0, clipLengthBeats - note.length);
+    const beat = Math.min(maximumStart, Math.max(0, note.beat + (target - note.beat) * strength));
+    quantized.push({ ...note, beat: Math.round(beat * 1e9) / 1e9 });
+  }
+  return quantized;
+}

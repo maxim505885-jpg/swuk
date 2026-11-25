@@ -5,7 +5,7 @@ import { normalizeTheme, readTheme, THEMES, THEME_KEY } from './theme-core.mjs';
 import { analyzeMeter, presentMeter } from './audio-meter.mjs?v=1';
 import { sampleWaveformPeaks } from './waveform-core.mjs?v=2';
 import { detectTransientFrames } from './transient-core.mjs?v=1';
-import { clampMidiPitch, generateChordPitches, midiOctaveStart, shiftMidiOctave } from './midi-edit-core.mjs?v=2';
+import { clampMidiPitch, generateChordPitches, midiOctaveStart, quantizeMidiNotes, shiftMidiOctave } from './midi-edit-core.mjs?v=3';
 import { normalizeClipFades } from './clip-fade-core.mjs?v=1';
 import { CLIP_GAIN_ENVELOPE_MAX_POINTS, normalizeClipGainEnvelope, sampleClipGainEnvelope, scheduleClipGain, splitClipGainEnvelope } from './clip-envelope.mjs?v=1';
 import { EQ_BAND_FREQUENCIES, normalizeEqSettings } from './eq-core.mjs?v=2';
@@ -1126,7 +1126,7 @@ function renderEditor() {
     return;
   }
   if (state.view === 'piano') {
-    eyebrow.textContent = 'MIDI-РЕДАКТОР'; title.textContent = 'Пиано-ролл'; actions.innerHTML = '<button class="button quiet compact" id="createNotesBtn">＋ MIDI-партия</button>'; bindEditorActions();
+    eyebrow.textContent = 'MIDI-РЕДАКТОР'; title.textContent = 'Пиано-ролл'; actions.innerHTML = '<label class="piano-quantize-field"><span>СЕТКА</span><select id="pianoQuantizeGrid" aria-label="Сетка квантования"><option value="0.125">1/32</option><option value="0.25" selected>1/16</option><option value="0.5">1/8</option><option value="1">1/4</option></select></label><label class="piano-quantize-field"><span>СИЛА</span><select id="pianoQuantizeStrength" aria-label="Сила квантования"><option value="1">100%</option><option value="0.75">75%</option><option value="0.5">50%</option></select></label><button class="button quiet compact" id="quantizePianoNotes">Квантизировать MIDI</button><button class="button quiet compact" id="createNotesBtn">＋ MIDI-партия</button>'; bindEditorActions();
     let midi = selected.clip?.kind === 'midi' ? selected.clip : selected.track?.clips.find(item => item.kind === 'midi');
   if (!midi) { body.innerHTML = '<div class="empty-editor"><div class="empty-editor-copy"><strong>Напишите короткую фразу</strong><p>Клик по сетке добавляет ноту. Выберите инструмент во вкладке «Инструменты».</p></div><button class="quick-chip" id="emptyNotesBtn">Создать MIDI-партию</button></div>'; $('#emptyNotesBtn')?.addEventListener('click', createMidiPattern); return; }
     renderPianoRoll(body, midi, selected.track || getTrack(state.selectedTrackId)); return;
@@ -1751,6 +1751,15 @@ function focusPianoNote(index) {
 }
 
 function renderPianoRoll(body, clip, track) {
+  $('#quantizePianoNotes')?.addEventListener('click', () => {
+    const grid = Number($('#pianoQuantizeGrid')?.value ?? .25), strength = Number($('#pianoQuantizeStrength')?.value ?? 1);
+    const quantized = quantizeMidiNotes(clip.notes, grid, strength, clip.lengthBeats);
+    if (!quantized) { showToast('Не удалось квантировать MIDI-партию'); return; }
+    if (!quantized.some((note, index) => note.beat !== clip.notes[index].beat)) { showToast('Ноты уже стоят на выбранной сетке'); return; }
+    recordUndo(); clip.notes = quantized; markProjectDirty();
+    restartProjectPlaybackIfActive(); renderEditor(); renderTimeline();
+    showToast('MIDI-ноты квантизированы');
+  });
   const selectedIndex = selectedMidiNote?.clipId === clip.id ? selectedMidiNote.index : -1;
   const selectedNote = clip.notes[selectedIndex];
   if (selectedNote && (selectedNote.note < pianoRangeStart || selectedNote.note > pianoRangeStart + 11)) pianoRangeStart = Math.min(120, Math.floor(selectedNote.note / 12) * 12);
