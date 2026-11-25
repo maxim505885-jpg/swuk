@@ -107,6 +107,8 @@ let scheduledNodes = [];
 let playRAF = 0;
 let masterAnalyser;
 let masterMeterBuffer;
+let masterSpectrumAnalyser;
+let masterSpectrumBuffer;
 let recordMeterBuffer;
 let liveMasterGain;
 const liveTrackGains = new Map();
@@ -1957,6 +1959,7 @@ function pollNativePlaybackStatus() {
         if (fill) setMeterReading(fill, presentMeter(Number(status.trackPeaks[index]) || 0));
       });
     }
+    if (Array.isArray(status.spectrum)) drawSpectrum(status.spectrum);
     updatePosition();
   }).catch(error => console.error('Native audio status failed:', error)).finally(() => { nativeMeterPollPending = false; });
 }
@@ -1968,6 +1971,10 @@ function updateMeters() {
     setMeterReading($('#masterMeter'), reading);
     const meter = $('#masterStripMeter'); if (meter) setMeterReading(meter, reading);
   }
+  if (masterSpectrumAnalyser && masterSpectrumBuffer) {
+    masterSpectrumAnalyser.getFloatFrequencyData(masterSpectrumBuffer);
+    drawSpectrum(masterSpectrumBuffer, true);
+  }
   for (const [trackId, analyser] of liveTrackMeters) {
     const samples = liveTrackMeterBuffers.get(trackId);
     if (!samples) continue;
@@ -1975,6 +1982,44 @@ function updateMeters() {
     const reading = analyzeMeter(samples);
     const meter = $(`[data-track="${trackId}"] .meter i`); if (meter) setMeterReading(meter, reading);
   }
+}
+
+function drawSpectrum(values, decibels = false) {
+  const canvas = $('#spectrumCanvas');
+  if (!canvas) return;
+  const context = canvas.getContext('2d');
+  if (!context) return;
+  const bounds = canvas.getBoundingClientRect();
+  if (!bounds.width || !bounds.height) return;
+  const scale = Math.min(window.devicePixelRatio || 1, 2);
+  const width = Math.round(bounds.width * scale), height = Math.round(bounds.height * scale);
+  if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
+  context.setTransform(scale, 0, 0, scale, 0, 0);
+  const w = bounds.width, h = bounds.height;
+  context.clearRect(0, 0, w, h);
+  context.fillStyle = '#15111a'; context.fillRect(0, 0, w, h);
+  context.strokeStyle = 'rgba(255,255,255,.08)'; context.lineWidth = 1;
+  for (const y of [.25, .5, .75]) { context.beginPath(); context.moveTo(0, h * y); context.lineTo(w, h * y); context.stroke(); }
+  const bars = 24, gap = 2, barWidth = Math.max(1, (w - gap * (bars - 1)) / bars);
+  const nyquist = masterSpectrumAnalyser?.context?.sampleRate ? masterSpectrumAnalyser.context.sampleRate / 2 : 24_000;
+  for (let band = 0; band < bars; band++) {
+    let value = 0;
+    if (decibels && masterSpectrumBuffer) {
+      const low = Math.max(1, Math.floor(Math.pow(nyquist / 30, band / bars) * 30 / nyquist * masterSpectrumBuffer.length));
+      const high = Math.min(masterSpectrumBuffer.length, Math.max(low + 1, Math.ceil(Math.pow(nyquist / 30, (band + 1) / bars) * 30 / nyquist * masterSpectrumBuffer.length)));
+      let peakDb = -100;
+      for (let bin = low; bin < high; bin++) peakDb = Math.max(peakDb, masterSpectrumBuffer[bin]);
+      value = Math.max(0, Math.min(1, (peakDb + 72) / 72));
+    } else value = Math.max(0, Math.min(1, Number(values?.[band]) * 3));
+    const barHeight = Math.max(1, value * (h - 4));
+    const gradient = context.createLinearGradient(0, h - barHeight, 0, h);
+    gradient.addColorStop(0, '#ffb4e8'); gradient.addColorStop(1, '#ed168d');
+    context.fillStyle = gradient;
+    context.fillRect(band * (barWidth + gap), h - barHeight, barWidth, barHeight);
+  }
+  const active = Array.from(values || []).some(value => decibels ? value > -78 : Number(value) > .012);
+  const summary = $('#spectrumSummary');
+  if (summary) summary.textContent = active ? 'Сигнал анализируется' : 'Нет сигнала';
 }
 
 function setMeterReading(fill, reading) {
@@ -2130,10 +2175,14 @@ async function play() {
   const context = getAudioContext();
   state.playing = true; playStartBeat = state.playheadBeat; playStartTime = context.currentTime;
   const master = context.createGain(); master.gain.value = state.masterVolume; liveMasterGain = master;
-  const meter = context.createAnalyser(); meter.fftSize = 256; master.connect(meter); meter.connect(context.destination); masterAnalyser = meter; masterMeterBuffer = new Float32Array(meter.fftSize);
+  const meter = context.createAnalyser(); meter.fftSize = 256;
+  const spectrum = context.createAnalyser(); spectrum.fftSize = 2048;
+  master.connect(meter); meter.connect(spectrum); spectrum.connect(context.destination);
+  masterAnalyser = meter; masterMeterBuffer = new Float32Array(meter.fftSize);
+  masterSpectrumAnalyser = spectrum; masterSpectrumBuffer = new Float32Array(spectrum.frequencyBinCount);
   const destination = context.createGain(); destination.connect(master);
   scheduleProject(context, state.playheadBeat, destination);
-  scheduledNodes.push({ stop: () => { try { master.disconnect(); meter.disconnect(); destination.disconnect(); } catch {} } });
+  scheduledNodes.push({ stop: () => { try { master.disconnect(); meter.disconnect(); spectrum.disconnect(); destination.disconnect(); } catch {} } });
   updateTransport(); playbackTick();
 }
 
