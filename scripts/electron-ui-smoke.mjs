@@ -210,7 +210,7 @@ try {
     const view=new DataView(buffer),text=(offset,length)=>String.fromCharCode(...new Uint8Array(buffer,offset,length));
     return {type:window.__qaWavBlob.type,filename:window.__qaWavDownload,size:buffer.byteLength,riff:text(0,4),riffSize:view.getUint32(4,true),wave:text(8,4),format:view.getUint16(20,true),channels:view.getUint16(22,true),sampleRate:view.getUint32(24,true),byteRate:view.getUint32(28,true),blockAlign:view.getUint16(32,true),bitsPerSample:view.getUint16(34,true),data:text(36,4),dataSize:view.getUint32(40,true)};
   })`);
-  assert.equal(wav.type,'audio/wav');assert.match(wav.filename,/\\.wav$/i);
+  assert.equal(wav.type,'audio/wav');assert.ok(wav.filename.toLowerCase().endsWith('.wav'));
   assert.deepEqual({riff:wav.riff,wave:wav.wave,format:wav.format,channels:wav.channels,sampleRate:wav.sampleRate,byteRate:wav.byteRate,blockAlign:wav.blockAlign,bitsPerSample:wav.bitsPerSample,data:wav.data},{riff:'RIFF',wave:'WAVE',format:1,channels:2,sampleRate:44100,byteRate:176400,blockAlign:4,bitsPerSample:16,data:'data'});
   assert.ok(wav.dataSize>0&&wav.dataSize%4===0,'stereo PCM data has complete frames');
   assert.equal(wav.size,44+wav.dataSize,'WAV data length matches its RIFF payload');
