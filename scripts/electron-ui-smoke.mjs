@@ -83,16 +83,16 @@ try {
 
   await evaluate("document.querySelector('[data-inspector-effect=equalizer]').click()");
   const initialBands = await waitUntil(
-    () => evaluate("document.querySelectorAll('[data-eq='frequencyHz'][data-eq-band]').length"),
+    () => evaluate("document.querySelectorAll('[data-eq=frequencyHz][data-eq-band]').length"),
     count => count === 7,
     'seven accessible EQ frequency controls',
   );
   assert.equal(initialBands, 7);
 
-  await evaluate("(() => { const input = document.querySelector('[data-eq='frequencyHz'][data-eq-band='2']'); input.value = '575'; input.dispatchEvent(new Event('change', { bubbles: true })); })()");
-  await evaluate("(() => { const input = document.querySelector('[data-eq='gainDb'][data-eq-band='2']'); input.value = '4.5'; input.dispatchEvent(new Event('input', { bubbles: true })); })()");
+  await evaluate("(() => { const input = document.querySelectorAll('[data-eq=frequencyHz][data-eq-band]')[2]; input.value = '575'; input.dispatchEvent(new Event('change', { bubbles: true })); })()");
+  await evaluate("(() => { const input = document.querySelectorAll('[data-eq=gainDb][data-eq-band]')[2]; input.value = '4.5'; input.dispatchEvent(new Event('input', { bubbles: true })); })()");
   await evaluate("(() => { const input = document.querySelector('#inspectorEqQ'); input.value = '1.4'; input.dispatchEvent(new Event('input', { bubbles: true })); })()");
-  const edited = await evaluate("(() => ({ frequency: Number(document.querySelector('[data-eq='frequencyHz'][data-eq-band='2']').value), gain: Number(document.querySelector('[data-eq='gainDb'][data-eq-band='2']').value), gainLabel: document.querySelector('[data-eq='gainDb'][data-eq-band='2']').parentElement.querySelector('output').textContent, q: Number(document.querySelector('#inspectorEqQ').value) }))()");
+  const edited = await evaluate("(() => { const frequency = document.querySelectorAll('[data-eq=frequencyHz][data-eq-band]')[2]; const gain = document.querySelectorAll('[data-eq=gainDb][data-eq-band]')[2]; return { frequency: Number(frequency.value), gain: Number(gain.value), gainLabel: gain.parentElement.querySelector('output').textContent, q: Number(document.querySelector('#inspectorEqQ').value) }; })()");
   assert.deepEqual(edited, { frequency: 575, gain: 4.5, gainLabel: '4.5 dB', q: 1.4 });
   await delay(200);
   assert.deepEqual(exceptions, [], 'the EQ interaction must not throw renderer exceptions');
