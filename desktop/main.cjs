@@ -222,6 +222,37 @@ function registerAudioHandlers() {
   ipcMain.handle('native-audio:devices', event => trustedRenderer(event)
     ? requestAudioEngine('devices')
     : { ok: false, error: 'Запрос отклонён' });
+  ipcMain.handle('native-midi:devices', event => trustedRenderer(event)
+    ? requestAudioEngine('midi_devices')
+    : { ok: false, error: 'Запрос отклонён' });
+  ipcMain.handle('native-midi:open-input', (event, deviceIndex) => {
+    if (!trustedRenderer(event)) return { ok: false, error: 'Запрос отклонён' };
+    if (!Number.isInteger(deviceIndex) || deviceIndex < 0 || deviceIndex > 128) return { ok: false, error: 'Недопустимый номер MIDI-входа' };
+    return requestAudioEngine('midi_open_input', { deviceIndex });
+  });
+  ipcMain.handle('native-midi:close-input', event => trustedRenderer(event)
+    ? requestAudioEngine('midi_close_input')
+    : { ok: false, error: 'Запрос отклонён' });
+  ipcMain.handle('native-midi:read', event => trustedRenderer(event)
+    ? requestAudioEngine('midi_read')
+    : { ok: false, error: 'Запрос отклонён' });
+  ipcMain.handle('native-midi:open-output', (event, deviceIndex) => {
+    if (!trustedRenderer(event)) return { ok: false, error: 'Запрос отклонён' };
+    if (!Number.isInteger(deviceIndex) || deviceIndex < 0 || deviceIndex > 128) return { ok: false, error: 'Недопустимый номер MIDI-выхода' };
+    return requestAudioEngine('midi_open_output', { deviceIndex });
+  });
+  ipcMain.handle('native-midi:close-output', event => trustedRenderer(event)
+    ? requestAudioEngine('midi_close_output')
+    : { ok: false, error: 'Запрос отклонён' });
+  ipcMain.handle('native-midi:send-note', (event, channel, pitch, velocity, on) => {
+    if (!trustedRenderer(event)) return { ok: false, error: 'Запрос отклонён' };
+    if (!Number.isInteger(channel) || channel < 0 || channel > 15 ||
+        !Number.isInteger(pitch) || pitch < 0 || pitch > 127 ||
+        !Number.isInteger(velocity) || velocity < 0 || velocity > 127 || typeof on !== 'boolean') {
+      return { ok: false, error: 'Параметры MIDI-ноты некорректны' };
+    }
+    return requestAudioEngine('midi_send_note', { channel, pitch, velocity, on });
+  });
   ipcMain.handle('native-audio:status', event => trustedRenderer(event)
     ? requestAudioEngine('status')
     : { ok: false, error: 'Запрос отклонён' });

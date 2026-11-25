@@ -86,3 +86,32 @@ test('preload sends valid project graph and transport commands through fixed cha
     'native-audio:start-capture', 'native-audio:stop-capture',
   ]);
 });
+
+
+test('preload exposes bounded MIDI input and output commands', async () => {
+  const { calls, api } = loadPreload();
+
+  await api.midiDevices();
+  await api.openMidiInput(2);
+  await api.readMidiEvents();
+  await api.closeMidiInput();
+  await api.openMidiOutput(1);
+  await api.sendMidiNote(15, 127, 100, true);
+  await api.closeMidiOutput();
+  assert.deepEqual(calls.map(call => call[0]), [
+    'native-midi:devices', 'native-midi:open-input', 'native-midi:read', 'native-midi:close-input',
+    'native-midi:open-output', 'native-midi:send-note', 'native-midi:close-output',
+  ]);
+  assert.deepEqual(calls[5].slice(1), [15, 127, 100, true]);
+});
+
+test('preload rejects invalid MIDI ports and notes before IPC', async () => {
+  const { calls, api } = loadPreload();
+  assert.equal((await api.openMidiInput(129)).ok, false);
+  assert.equal((await api.openMidiOutput(-1)).ok, false);
+  assert.equal((await api.sendMidiNote(16, 60, 100, true)).ok, false);
+  assert.equal((await api.sendMidiNote(0, 128, 100, true)).ok, false);
+  assert.equal((await api.sendMidiNote(0, 60, 128, true)).ok, false);
+  assert.equal((await api.sendMidiNote(0, 60, 100, 1)).ok, false);
+  assert.equal(calls.length, 0);
+});
