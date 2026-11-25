@@ -1,5 +1,5 @@
-const CACHE = 'sonora-studio-v78';
-const SHELL = ['/', '/index.html', '/styles.css?v=27', '/theme.css?v=3', '/app.js?v=70', '/theme-core.mjs', '/arrangement-core.mjs?v=7', '/sequencer-audio.mjs?v=3', '/project-io.mjs?v=3', '/audio-meter.mjs?v=1', '/waveform-core.mjs?v=1', '/midi-edit-core.mjs?v=1', '/clip-fade-core.mjs?v=1', '/clip-envelope.mjs?v=1', '/eq-core.mjs?v=2', '/dsp-worker.js?v=2', '/dsp-core.mjs', '/record-worklet.js', '/manifest.webmanifest', '/icon.svg'];
+const CACHE = 'sonora-studio-v79';
+const SHELL = ['/', '/index.html', '/styles.css?v=28', '/theme.css?v=3', '/app.js?v=71', '/theme-core.mjs', '/arrangement-core.mjs?v=7', '/sequencer-audio.mjs?v=4', '/project-io.mjs?v=4', '/audio-meter.mjs?v=1', '/waveform-core.mjs?v=1', '/midi-edit-core.mjs?v=1', '/clip-fade-core.mjs?v=1', '/clip-envelope.mjs?v=1', '/eq-core.mjs?v=2', '/dsp-worker.js?v=2', '/dsp-core.mjs', '/record-worklet.js', '/manifest.webmanifest', '/icon.svg'];
 self.addEventListener('install', event => event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)).then(() => self.skipWaiting())));
 self.addEventListener('activate', event => event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key !== CACHE).map(key => caches.delete(key)))).then(() => self.clients.claim())));
 self.addEventListener('fetch', event => {
