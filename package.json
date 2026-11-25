@@ -28,9 +28,6 @@
     "electron": "^45.4.1",
     "electron-builder": "^26.15.3"
   },
-  "allowScripts": {
-    "electron@45.4.1": true
-  },
   "overrides": {
     "minimatch": "^11.0.1"
   },
