@@ -124,6 +124,9 @@ struct RoutedChannelState {
     std::vector<float> busInputScratch;
     PcmSourceView busInputView{};
     AudioClipView busInputClip{};
+    std::vector<float> silenceScratch;
+    PcmSourceView silenceView{};
+    AudioClipView silenceClip{};
     std::unique_ptr<ProjectMixState> runtime;
 };
 
