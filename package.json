@@ -54,6 +54,7 @@
       "transient-core.mjs",
       "midi-edit-core.mjs",
       "clip-fade-core.mjs",
+      "clip-envelope.mjs",
       "eq-core.mjs",
       "dsp-core.mjs",
       "dsp-worker.js",
