@@ -178,6 +178,59 @@ try {
     'the source offset on the retimed right-hand clip',
   );
   assert.ok(Math.abs(splitOffset - .94) < .005);
+  const originalRate = await evaluate("Number(document.querySelector('#clipRate')?.value)");
+  assert.ok(Math.abs(originalRate - 1.5) < .001, 'the split clip keeps its playback rate');
+  await evaluate("(() => { const input=document.querySelector('#clipRate'); input.focus(); input.value='1.25'; input.dispatchEvent(new Event('input',{bubbles:true})); })()");
+  await waitUntil(() => evaluate("Number(document.querySelector('#clipRate')?.value)"), value => Math.abs(value - 1.25) < .001, 'playback rate edit');
+  await evaluate("document.querySelector('#undoBtn').click()");
+  await waitUntil(() => evaluate("Number(document.querySelector('#clipRate')?.value)"), value => Math.abs(value - 1.5) < .001, 'undo restores playback rate');
+  await evaluate("document.querySelector('#redoBtn').click()");
+  await waitUntil(() => evaluate("Number(document.querySelector('#clipRate')?.value)"), value => Math.abs(value - 1.25) < .001, 'redo restores playback rate');
+
+  await evaluate("(() => { const input=document.querySelector('#clipOffset'); input.focus(); input.value='0.5'; input.dispatchEvent(new Event('change',{bubbles:true})); })()");
+  await waitUntil(() => evaluate("Number(document.querySelector('#clipOffset')?.value)"), value => Math.abs(value - .5) < .001, 'source offset edit');
+  await evaluate("document.querySelector('#undoBtn').click()");
+  await waitUntil(() => evaluate("Number(document.querySelector('#clipOffset')?.value)"), value => Math.abs(value - .94) < .02, 'undo restores source offset');
+  await evaluate("document.querySelector('#redoBtn').click()");
+  await waitUntil(() => evaluate("Number(document.querySelector('#clipOffset')?.value)"), value => Math.abs(value - .5) < .001, 'redo restores source offset');
+
+  const clipWidthBeforeTrim = await evaluate("document.querySelectorAll('.track-lane .clip')[1].style.width");
+  const trimRightPoint = await evaluate("(() => { const rect=document.querySelectorAll('.track-lane .clip')[1].getBoundingClientRect(); return {x:rect.right-3,y:rect.top+rect.height/2}; })()");
+  await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: trimRightPoint.x, y: trimRightPoint.y, button: 'left' });
+  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: trimRightPoint.x - 6, y: trimRightPoint.y, button: 'left', buttons: 1 });
+  await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: trimRightPoint.x - 6, y: trimRightPoint.y, button: 'left' });
+  const trimmedWidth = await waitUntil(
+    () => evaluate("document.querySelectorAll('.track-lane .clip')[1]?.style.width"),
+    value => value && value !== clipWidthBeforeTrim,
+    'trim the audio clip end',
+  );
+  await evaluate("document.querySelector('#undoBtn').click()");
+  await waitUntil(() => evaluate("document.querySelectorAll('.track-lane .clip')[1]?.style.width"), value => value === clipWidthBeforeTrim, 'undo restores clip end trim');
+  await evaluate("document.querySelector('#redoBtn').click()");
+  await waitUntil(() => evaluate("document.querySelectorAll('.track-lane .clip')[1]?.style.width"), value => value === trimmedWidth, 'redo restores clip end trim');
+
+  const clipLeftBeforeTrim = await evaluate("document.querySelectorAll('.track-lane .clip')[1].style.left");
+  const trimLeftPoint = await evaluate("(() => { const rect=document.querySelectorAll('.track-lane .clip')[1].getBoundingClientRect(); return {x:rect.left+3,y:rect.top+rect.height/2}; })()");
+  await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: trimLeftPoint.x, y: trimLeftPoint.y, button: 'left' });
+  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: trimLeftPoint.x + 6, y: trimLeftPoint.y, button: 'left', buttons: 1 });
+  await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: trimLeftPoint.x + 6, y: trimLeftPoint.y, button: 'left' });
+  const trimmedLeft = await waitUntil(
+    () => evaluate("document.querySelectorAll('.track-lane .clip')[1]?.style.left"),
+    value => value && value !== clipLeftBeforeTrim,
+    'trim the audio clip start',
+  );
+  const trimmedSourceOffset = await waitUntil(
+    () => evaluate("Number(document.querySelector('#clipOffset')?.value)"),
+    value => Math.abs(value - .5) > .001,
+    'left trim advances the source offset',
+  );
+  assert.ok(Number.isFinite(trimmedSourceOffset));
+  await evaluate("document.querySelector('#undoBtn').click()");
+  await waitUntil(() => evaluate("document.querySelectorAll('.track-lane .clip')[1]?.style.left"), value => value === clipLeftBeforeTrim, 'undo restores clip start trim');
+  await waitUntil(() => evaluate("Number(document.querySelector('#clipOffset')?.value)"), value => Math.abs(value - .5) < .001, 'undo restores source offset after left trim');
+  await evaluate("document.querySelector('#redoBtn').click()");
+  await waitUntil(() => evaluate("document.querySelectorAll('.track-lane .clip')[1]?.style.left"), value => value === trimmedLeft, 'redo restores clip start trim');
+  await waitUntil(() => evaluate("Number(document.querySelector('#clipOffset')?.value)"), value => Math.abs(value - trimmedSourceOffset) < .001, 'redo restores source offset after left trim');
   const originalRightLeft = await evaluate("document.querySelectorAll('.track-lane .clip')[1].style.left");
   const dragPoint = await evaluate("(() => { const rect=document.querySelectorAll('.track-lane .clip')[1].getBoundingClientRect(); return {x:rect.left+rect.width/2,y:rect.top+rect.height/2}; })()");
   await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: dragPoint.x, y: dragPoint.y, button: 'left' });
