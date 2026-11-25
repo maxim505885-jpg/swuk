@@ -5,7 +5,7 @@ if(NOT DEFINED SONORA_VST3_SDK_ROOT)
     message(FATAL_ERROR "Set SONORA_VST3_SDK_ROOT to the initialized native/references/vst3sdk directory")
 endif()
 
-set(SMTG_ENABLE_VST3_PLUGIN_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(SMTG_ENABLE_VST3_PLUGIN_EXAMPLES ON CACHE BOOL "" FORCE)
 set(SMTG_ENABLE_VST3_HOSTING_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(SMTG_ENABLE_VSTGUI_SUPPORT OFF CACHE BOOL "" FORCE)
 
@@ -24,6 +24,14 @@ target_include_directories(sonora-vst3-host PRIVATE "${SONORA_NATIVE_ROOT}/src")
 target_compile_features(sonora-vst3-host PRIVATE cxx_std_20)
 target_compile_definitions(sonora-vst3-host PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
 target_link_libraries(sonora-vst3-host PRIVATE sonora_vst3_sdk_support sdk_hosting)
+
+add_executable(sonora-vst3-bridge-tests "${SONORA_NATIVE_ROOT}/tests/realtime_vst3_bridge_tests.cpp")
+target_include_directories(sonora-vst3-bridge-tests PRIVATE "${SONORA_NATIVE_ROOT}/src")
+target_compile_features(sonora-vst3-bridge-tests PRIVATE cxx_std_20)
+target_compile_definitions(sonora-vst3-bridge-tests PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
+target_compile_options(sonora-vst3-bridge-tests PRIVATE
+    $<$<CXX_COMPILER_ID:MSVC>:/W4>
+    $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall;-Wextra;-Wpedantic>)
 target_compile_options(sonora-vst3-host PRIVATE
     $<$<CXX_COMPILER_ID:MSVC>:/W4>
     $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall;-Wextra;-Wpedantic>)
