@@ -600,7 +600,8 @@ function createDrumPattern() {
     { name: 'Хлопок', kind: 'clap', color: palette[3], velocity: .78, probability: 1, ratchets: 1, hits: [] },
   ];
   track.steps = steps; state.view = 'rack';
-  const clip = { id: uid('clip'), name: 'Ритм · 1 такт', kind: 'drums', startBeat: snapBeat(state.playheadBeat), lengthBeats: 4, steps: steps.map(row => ({ ...row, hits: [...row.hits] })), color: track.color };
+  const patternNumber = track.clips.filter(item => item.kind === 'drums').length + 1;
+  const clip = { id: uid('clip'), name: 'Ритм ' + patternNumber, kind: 'drums', startBeat: snapBeat(state.playheadBeat), lengthBeats: 4, steps: steps.map(row => ({ ...row, hits: [...row.hits] })), color: track.color };
   track.clips.push(clip); state.selectedClipId = clip.id; renderAll(); showToast('Паттерн добавлен на шкалу');
 }
 
@@ -1095,9 +1096,17 @@ function renderEditor() {
       renderInstrumentEditor(body, track); return;
     }
     eyebrow.textContent = 'СЕКВЕНСОР'; title.textContent = 'Шаговый секвенсор'; actions.innerHTML = '<button class="button quiet compact" id="createPatternBtn">＋ Ритм-партия</button><button class="button quiet compact" id="createNotesBtn">＋ MIDI-партия</button>'; bindEditorActions();
-    const clip = selected.clip?.kind === 'drums' ? selected.clip : track?.clips.find(item => item.kind === 'drums');
+    const patterns = track?.clips.filter(item => item.kind === 'drums') || [];
+    const clip = selected.clip?.kind === 'drums' && selected.track?.id === track?.id ? selected.clip : patterns[0];
     if (!clip) { body.innerHTML = '<div class="empty-editor"><div class="empty-editor-copy"><strong>Соберите ритм по шагам</strong><p>Каждая ячейка — шестнадцатая доля. Готовый ритм можно услышать и изменить на шкале.</p></div><button class="quick-chip" id="emptyPatternBtn">Создать ритм-партию</button></div>'; $('#emptyPatternBtn')?.addEventListener('click', createDrumPattern); return; }
-    body.innerHTML = '<div class="step-editor-controls"><label>ШАГ<select id="stepEditStep" aria-label="Выбранный шаг"></select></label><label>ДОРОЖКА<select id="stepEditRow" aria-label="Дорожка шага"></select></label><label>ШАНС<select id="stepEditProbability" aria-label="Вероятность выбранного шага"><option value="">Как в дорожке</option></select></label><label>ПОВТОРЫ<select id="stepEditRatchets" aria-label="Повторы выбранного шага"><option value="">Как в дорожке</option></select></label></div><div class="step-grid" id="stepGrid"></div>'; const grid = $('#stepGrid');
+    const patternPicker = patterns.length > 1 ? '<label>ПАТТЕРН<select id="rackPatternSelect" aria-label="Выбранный ритм-паттерн"></select></label>' : '';
+    body.innerHTML = '<div class="step-editor-controls">' + patternPicker + '<label>ШАГ<select id="stepEditStep" aria-label="Выбранный шаг"></select></label><label>ДОРОЖКА<select id="stepEditRow" aria-label="Дорожка шага"></select></label><label>ШАНС<select id="stepEditProbability" aria-label="Вероятность выбранного шага"><option value="">Как в дорожке</option></select></label><label>ПОВТОРЫ<select id="stepEditRatchets" aria-label="Повторы выбранного шага"><option value="">Как в дорожке</option></select></label></div><div class="step-grid" id="stepGrid"></div>'; const grid = $('#stepGrid');
+    const patternSelect = $('#rackPatternSelect');
+    if (patternSelect) {
+      for (const [index, pattern] of patterns.entries()) patternSelect.append(new Option((index + 1) + '. ' + pattern.name + ' · такт ' + (Math.floor(pattern.startBeat / 4) + 1), pattern.id));
+      patternSelect.value = clip.id;
+      patternSelect.addEventListener('change', () => { state.selectedClipId = patternSelect.value; state.selectedTrackId = track.id; renderAll(); });
+    }
     const stepRowSelect = $('#stepEditRow'), stepNumber = $('#stepEditStep'), stepProbability = $('#stepEditProbability'), stepRatchets = $('#stepEditRatchets');
     for (const [index, row] of clip.steps.entries()) stepRowSelect.append(new Option(row.name, String(index)));
     for (let index = 0; index < 16; index++) stepNumber.append(new Option(String(index + 1), String(index + 1)));
