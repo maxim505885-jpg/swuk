@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { isValidClipGainEnvelope } from '../clip-envelope.mjs';
 import test from 'node:test';
-import { beatFromRulerPointer, flattenGainAutomation, normalizeLoopRange, normalizeTrackName, projectRenderDurationSeconds, sampleAutomation, splitSequencerEvents, wrapLoopBeat } from '../arrangement-core.mjs';
+import { beatFromRulerPointer, flattenGainAutomation, normalizeLoopRange, normalizeTrackName, projectRenderDurationSeconds, sampleAutomation, splitAudioClip, splitSequencerEvents, wrapLoopBeat } from '../arrangement-core.mjs';
 
 test('loop range sorts reverse drags, snaps to quarter beats and starts at zero or later', () => {
   assert.deepEqual(normalizeLoopRange(5.13, 1.11), { startBeat: 1, endBeat: 5.25 });
