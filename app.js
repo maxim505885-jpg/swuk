@@ -7,6 +7,7 @@ import { sampleWaveformPeaks } from './waveform-core.mjs?v=2';
 import { moveWaveWindowEdge, normalizeWaveWindow, waveWindowSecondsAtX } from './wave-window-core.mjs?v=1';
 import { resolveRecordingStartBeat } from './recording-core.mjs?v=1';
 import { decodeMidiNoteEvent } from './midi-message-core.mjs?v=1';
+import { createMidiTake, finishMidiTake, recordMidiNoteEvent } from './midi-recording-core.mjs?v=1';
 import { detectTransientFrames } from './transient-core.mjs?v=1';
 import { clampMidiPitch, generateChordPitches, midiOctaveStart, quantizeMidiNotes, shiftMidiOctave } from './midi-edit-core.mjs?v=3';
 import { normalizeClipFades } from './clip-fade-core.mjs?v=1';
@@ -112,6 +113,9 @@ let midiOutputDeviceIndex = 0;
 let midiInputPollTimer = 0;
 let midiTestOffTimer = 0;
 const midiPreviewVoices = new Map();
+let midiRecordingArmed = false;
+let midiRecordingTrackId = '';
+let midiTake = null;
 let nativePlaybackEndBeat = 0;
 let lastNativeMeterPoll = 0;
 let nativeMeterPollPending = false;
@@ -3157,10 +3161,13 @@ async function nativeMidiSettings() {
   outputButton.textContent = midiOutputConnected ? 'Отключить MIDI-выход' : 'Подключить MIDI-выход'; outputButton.disabled = !outputs.length && !midiOutputConnected;
   const testButton = document.createElement('button'); testButton.type = 'button'; testButton.className = 'button quiet';
   testButton.textContent = 'Проверить MIDI-выход'; testButton.disabled = !midiOutputConnected;
-  controls.append(inputButton, outputButton, testButton); panel.append(controls);
+  const midiRecordButton = document.createElement('button'); midiRecordButton.type = 'button'; midiRecordButton.className = 'button quiet'; midiRecordButton.id = 'midiRecordArmButton';
+  midiRecordButton.textContent = midiRecordingArmed ? 'Остановить запись MIDI' : 'Включить запись MIDI';
+  midiRecordButton.disabled = !midiInputConnected || getTrack(state.selectedTrackId)?.type !== 'instrument';
+  controls.append(inputButton, outputButton, testButton, midiRecordButton); panel.append(controls);
 
   const note = document.createElement('p'); note.className = 'native-engine-note';
-  note.textContent = 'Вход играет выбранный инструмент для предпрослушивания. Тест выхода отправляет ноту C4; запись внешних MIDI-партий и MIDI clock будут добавлены отдельно.';
+  note.textContent = 'Вход играет выбранный инструмент для предпрослушивания. Выберите дорожку инструмента, подключите MIDI-вход и включите запись, чтобы сохранить ноты и velocity в новой партии. MIDI clock пока не поддерживается.';
   panel.append(note);
   const updateStatus = message => {
     const currentInput = midiInputConnected ? initial.inputName || inputs.find(device => device.index === midiInputDeviceIndex)?.name || 'подключён' : 'не подключён';
@@ -3168,6 +3175,19 @@ async function nativeMidiSettings() {
     status.textContent = message || `Вход: ${currentInput}. Выход: ${currentOutput}. MIDI-устройства работают через Windows MIDI.`;
   };
   updateStatus(initial?.ok ? '' : initial?.error || 'Не удалось получить список MIDI-устройств.');
+  midiRecordButton.onclick = () => {
+    if (midiRecordingArmed) {
+      finishMidiRecording();
+      updateStatus('Запись MIDI остановлена. Партия сохранена в выбранной дорожке.');
+    } else if (!midiInputConnected) updateStatus('Сначала подключите MIDI-вход.');
+    else if (getTrack(state.selectedTrackId)?.type !== 'instrument') updateStatus('Выберите дорожку встроенного инструмента для записи MIDI.');
+    else {
+      midiRecordingTrackId = state.selectedTrackId;
+      midiRecordingArmed = true;
+      midiRecordButton.textContent = 'Остановить запись MIDI';
+      updateStatus('Запись MIDI включена. Играйте на контроллере; ноты сохраняются в новую партию.');
+    }
+  };
   if (midiInputConnected) startMidiInputPolling();
   inputSelect.onchange = () => { if (Number.isInteger(Number(inputSelect.value))) midiInputDeviceIndex = Number(inputSelect.value); };
   outputSelect.onchange = () => { if (Number.isInteger(Number(outputSelect.value))) midiOutputDeviceIndex = Number(outputSelect.value); };
@@ -3185,6 +3205,7 @@ async function nativeMidiSettings() {
     }
     inputButton.textContent = midiInputConnected ? 'Отключить MIDI-вход' : 'Подключить MIDI-вход';
     inputButton.disabled = !inputs.length;
+    midiRecordButton.disabled = !midiInputConnected || getTrack(state.selectedTrackId)?.type !== 'instrument';
   };
   outputButton.onclick = async () => {
     outputButton.disabled = true;
@@ -3221,6 +3242,7 @@ async function nativeMidiSettings() {
 function setMidiInputConnected(connected) {
   midiInputConnected = connected;
   if (!connected) {
+    if (midiRecordingArmed || midiTake) finishMidiRecording();
     if (midiInputPollTimer) { clearTimeout(midiInputPollTimer); midiInputPollTimer = 0; }
     for (const key of [...midiPreviewVoices.keys()]) stopMidiPreviewVoice(key);
   }
@@ -3232,12 +3254,21 @@ function startMidiInputPolling() {
     if (!midiInputConnected) return;
     const response = await window.sonoraNative.readMidiEvents().catch(() => null);
     if (response?.ok) {
-      for (const event of response.events || []) {
-        const midi = decodeMidiNoteEvent(event.bytes);
+      const events = response.events || [];
+      const eventBeats = new Array(events.length);
+      let trailingSeconds = 0;
+      for (let index = events.length - 1; index >= 0; index--) {
+        eventBeats[index] = getRecordingStartBeat() - trailingSeconds / beatSeconds();
+        const delta = Number(events[index]?.deltaSeconds);
+        if (index > 0 && Number.isFinite(delta) && delta > 0) trailingSeconds += delta;
+      }
+      for (let index = 0; index < events.length; index++) {
+        const midi = decodeMidiNoteEvent(events[index].bytes);
         if (!midi) continue;
         const key = `${midi.channel}:${midi.pitch}`;
         if (midi.type === 'noteon') startMidiPreviewVoice(key, midi.pitch, midi.velocity);
         else stopMidiPreviewVoice(key);
+        if (midiRecordingArmed) recordExternalMidiEvent(midi, Math.max(0, eventBeats[index]));
       }
       if (response.dropped > 0) {
         const status = $('#midiInputStatus');
@@ -3252,6 +3283,33 @@ function startMidiInputPolling() {
     }
     startMidiInputPolling();
   }, 25);
+}
+function recordExternalMidiEvent(message, beat) {
+  const track = getTrack(midiRecordingTrackId);
+  if (!track || track.type !== 'instrument') { finishMidiRecording(); showToast('Запись MIDI остановлена: дорожка инструмента недоступна'); return; }
+  if (!midiTake && message.type === 'noteon') {
+    if (!canAddClip() || !canAddEvents(1)) { finishMidiRecording(); return; }
+    const startBeat = snapBeat(Math.max(0, beat));
+    const clip = { id: uid('clip'), name: 'Запись MIDI', kind: 'midi', startBeat, lengthBeats: 4, notes: [], color: track.color };
+    recordUndo(); track.clips.push(clip); state.selectedTrackId = track.id; state.selectedClipId = clip.id;
+    midiTake = createMidiTake(clip); renderAll();
+  }
+  if (!midiTake) return;
+  if (message.type === 'noteoff' && !canAddEvents(1)) { finishMidiRecording(); return; }
+  const previousCount = midiTake.clip.notes.length;
+  if (!recordMidiNoteEvent(midiTake, message, beat)) return;
+  if (midiTake.clip.notes.length > previousCount) {
+    markProjectDirty();
+    renderAll();
+  }
+}
+function finishMidiRecording() {
+  const take = midiTake;
+  const completed = take ? finishMidiTake(take, Math.max(take.clip.startBeat, getRecordingStartBeat())) : 0;
+  midiTake = null; midiRecordingArmed = false; midiRecordingTrackId = '';
+  const button = $('#midiRecordArmButton');
+  if (button) { button.textContent = 'Включить запись MIDI'; button.disabled = !midiInputConnected || getTrack(state.selectedTrackId)?.type !== 'instrument'; }
+  if (completed > 0) { markProjectDirty(); renderAll(); }
 }
 function startMidiPreviewVoice(key, pitch, velocity) {
   stopMidiPreviewVoice(key);
