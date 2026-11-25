@@ -1,6 +1,7 @@
 #include "engine_core.hpp"
 #include "capture_ring.hpp"
 #include "capture_wav_recorder.hpp"
+#include "spectrum_analyzer.hpp"
 
 #include <array>
 #include <chrono>
@@ -440,6 +441,29 @@ void testCaptureRecorderWritesFinalizedPcmWave() {
         "capture WAV encodes signed samples without clipping at positive full scale");
 }
 
+void testSpectrumAnalyzerFindsToneAndResets() {
+    sonora::audio::SpectrumAnalyzer analyzer(48'000.0);
+    std::array<float, sonora::audio::kSpectrumWindowFrames * 2> stereo{};
+    constexpr double frequency = 1'000.0;
+    constexpr double pi = 3.14159265358979323846;
+    for (std::size_t frame = 0; frame < sonora::audio::kSpectrumWindowFrames; ++frame) {
+        const auto sample = static_cast<float>(0.5 * std::sin(2.0 * pi * frequency * static_cast<double>(frame) / 48'000.0));
+        stereo[frame * 2] = sample;
+        stereo[frame * 2 + 1] = sample;
+    }
+    analyzer.process(stereo.data(), sonora::audio::kSpectrumWindowFrames);
+    const auto& bands = analyzer.bands();
+    const auto expectedBand = static_cast<std::size_t>(std::round(
+        std::log(frequency / 30.0) / std::log(18'000.0 / 30.0) *
+        static_cast<double>(sonora::audio::kSpectrumBandCount - 1)));
+    require(expectedBand < bands.size() && bands[expectedBand] > 0.2F, "spectrum analyzer reports energy near a 1 kHz tone");
+    const auto peakBand = static_cast<std::size_t>(std::distance(bands.begin(), std::max_element(bands.begin(), bands.end())));
+    require(peakBand + 1 >= expectedBand && peakBand <= expectedBand + 1, "spectrum analyzer peak maps to the tone's log-frequency band");
+    analyzer.reset();
+    require(std::all_of(analyzer.bands().begin(), analyzer.bands().end(), [](const float value) { return value == 0.0F; }),
+        "spectrum analyzer reset clears published bands");
+}
+
 } // namespace
 
 int main() {
@@ -465,6 +489,7 @@ int main() {
     testCaptureRingChannelModes();
     testCaptureRingReportsBackpressureAndHonorsFrameLimit();
     testCaptureRecorderWritesFinalizedPcmWave();
+    testSpectrumAnalyzerFindsToneAndResets();
     std::cout << "23 native audio core tests passed\n";
     return EXIT_SUCCESS;
 }
