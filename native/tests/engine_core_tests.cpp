@@ -3,6 +3,7 @@
 #include "capture_wav_recorder.hpp"
 #include "spectrum_analyzer.hpp"
 #include "midi_event_queue.hpp"
+#include "realtime_plugin_transport.hpp"
 
 #include <array>
 #include <chrono>
@@ -15,6 +16,7 @@
 #include <iostream>
 #include <iterator>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -600,6 +602,58 @@ void testMixerBusDelayTailContinuesAcrossBlocks() {
         "bus delay tail reaches the master after its source clip ends");
     require(std::abs(secondPeaks[1]-0.14142136F)<1.0e-5F,"bus meter reports its delayed tail");
 }
+void testRealtimePluginAudioBlockQueue() {
+    sonora::plugin::AudioBlockQueue queue;
+    sonora::plugin::AudioBlock block{};
+    require(!queue.tryPop(block), "realtime plugin queue begins empty");
+
+    const std::array<float, 6> first{0.1F, -0.1F, 0.2F, -0.2F, 0.3F, -0.3F};
+    require(!queue.tryPush(1, first, 4), "realtime plugin queue rejects mismatched frame length");
+    require(queue.tryPush(42, first, 3), "realtime plugin queue accepts a valid bounded block");
+    require(queue.sizeApprox() == 1, "realtime plugin queue reports its bounded depth");
+    require(queue.tryPop(block), "realtime plugin queue returns a queued block");
+    require(block.sequence == 42 && block.frameCount == 3, "realtime plugin block preserves sequence and frames");
+    require(block.samples[0] == first[0] && block.samples[5] == first[5], "realtime plugin block preserves stereo samples");
+    require(!queue.tryPop(block), "realtime plugin queue becomes empty after read");
+}
+void testRealtimePluginAudioBlockQueueBackpressureAndOrder() {
+    sonora::plugin::AudioBlockQueue queue;
+    const std::array<float, 2> sample{0.25F, -0.25F};
+    for (std::uint64_t sequence = 0; sequence < sonora::plugin::kPluginAudioQueueCapacity; ++sequence) {
+        require(queue.tryPush(sequence, sample, 1), "realtime plugin queue accepts blocks up to capacity");
+    }
+    require(!queue.tryPush(99, sample, 1), "realtime plugin queue rejects writes at capacity instead of blocking");
+    sonora::plugin::AudioBlock block{};
+    for (std::uint64_t expected = 0; expected < sonora::plugin::kPluginAudioQueueCapacity; ++expected) {
+        require(queue.tryPop(block), "realtime plugin queue drains queued blocks");
+        require(block.sequence == expected && block.samples[0] == sample[0], "realtime plugin queue preserves FIFO order");
+    }
+    require(queue.sizeApprox() == 0, "realtime plugin queue returns to empty");
+}
+
+void testRealtimePluginAudioBlockQueueAcrossThreads() {
+    sonora::plugin::AudioBlockQueue queue;
+    constexpr std::uint64_t kBlockCount = 20'000;
+    std::thread producer([&queue]() {
+        std::array<float, 2> samples{};
+        for (std::uint64_t sequence = 0; sequence < kBlockCount; ++sequence) {
+            samples[0] = static_cast<float>(sequence % 1000) / 1000.0F;
+            samples[1] = -samples[0];
+            while (!queue.tryPush(sequence, samples, 1)) std::this_thread::yield();
+        }
+    });
+
+    sonora::plugin::AudioBlock block{};
+    for (std::uint64_t expected = 0; expected < kBlockCount; ++expected) {
+        while (!queue.tryPop(block)) std::this_thread::yield();
+        const float expectedSample = static_cast<float>(expected % 1000) / 1000.0F;
+        require(block.sequence == expected, "realtime plugin queue publishes cross-thread blocks in sequence");
+        require(block.frameCount == 1 && block.samples[0] == expectedSample && block.samples[1] == -expectedSample,
+            "realtime plugin queue publishes complete block data before its sequence");
+    }
+    producer.join();
+}
+
 int main() {
     testToneFrequencyAndStereoAlignment();
     testInvalidToneIsRejectedWithoutWriting();
@@ -631,6 +685,9 @@ int main() {
     testMixerBusDelayTailContinuesAcrossBlocks();
     testMidiEventQueuePreservesOrderAndBoundedReads();
     testMidiEventQueueDropsNewestOnOverflowAndCountsLoss();
-    std::cout << "30 native audio core tests passed\n";
+    testRealtimePluginAudioBlockQueue();
+    testRealtimePluginAudioBlockQueueBackpressureAndOrder();
+    testRealtimePluginAudioBlockQueueAcrossThreads();
+    std::cout << "33 native audio core tests passed\n";
     return EXIT_SUCCESS;
 }

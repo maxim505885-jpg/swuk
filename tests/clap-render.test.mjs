@@ -32,6 +32,12 @@ function runRenderer(args) {
   });
 }
 
+test('CLAP realtime helper processes shared audio blocks in a separate process', { skip: !existsSync(renderer) || !existsSync(plugin) }, async () => {
+  const result = await runRenderer(['selftest', plugin]);
+  assert.equal(result.code, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout), { ok: true, isolatedProcess: true, frames: 32 });
+});
+
 test('isolated CLAP helper applies a stereo effect and preserves its reported tail in PCM WAV', { skip: !existsSync(renderer) || !existsSync(plugin) }, async t => {
   const directory = await mkdtemp(join(tmpdir(), 'sonora-clap-render-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
