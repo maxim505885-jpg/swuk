@@ -232,3 +232,5 @@
 .master-clap-control [hidden]{display:none}
 .master-clap-control button:disabled{opacity:.55;cursor:not-allowed}
 .master-clap-control #masterClapLoadBtn[aria-busy=true]{cursor:wait}
+
+.master-vst3-control{border-top:1px solid var(--line)}
