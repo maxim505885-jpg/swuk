@@ -6,7 +6,7 @@
 
 **Частичная готовность, не 100%.** Автоматический Windows release gate проходит; ручная установка/приёмка Windows 11 и аппаратный звук не подтверждены. Неизвестные проверки остаются `NOT TESTED`, а не `PASS`.
 
-Текущее main-дерево commit `09d3635a` совпадает с проверенным PR-head; полный Windows release gate прошёл в [run #45630452982](https://github.com/maxim505885-jpg/swuk/actions/runs/45630452982). Benchmark впервые отдельно измерен в [run #45629167866](https://github.com/maxim505885-jpg/swuk/actions/runs/45629167866). Сводка и границы — в [матрице покрытия](TEST_COVERAGE_MATRIX.md).
+Текущее main-дерево commit `aba4f0fc04a14070a97d1951cf459505e51cb364` совпадает с проверенным деревом `1c50a2e`; полный Windows release gate прошёл в [run #45643005661](https://github.com/maxim505885-jpg/swuk/actions/runs/45643005661). Native benchmark впервые отдельно измерен в [run #45629167866](https://github.com/maxim505885-jpg/swuk/actions/runs/45629167866). Сводка и границы — в [матрице покрытия](TEST_COVERAGE_MATRIX.md).
 
 ## Приоритеты перед выпуском
 
@@ -14,7 +14,7 @@
 2. **Реальный аудиотракт:** слышимый сигнал через выбранный WASAPI output; записать тестовый сигнал с доступного физического input, проверить сохранённый клип и экспорт.
 3. **Рабочая сессия и устойчивость:** длинный проект с импортированными аудио, несколькими drum/MIDI партиями, шинами и эффектами; измерить RAM, поведение при seek/loop, остановку/повторный запуск и длинный проигрыш.
 4. **Интерфейс:** пройти все темы, доступные разрешения и DPI; клавиатурный поток, видимый focus, контраст, пустые/ошибочные состояния. Точечные проверки не закрывают всю инвентаризацию.
-5. **Функциональные разрывы ТЗ:** waveform editor/warp, richer sample instruments, realtime plugin host и MIDI hardware остаются открытыми по [плану совместимости](FL_STUDIO_PARITY_PLAN.md).
+5. **Функциональные разрывы ТЗ:** crop/audition waveform editor и transient slicing уже реализованы; warp/denoise, richer sample instruments, realtime plugin host и MIDI hardware остаются открытыми по [плану совместимости](FL_STUDIO_PARITY_PLAN.md).
 
 ## Gate map
 
