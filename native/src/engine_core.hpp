@@ -6,6 +6,7 @@
 #include <optional>
 #include <utility>
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace sonora::audio {
@@ -51,6 +52,7 @@ struct AutomationPoint {
 
 struct TrackMixSettings {
     TrackMixSettings() = default;
+    std::string channelId;
     TrackMixSettings(
         const float trackGain,
         const float trackPan,
@@ -164,6 +166,13 @@ struct ProjectMixState {
 [[nodiscard]] bool configureProjectMixState(ProjectMixState& state, const ProjectMixView& project) noexcept;
 void resetProjectMixState(ProjectMixState& state) noexcept;
 
+// A non-allocating processor hook used by the realtime plugin rack. It runs
+// after the channel's built-in effects and before the channel is routed to its
+// bus or to the master. The hook must not block or allocate.
+using TrackAudioProcessor = void (*)(
+    void* context, std::size_t trackIndex, float* interleavedStereo,
+    std::size_t frameCount, std::uint64_t firstProjectFrame) noexcept;
+
 // Zeroes and fills one interleaved stereo output block at an absolute project
 // frame. The caller owns and keeps every view alive for the duration of render.
 [[nodiscard]] bool renderMixBlock(
@@ -174,7 +183,9 @@ void resetProjectMixState(ProjectMixState& state) noexcept;
     const ProjectMixView& project,
     ProjectMixState* state = nullptr,
     float* trackPeaks = nullptr,
-    std::size_t trackPeakCount = 0) noexcept;
+    std::size_t trackPeakCount = 0,
+    TrackAudioProcessor trackProcessor = nullptr,
+    void* trackProcessorContext = nullptr) noexcept;
 
 [[nodiscard]] std::optional<double> beatsToSeconds(double beats, double bpm) noexcept;
 

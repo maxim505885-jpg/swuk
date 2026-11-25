@@ -9,6 +9,8 @@
 #include "midi_host.hpp"
 #include "realtime_clap_insert.hpp"
 #include "realtime_vst3_insert.hpp"
+#include "realtime_track_plugin_rack.hpp"
+
 
 #include <algorithm>
 #include <array>
@@ -303,6 +305,62 @@ public:
         return vst3StatusJson();
     }
 
+    [[nodiscard]] std::string loadTrackClapEffect(const std::uint32_t trackIndex, const std::string& utf8Path) {
+        const auto* const project = activeProject_.load(std::memory_order_acquire);
+        if (project == nullptr || trackIndex >= project->view.trackCount || trackIndex >= trackPluginRack_.kMaxTracks)
+            return errorJson("Track index is outside the loaded project");
+        if (project->tracks[trackIndex].channelId.empty()) return errorJson("Track has no stable channel id");
+        if (projectPlaying_.load(std::memory_order_acquire)) return errorJson("Stop playback before changing a track plug-in");
+        if (deviceInitialized_ && deviceStarted_) {
+            const ma_result stopResult = ma_device_stop(&device_);
+            if (stopResult != MA_SUCCESS) return errorJson("Could not pause WASAPI before loading the track CLAP effect");
+            deviceStarted_ = false;
+        }
+        std::string error;
+        if (!trackPluginRack_.loadClap(trackIndex, std::filesystem::u8path(utf8Path), error)) return errorJson(error);
+        return trackPluginStatusJson(trackIndex);
+    }
+
+    [[nodiscard]] std::string loadTrackVst3Effect(const std::uint32_t trackIndex, const std::string& utf8Path) {
+        const auto* const project = activeProject_.load(std::memory_order_acquire);
+        if (project == nullptr || trackIndex >= project->view.trackCount || trackIndex >= trackPluginRack_.kMaxTracks)
+            return errorJson("Track index is outside the loaded project");
+        if (project->tracks[trackIndex].channelId.empty()) return errorJson("Track has no stable channel id");
+        if (projectPlaying_.load(std::memory_order_acquire)) return errorJson("Stop playback before changing a track plug-in");
+        if (deviceInitialized_ && deviceStarted_) {
+            const ma_result stopResult = ma_device_stop(&device_);
+            if (stopResult != MA_SUCCESS) return errorJson("Could not pause WASAPI before loading the track VST3 effect");
+            deviceStarted_ = false;
+        }
+        std::string error;
+        if (!trackPluginRack_.loadVst3(trackIndex, std::filesystem::u8path(utf8Path), error)) return errorJson(error);
+        return trackPluginStatusJson(trackIndex);
+    }
+
+    [[nodiscard]] std::string unloadTrackPlugin(const std::uint32_t trackIndex) {
+        const auto* const project = activeProject_.load(std::memory_order_acquire);
+        if (project == nullptr || trackIndex >= project->view.trackCount || trackIndex >= trackPluginRack_.kMaxTracks)
+            return errorJson("Track index is outside the loaded project");
+        if (projectPlaying_.load(std::memory_order_acquire)) return errorJson("Stop playback before unloading a track plug-in");
+        if (deviceInitialized_ && deviceStarted_) {
+            const ma_result stopResult = ma_device_stop(&device_);
+            if (stopResult != MA_SUCCESS) return errorJson("Could not pause WASAPI before unloading the track plug-in");
+            deviceStarted_ = false;
+        }
+        trackPluginRack_.unload(trackIndex);
+        return trackPluginStatusJson(trackIndex);
+    }
+
+    [[nodiscard]] std::string trackPluginStatusJson(const std::uint32_t trackIndex) const {
+        const auto status = trackPluginRack_.status(trackIndex);
+        return std::string("{\"version\":1,\"ok\":true,\"trackIndex\":") + std::to_string(trackIndex) +
+            ",\"plugin\":{\"format\":\"" + status.format + "\",\"active\":" +
+            (status.active ? "true" : "false") + ",\"ready\":" + (status.ready ? "true" : "false") +
+            ",\"inputOverruns\":" + std::to_string(status.inputOverruns) +
+            ",\"outputUnderruns\":" + std::to_string(status.outputUnderruns) +
+            ",\"outputOverruns\":" + std::to_string(status.outputOverruns) + "}}";
+    }
+
     [[nodiscard]] std::string unloadVst3Effect() {
         if (projectPlaying_.load(std::memory_order_acquire)) return errorJson("Stop playback before unloading the master plug-in");
         if (deviceInitialized_ && deviceStarted_) {
@@ -482,14 +540,16 @@ public:
         const bool compressor = false, const float compressorThresholdDb = -18.0F, const float compressorRatio = 4.0F,
         const float compressorAttackMs = 10.0F, const float compressorReleaseMs = 120.0F, const float compressorMakeupDb = 0.0F,
         const bool limiter = false, const float limiterCeilingDb = -1.0F, const float limiterReleaseMs = 80.0F,
-        const bool isBus = false, const std::int32_t outputBusIndex = -1) {
+        const bool isBus = false, const std::int32_t outputBusIndex = -1, const std::string& channelId = {}) {
         if (index >= kMaxProjectTracks) return errorJson("Track index exceeds the project limit");
         if (outputBusIndex < -1 || (isBus && outputBusIndex != -1)) return errorJson("Bus output must remain connected to the master");
         if (!std::isfinite(gain) || gain < 0.0F || gain > 4.0F || !std::isfinite(pan) || pan < -1.0F || pan > 1.0F) {
             return errorJson("Track mix values are outside the supported range");
         }
         if (builderTracks_.size() <= index) builderTracks_.resize(static_cast<std::size_t>(index) + 1);
+        if (channelId.size() > 128) return errorJson("Track id exceeds the native channel limit");
         builderTracks_[index] = {gain, pan, mute, solo, reverb, delay, std::move(gainAutomation), equalizer, equalizerFrequencyHz, equalizerGainDb, equalizerQ};
+        builderTracks_[index].channelId = channelId;
         builderTracks_[index].panAutomation = std::move(panAutomation);
         builderTracks_[index].equalizerBands = equalizerBands;
         builderTracks_[index].compressor = compressor;
@@ -564,6 +624,10 @@ public:
             if (stopResult != MA_SUCCESS) return errorJson(std::string("Could not pause WASAPI while committing project: ") + ma_result_description(stopResult));
             deviceStarted_ = false;
         }
+        std::vector<std::string> stableTrackIds;
+        stableTrackIds.reserve(snapshot->tracks.size());
+        for (const auto& track : snapshot->tracks) stableTrackIds.push_back(track.channelId);
+        trackPluginRack_.reconcileTrackIds(stableTrackIds);
         projectFrame_.store(0, std::memory_order_relaxed);
         projectPeak_.store(0.0F, std::memory_order_relaxed);
         clearTrackPeaks();
@@ -608,6 +672,7 @@ public:
         projectRenderFrame_.store(safeStartFrame, std::memory_order_relaxed);
         if (clapInsert_.isActive()) clapInsert_.reset(safeStartFrame);
         if (vst3Insert_.isActive()) vst3Insert_.reset(safeStartFrame);
+        trackPluginRack_.reset(safeStartFrame);
         if (projectMixState_) sonora::audio::resetProjectMixState(*projectMixState_);
         remainingToneFrames_.store(0, std::memory_order_relaxed);
         projectPeak_.store(0.0F, std::memory_order_relaxed);
@@ -768,6 +833,16 @@ private:
         for (auto& band : spectrumBands_) band.store(0.0F, std::memory_order_relaxed);
     }
 
+    static void trackPluginProcessorThunk(
+        void* context, const std::size_t trackIndex, float* interleavedStereo,
+        const std::size_t frameCount, const std::uint64_t firstProjectFrame) noexcept {
+        auto* const host = static_cast<AudioHost*>(context);
+        if (host == nullptr || interleavedStereo == nullptr) return;
+        const auto* const project = host->activeProject_.load(std::memory_order_acquire);
+        if (project == nullptr || trackIndex >= project->view.trackCount || project->tracks[trackIndex].isBus) return;
+        host->trackPluginRack_.process(trackIndex, interleavedStereo, frameCount, firstProjectFrame);
+    }
+
     static void captureDataCallback(ma_device* device, void*, const void* input, const ma_uint32 frameCount) noexcept {
         auto* const host = static_cast<AudioHost*>(device->pUserData);
         if (host == nullptr || input == nullptr || !host->captureRecorder_) return;
@@ -804,10 +879,12 @@ private:
         }
         const bool hasClapInsert = host->clapInsert_.isActive();
         const bool hasVst3Insert = host->vst3Insert_.isActive();
-        const bool hasPluginInsert = hasClapInsert || hasVst3Insert;
+        const bool hasTrackPluginInsert = host->trackPluginRack_.isActive();
+        const bool hasMasterPluginInsert = hasClapInsert || hasVst3Insert;
         const auto firstFrame = host->projectRenderFrame_.load(std::memory_order_relaxed);
-        const auto renderLimit = project->durationFrames + (hasPluginInsert
-            ? sonora::plugin::RealtimeClapInsert::kPipelineLatencyFrames : 0);
+        const auto renderLimit = project->durationFrames +
+            (hasTrackPluginInsert ? sonora::plugin::RealtimeTrackPluginRack::kPipelineLatencyFrames : 0) +
+            (hasMasterPluginInsert ? sonora::plugin::RealtimeClapInsert::kPipelineLatencyFrames : 0);
         if (firstFrame >= renderLimit) {
             host->projectPlaying_.store(false, std::memory_order_release);
             host->projectPeak_.store(0.0F, std::memory_order_relaxed);
@@ -821,7 +898,8 @@ private:
         std::array<float, kMaxProjectTracks> trackPeaks{};
         const bool rendered = sonora::audio::renderMixBlock(
             static_cast<float*>(output), framesToRender, device->sampleRate, firstFrame, project->view,
-            host->projectMixState_.get(), trackPeaks.data(), project->view.trackCount);
+            host->projectMixState_.get(), trackPeaks.data(), project->view.trackCount,
+            hasTrackPluginInsert ? &AudioHost::trackPluginProcessorThunk : nullptr, host);
         if (!rendered) {
             host->projectPlaying_.store(false, std::memory_order_release);
             host->projectPeak_.store(0.0F, std::memory_order_relaxed);
@@ -829,8 +907,12 @@ private:
             ma_silence_pcm_frames(output, frameCount, ma_format_f32, device->playback.channels);
             return;
         }
-        if (hasClapInsert) host->clapInsert_.process(static_cast<float*>(output), framesToRender, firstFrame);
-        else if (hasVst3Insert) host->vst3Insert_.process(static_cast<float*>(output), framesToRender, firstFrame);
+        const auto masterInputFrame = hasTrackPluginInsert
+            ? (firstFrame >= sonora::plugin::RealtimeTrackPluginRack::kPipelineLatencyFrames
+                ? firstFrame - sonora::plugin::RealtimeTrackPluginRack::kPipelineLatencyFrames : 0)
+            : firstFrame;
+        if (hasClapInsert) host->clapInsert_.process(static_cast<float*>(output), framesToRender, masterInputFrame);
+        else if (hasVst3Insert) host->vst3Insert_.process(static_cast<float*>(output), framesToRender, masterInputFrame);
         if (framesToRender < frameCount) {
             auto* const remainder = static_cast<float*>(output) + framesToRender * device->playback.channels;
             ma_silence_pcm_frames(remainder, frameCount - framesToRender, ma_format_f32, device->playback.channels);
@@ -854,7 +936,8 @@ private:
         }
         host->projectRenderFrame_.store(nextFrame, std::memory_order_relaxed);
         const auto audibleFrame = hasClapInsert ? host->clapInsert_.outputProjectFrame() :
-            (hasVst3Insert ? host->vst3Insert_.outputProjectFrame() : nextFrame);
+            (hasVst3Insert ? host->vst3Insert_.outputProjectFrame() :
+                (hasTrackPluginInsert ? host->trackPluginRack_.outputProjectFrame() : nextFrame));
         host->projectFrame_.store(audibleFrame, std::memory_order_relaxed);
         if (audibleFrame >= project->durationFrames) host->projectPlaying_.store(false, std::memory_order_release);
     }
@@ -928,6 +1011,7 @@ private:
     std::unique_ptr<sonora::audio::CaptureWavRecorder> captureRecorder_;
     sonora::plugin::RealtimeClapInsert clapInsert_;
     sonora::plugin::RealtimeVst3Insert vst3Insert_;
+    sonora::plugin::RealtimeTrackPluginRack trackPluginRack_;
     std::vector<sonora::audio::TrackMixSettings> builderTracks_;
     std::vector<sonora::audio::AudioClipView> builderClips_;
     std::atomic<const ProjectSnapshot*> activeProject_{nullptr};
@@ -991,6 +1075,19 @@ private:
         if (!path || path->empty()) return errorJson("load_vst3 requires a local .vst3 bundle path");
         return host.loadVst3Effect(*path);
     }
+    if (*operation == "load_track_clap" || *operation == "load_track_vst3") {
+        const auto trackIndex = numberField<std::uint32_t>(line, "trackIndex");
+        const auto path = stringField(line, "path");
+        if (!trackIndex || !path || path->empty()) return errorJson("track plug-in load requires trackIndex and local path");
+        return *operation == "load_track_clap" ? host.loadTrackClapEffect(*trackIndex, *path) :
+            host.loadTrackVst3Effect(*trackIndex, *path);
+    }
+    if (*operation == "unload_track_plugin" || *operation == "track_plugin_status") {
+        const auto trackIndex = numberField<std::uint32_t>(line, "trackIndex");
+        if (!trackIndex) return errorJson("track plug-in operation requires trackIndex");
+        return *operation == "unload_track_plugin" ? host.unloadTrackPlugin(*trackIndex) :
+            host.trackPluginStatusJson(*trackIndex);
+    }
     if (*operation == "unload_vst3") return host.unloadVst3Effect();
     if (*operation == "vst3_status") return host.vst3StatusJson();
     if (*operation == "unload_clap") return host.unloadClapEffect();
@@ -1030,6 +1127,7 @@ private:
     }
     if (*operation == "set_track") {
         const auto index = numberField<std::uint32_t>(line, "index");
+        const auto channelId = stringField(line, "trackId");
         const auto gain = numberField<float>(line, "gain");
         const auto pan = numberField<float>(line, "pan");
         const auto mute = booleanField(line, "mute");
@@ -1089,10 +1187,12 @@ private:
         }
         if (!index || !gain || !pan || !mute || !solo || !isBus || !outputBusIndex)
             return errorJson("set_track requires index, gain, pan, mute, solo, isBus and outputBusIndex");
+        if (line.find("\"trackId\"") != std::string_view::npos && !channelId)
+            return errorJson("set_track trackId is malformed");
         return host.setTrackMix(*index, *gain, *pan, *mute, *solo, reverb.value_or(false), delay.value_or(false), std::move(gainAutomation), std::move(panAutomation),
             equalizer.value_or(false), equalizerFrequencyHz, equalizerGainDb, equalizerQ, equalizerBands,
             compressor.value_or(false), compressorThresholdDb, compressorRatio, compressorAttackMs, compressorReleaseMs, compressorMakeupDb,
-            limiter.value_or(false), limiterCeilingDb, limiterReleaseMs, *isBus, *outputBusIndex);
+            limiter.value_or(false), limiterCeilingDb, limiterReleaseMs, *isBus, *outputBusIndex, channelId.value_or(""));
     }
     if (*operation == "add_clip") {
         const auto assetId = stringField(line, "assetId");

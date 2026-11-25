@@ -28,6 +28,20 @@ void require(const bool condition, const char* message) {
     }
 }
 
+struct TrackProcessorProbe {
+    std::array<std::size_t, 8> indices{};
+    std::size_t count{};
+    float multiplier{0.5F};
+};
+
+void applyTrackGainProcessor(void* context, const std::size_t trackIndex, float* samples,
+    const std::size_t frameCount, const std::uint64_t) noexcept {
+    auto& probe = *static_cast<TrackProcessorProbe*>(context);
+    if (probe.count < probe.indices.size()) probe.indices[probe.count] = trackIndex;
+    ++probe.count;
+    for (std::size_t sample = 0; sample < frameCount * 2; ++sample) samples[sample] *= probe.multiplier;
+}
+
 void testToneFrequencyAndStereoAlignment() {
     constexpr std::size_t kFrameCount = 48'000;
     constexpr std::uint32_t kChannels = 2;
@@ -267,6 +281,51 @@ void testTrackPeakMetersReportPostEffectPreMasterLevels() {
         "muted tracks read zero while active track peaks remain isolated");
     require(!sonora::audio::renderMixBlock(output, 1, 48'000.0, 0, project, &state, trackPeaks.data(), 1),
         "an undersized peak buffer is rejected before rendering");
+}
+
+void testTrackAudioProcessorRunsBeforeMasterAndUpdatesMeters() {
+    const float sample[]{1.0F};
+    const sonora::audio::PcmSourceView source{sample, 1, 1, 48'000.0};
+    sonora::audio::TrackMixSettings tracks[]{{0.5F, 0.0F, false, false}, {0.75F, 0.0F, false, false}};
+    const sonora::audio::AudioClipView clips[]{
+        {&source, 0, 0, 0, 1, 1.0, 1.0F, 0.0F},
+        {&source, 1, 0, 0, 1, 1.0, 1.0F, 0.0F},
+    };
+    const sonora::audio::ProjectMixView project{tracks, 2, clips, 2, 0.5F};
+    sonora::audio::ProjectMixState state;
+    require(sonora::audio::configureProjectMixState(state, project), "plugin track scratch is prepared before rendering");
+    TrackProcessorProbe probe;
+    std::array<float, 2> peaks{};
+    float output[2]{};
+    require(sonora::audio::renderMixBlock(output, 1, 48'000.0, 0, project, &state, peaks.data(), peaks.size(),
+        applyTrackGainProcessor, &probe), "track processor hook runs in the render path");
+    require(probe.count == 2 && probe.indices[0] == 0 && probe.indices[1] == 1,
+        "track processor receives each channel in stable track order");
+    require(std::abs(peaks[0] - 0.1767767F) < 1.0e-5F &&
+        std::abs(peaks[1] - 0.2651650F) < 1.0e-5F,
+        "track meter includes the inserted processor and remains pre-master");
+    require(std::abs(output[0] - 0.2209709F) < 1.0e-5F && std::abs(output[1] - output[0]) < 1.0e-6F,
+        "track processor output is mixed before master gain");
+}
+
+void testTrackAudioProcessorRunsBeforeBusRouting() {
+    const float sample[]{1.0F, 1.0F};
+    const sonora::audio::PcmSourceView source{sample, 1, 2, 48'000.0};
+    sonora::audio::TrackMixSettings tracks[]{{1.0F, 0.0F, false, false}, {1.0F, 0.0F, false, false}};
+    tracks[0].outputBusIndex = 1;
+    tracks[1].isBus = true;
+    const sonora::audio::AudioClipView clips[]{{&source, 0, 0, 0, 1, 1.0, 1.0F, 0.0F}};
+    const sonora::audio::ProjectMixView project{tracks, 2, clips, 1, 1.0F};
+    sonora::audio::ProjectMixState state;
+    require(sonora::audio::configureProjectMixState(state, project), "routed plugin scratch is prepared before rendering");
+    TrackProcessorProbe probe;
+    float output[2]{};
+    require(sonora::audio::renderMixBlock(output, 1, 48'000.0, 0, project, &state, nullptr, 0,
+        applyTrackGainProcessor, &probe), "track processor hook works through bus routing without meter output");
+    require(probe.count == 2 && probe.indices[0] == 0 && probe.indices[1] == 1,
+        "routed processor runs once on track then once on its bus");
+    require(std::abs(output[0] - 0.25F) < 1.0e-5F && std::abs(output[1] - 0.25F) < 1.0e-5F,
+        "plugin stages are applied before track-to-bus and bus-to-master sums");
 }
 
 void testInvalidProjectMixIsRejectedBeforeWriting() {
@@ -670,6 +729,8 @@ int main() {
     testInvalidPanAutomationIsRejectedBeforeWriting();
     testInvalidTrackGainAutomationIsRejectedBeforeWriting();
     testTrackPeakMetersReportPostEffectPreMasterLevels();
+    testTrackAudioProcessorRunsBeforeMasterAndUpdatesMeters();
+    testTrackAudioProcessorRunsBeforeBusRouting();
     testInvalidProjectMixIsRejectedBeforeWriting();
     testTrackDelayProducesDelayedTail();
     testTrackReverbProducesRoomTail();
@@ -689,6 +750,6 @@ int main() {
     testRealtimePluginAudioBlockQueue();
     testRealtimePluginAudioBlockQueueBackpressureAndOrder();
     testRealtimePluginAudioBlockQueueAcrossThreads();
-    std::cout << "33 native audio core tests passed\n";
+    std::cout << "35 native audio core tests passed\n";
     return EXIT_SUCCESS;
 }

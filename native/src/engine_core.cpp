@@ -60,7 +60,7 @@ bool mixMonoToStereo(
 
 bool configureProjectMixState(ProjectMixState& state, const ProjectMixView& project) noexcept;
 void resetProjectMixState(ProjectMixState& state) noexcept;
-static bool renderRoutedMixBlock(float*, std::size_t, double, std::uint64_t, const ProjectMixView&, ProjectMixState*, float*, std::size_t) noexcept;
+static bool renderRoutedMixBlock(float*, std::size_t, double, std::uint64_t, const ProjectMixView&, ProjectMixState*, float*, std::size_t, TrackAudioProcessor, void*) noexcept;
 
 bool renderMixBlock(
     float* output,
@@ -70,7 +70,9 @@ bool renderMixBlock(
     const ProjectMixView& project,
     ProjectMixState* state,
     float* trackPeaks,
-    const std::size_t trackPeakCount) noexcept {
+    const std::size_t trackPeakCount,
+    const TrackAudioProcessor trackProcessor,
+    void* const trackProcessorContext) noexcept {
     if (output == nullptr || !std::isfinite(outputSampleRate) || outputSampleRate <= 0.0 ||
         (project.trackCount > 0 && project.tracks == nullptr) || (project.clipCount > 0 && project.clips == nullptr) ||
         !std::isfinite(project.masterGain) || project.masterGain < 0.0F || project.masterGain > 4.0F ||
@@ -80,7 +82,7 @@ bool renderMixBlock(
 
     const bool hasRouting = project.trackCount > 0 && std::any_of(project.tracks, project.tracks + project.trackCount,
         [](const TrackMixSettings& track) { return track.isBus || track.outputBusIndex >= 0; });
-    if (hasRouting) return renderRoutedMixBlock(output, frameCount, outputSampleRate, firstProjectFrame, project, state, trackPeaks, trackPeakCount);
+    if (hasRouting) return renderRoutedMixBlock(output, frameCount, outputSampleRate, firstProjectFrame, project, state, trackPeaks, trackPeakCount, trackProcessor, trackProcessorContext);
 
     bool anySolo = false;
     bool hasEffects = false;
@@ -116,7 +118,8 @@ bool renderMixBlock(
     }
 
     const bool collectTrackPeaks = trackPeaks != nullptr;
-    if ((collectTrackPeaks && (trackPeakCount < project.trackCount || state == nullptr || state->maxBlockFrames == 0 ||
+    const bool collectTrackAudio = collectTrackPeaks || trackProcessor != nullptr;
+    if ((collectTrackAudio && ((collectTrackPeaks && trackPeakCount < project.trackCount) || state == nullptr || state->maxBlockFrames == 0 ||
         state->maxBlockFrames > state->meterScratch.max_size() / 2 || frameCount > state->maxBlockFrames ||
         project.trackCount > state->meterScratch.max_size() / (state->maxBlockFrames * 2) ||
         state->meterScratch.size() < project.trackCount * state->maxBlockFrames * 2)) ||
@@ -197,8 +200,8 @@ bool renderMixBlock(
     }
 
     std::fill_n(output, frameCount * 2, 0.0F);
-    if (collectTrackPeaks) {
-        std::fill_n(trackPeaks, project.trackCount, 0.0F);
+    if (collectTrackAudio) {
+        if (collectTrackPeaks) std::fill_n(trackPeaks, project.trackCount, 0.0F);
         for (std::size_t trackIndex = 0; trackIndex < project.trackCount; ++trackIndex) {
             auto* const trackOutput = state->meterScratch.data() + trackIndex * state->maxBlockFrames * 2;
             std::fill_n(trackOutput, frameCount * 2, 0.0F);
@@ -213,12 +216,12 @@ bool renderMixBlock(
         const auto* const source = clip.source;
         const double sourceStep = source->sampleRate / outputSampleRate * clip.playbackRate;
         const int effectSlot = hasEffects ? state->effectSlots[clip.trackIndex] : -1;
-        float* const destination = collectTrackPeaks
+        float* const destination = collectTrackAudio
             ? state->meterScratch.data() + clip.trackIndex * state->maxBlockFrames * 2
             : effectSlot >= 0
                 ? state->trackScratch.data() + static_cast<std::size_t>(effectSlot) * state->maxBlockFrames * 2
                 : output;
-        const float gain = (collectTrackPeaks ? 1.0F : effectSlot >= 0 ? 1.0F : project.masterGain) * clip.gain;
+        const float gain = (collectTrackAudio ? 1.0F : effectSlot >= 0 ? 1.0F : project.masterGain) * clip.gain;
         const auto clipEndFrame = clip.startFrame + clip.durationFrames;
         if (firstProjectFrame >= clipEndFrame || firstProjectFrame + frameCount <= clip.startFrame) continue;
 
@@ -291,7 +294,7 @@ bool renderMixBlock(
             if (!track.reverb && !track.delay && !track.equalizer && !track.compressor && !track.limiter) continue;
             const auto slot = static_cast<std::size_t>(state->effectSlots[trackIndex]);
             const auto& trackState = state->tracks[trackIndex];
-            float* const input = collectTrackPeaks
+            float* const input = collectTrackAudio
                 ? state->meterScratch.data() + trackIndex * state->maxBlockFrames * 2
                 : state->trackScratch.data() + slot * state->maxBlockFrames * 2;
             float peak = 0.0F;
@@ -376,18 +379,34 @@ bool renderMixBlock(
                     left *= mutableTrackState.limiterEnvelope;
                     right *= mutableTrackState.limiterEnvelope;
                 }
-                if (collectTrackPeaks) {
+                if (collectTrackAudio) {
                     input[frame * 2] = left;
                     input[frame * 2 + 1] = right;
                     peak = std::max({peak, std::abs(left), std::abs(right)});
                 }
+                if (!trackProcessor) {
+                    output[frame * 2] += left * project.masterGain;
+                    output[frame * 2 + 1] += right * project.masterGain;
+                }
+            }
+            if (collectTrackPeaks) trackPeaks[trackIndex] = peak;
+        }
+    }
+    if (trackProcessor) {
+        for (std::size_t trackIndex = 0; trackIndex < project.trackCount; ++trackIndex) {
+            auto* const input = state->meterScratch.data() + trackIndex * state->maxBlockFrames * 2;
+            trackProcessor(trackProcessorContext, trackIndex, input, frameCount, firstProjectFrame);
+            float peak = 0.0F;
+            for (std::size_t frame = 0; frame < frameCount; ++frame) {
+                const float left = input[frame * 2];
+                const float right = input[frame * 2 + 1];
+                peak = std::max({peak, std::abs(left), std::abs(right)});
                 output[frame * 2] += left * project.masterGain;
                 output[frame * 2 + 1] += right * project.masterGain;
             }
             if (collectTrackPeaks) trackPeaks[trackIndex] = peak;
         }
-    }
-    if (collectTrackPeaks) {
+    } else if (collectTrackPeaks) {
         for (std::size_t trackIndex = 0; trackIndex < project.trackCount; ++trackIndex) {
             const auto& track = project.tracks[trackIndex];
             if (track.reverb || track.delay || track.equalizer || track.compressor || track.limiter) continue;
@@ -414,7 +433,9 @@ static bool renderRoutedMixBlock(
     const ProjectMixView& project,
     ProjectMixState* state,
     float* trackPeaks,
-    const std::size_t trackPeakCount) noexcept {
+    const std::size_t trackPeakCount,
+    const TrackAudioProcessor trackProcessor,
+    void* const trackProcessorContext) noexcept {
     if (state == nullptr || !state->usesRouting || state->maxBlockFrames == 0 ||
         frameCount > state->maxBlockFrames || state->routedChannels.size() != project.trackCount ||
         (trackPeaks != nullptr && trackPeakCount < project.trackCount) ||
@@ -471,9 +492,14 @@ static bool renderRoutedMixBlock(
         if (track.isBus) continue;
         const auto busIndex = busIndexFor(trackIndex);
         const bool soloedDestination = busIndex < project.trackCount && project.tracks[busIndex].solo;
-        if (track.mute || (anySolo && !track.solo && !soloedDestination)) continue;
-
         auto& channel = state->routedChannels[trackIndex];
+        if (track.mute || (anySolo && !track.solo && !soloedDestination)) {
+            if (trackProcessor) {
+                std::fill_n(channel.outputScratch.data(), frameCount * 2, 0.0F);
+                trackProcessor(trackProcessorContext, trackIndex, channel.outputScratch.data(), frameCount, firstProjectFrame);
+            }
+            continue;
+        }
         const auto actualClipCount = channel.clips.size() - 1;
         const bool hasActiveClip = std::any_of(channel.clips.begin(), channel.clips.begin() + actualClipCount,
             [&](const AudioClipView& clip) {
@@ -499,6 +525,12 @@ static bool renderRoutedMixBlock(
                 isolated, channel.runtime.get(), trackPeaks != nullptr ? &peak : nullptr, trackPeaks != nullptr ? 1 : 0)) {
             return false;
         }
+        if (trackProcessor) {
+            trackProcessor(trackProcessorContext, trackIndex, channel.outputScratch.data(), frameCount, firstProjectFrame);
+            peak = 0.0F;
+            for (std::size_t sampleIndex = 0; sampleIndex < frameCount * 2; ++sampleIndex)
+                peak = std::max(peak, std::abs(channel.outputScratch[sampleIndex]));
+        }
         if (trackPeaks != nullptr) trackPeaks[trackIndex] = peak;
 
         float* const destination = busIndex < project.trackCount
@@ -523,9 +555,14 @@ static bool renderRoutedMixBlock(
                 }
             }
         }
-        if (bus.mute || (anySolo && !bus.solo && !soloedInput)) continue;
-
         auto& channel = state->routedChannels[busIndex];
+        if (bus.mute || (anySolo && !bus.solo && !soloedInput)) {
+            if (trackProcessor) {
+                std::fill_n(channel.outputScratch.data(), frameCount * 2, 0.0F);
+                trackProcessor(trackProcessorContext, busIndex, channel.outputScratch.data(), frameCount, firstProjectFrame);
+            }
+            continue;
+        }
         channel.busInputView.frameCount = state->maxBlockFrames;
         auto& inputClip = channel.clips.front();
         inputClip.source = &channel.busInputView;
@@ -544,6 +581,12 @@ static bool renderRoutedMixBlock(
         if (!renderMixBlock(channel.outputScratch.data(), frameCount, outputSampleRate, firstProjectFrame,
                 isolated, channel.runtime.get(), trackPeaks != nullptr ? &peak : nullptr, trackPeaks != nullptr ? 1 : 0)) {
             return false;
+        }
+        if (trackProcessor) {
+            trackProcessor(trackProcessorContext, busIndex, channel.outputScratch.data(), frameCount, firstProjectFrame);
+            peak = 0.0F;
+            for (std::size_t sampleIndex = 0; sampleIndex < frameCount * 2; ++sampleIndex)
+                peak = std::max(peak, std::abs(channel.outputScratch[sampleIndex]));
         }
         if (trackPeaks != nullptr) trackPeaks[busIndex] = peak;
         for (std::size_t sampleIndex = 0; sampleIndex < frameCount * 2; ++sampleIndex) {

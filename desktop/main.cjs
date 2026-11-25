@@ -151,7 +151,13 @@ async function loadNativeProject(project) {
     }
   }
   let automationPointCount = 0;
+  const channelIds = new Set();
   for (const track of project.tracks) {
+    if (track?.trackId !== undefined && (typeof track.trackId !== 'string' || track.trackId.length > 128 ||
+        (track.trackId && channelIds.has(track.trackId)))) {
+      return { ok: false, error: 'Идентификатор канала native-проекта некорректен или повторяется' };
+    }
+    if (track?.trackId) channelIds.add(track.trackId);
     if (!isFiniteRange(track?.gain, 0, 4) || !isFiniteRange(track?.pan, -1, 1) || typeof track.mute !== 'boolean' || typeof track.solo !== 'boolean' ||
         typeof track.isBus !== 'boolean' || !Number.isInteger(track.outputBusIndex) || track.outputBusIndex < -1 ||
         typeof track.reverb !== 'boolean' || typeof track.delay !== 'boolean' || typeof track.equalizer !== 'boolean' ||
@@ -199,7 +205,7 @@ async function loadNativeProject(project) {
   for (const [index, track] of project.tracks.entries()) {
     result = await requestAudioEngine('set_track', {
       index, gain: track.gain, pan: track.pan, mute: track.mute, solo: track.solo, reverb: track.reverb, delay: track.delay,
-      isBus: track.isBus, outputBusIndex: track.outputBusIndex,
+      isBus: track.isBus, outputBusIndex: track.outputBusIndex, trackId: track.trackId ?? '',
       equalizer: track.equalizer, equalizerFrequencyHz: track.equalizerFrequencyHz, equalizerGainDb: track.equalizerGainDb, equalizerQ: track.equalizerQ,
       compressor: track.compressor, compressorThresholdDb: track.compressorThresholdDb, compressorRatio: track.compressorRatio,
       compressorAttackMs: track.compressorAttackMs, compressorReleaseMs: track.compressorReleaseMs, compressorMakeupDb: track.compressorMakeupDb,
@@ -348,6 +354,28 @@ function registerAudioHandlers() {
   ipcMain.handle('native-vst3:realtime-status', event => trustedRenderer(event)
     ? requestAudioEngine('vst3_status')
     : { ok: false, error: 'Запрос отклонён' });
+
+  const validTrackIndex = trackIndex => Number.isInteger(trackIndex) && trackIndex >= 0 && trackIndex < MAX_NATIVE_PROJECT_TRACKS;
+  ipcMain.handle('native-track-plugin:load', (event, format, trackIndex, selectionToken) => {
+    if (!trustedRenderer(event)) return { ok: false, error: 'Запрос отклонён' };
+    if (!['clap', 'vst3'].includes(format) || !validTrackIndex(trackIndex) ||
+        typeof selectionToken !== 'string' || !/^[a-f0-9-]{36}$/i.test(selectionToken)) {
+      return { ok: false, error: 'Параметры вставки дорожки некорректны' };
+    }
+    const selection = (format === 'clap' ? clapSelections : vst3Selections).get(selectionToken);
+    if (!selection) return { ok: false, error: 'Сначала выберите локальный CLAP- или VST3-эффект' };
+    return requestAudioEngine(`load_track_${format}`, { trackIndex, path: selection.pluginPath });
+  });
+  ipcMain.handle('native-track-plugin:unload', (event, trackIndex) => {
+    if (!trustedRenderer(event)) return { ok: false, error: 'Запрос отклонён' };
+    if (!validTrackIndex(trackIndex)) return { ok: false, error: 'Индекс дорожки некорректен' };
+    return requestAudioEngine('unload_track_plugin', { trackIndex });
+  });
+  ipcMain.handle('native-track-plugin:status', (event, trackIndex) => {
+    if (!trustedRenderer(event)) return { ok: false, error: 'Запрос отклонён' };
+    if (!validTrackIndex(trackIndex)) return { ok: false, error: 'Индекс дорожки некорректен' };
+    return requestAudioEngine('track_plugin_status', { trackIndex });
+  });
 
   ipcMain.handle('native-clap:render', async (event, selectionToken, wavValue, values) => {
     if (!trustedRenderer(event)) return { ok: false, error: 'Запрос отклонён' };

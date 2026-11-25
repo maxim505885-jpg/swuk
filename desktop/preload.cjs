@@ -4,6 +4,10 @@ function validDeviceIndex(index) {
   return Number.isInteger(index) && index >= 0 && index <= 128;
 }
 
+function validTrackIndex(index) {
+  return Number.isInteger(index) && index >= 0 && index < 128;
+}
+
 function validAssetId(value) {
   return typeof value === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(value);
 }
@@ -57,6 +61,16 @@ contextBridge.exposeInMainWorld('sonoraNative', Object.freeze({
     : Promise.resolve({ ok: false, error: 'Некорректный идентификатор VST3' }),
   unloadRealtimeVst3Effect: () => ipcRenderer.invoke('native-vst3:unload-realtime'),
   realtimeVst3Status: () => ipcRenderer.invoke('native-vst3:realtime-status'),
+  loadTrackPlugin: (format, trackIndex, selectionToken) => ['clap', 'vst3'].includes(format) && validTrackIndex(trackIndex) &&
+      typeof selectionToken === 'string' && /^[\da-f-]{36}$/i.test(selectionToken)
+    ? ipcRenderer.invoke('native-track-plugin:load', format, trackIndex, selectionToken)
+    : Promise.resolve({ ok: false, error: 'Параметры вставки дорожки некорректны' }),
+  unloadTrackPlugin: trackIndex => validTrackIndex(trackIndex)
+    ? ipcRenderer.invoke('native-track-plugin:unload', trackIndex)
+    : Promise.resolve({ ok: false, error: 'Индекс дорожки некорректен' }),
+  trackPluginStatus: trackIndex => validTrackIndex(trackIndex)
+    ? ipcRenderer.invoke('native-track-plugin:status', trackIndex)
+    : Promise.resolve({ ok: false, error: 'Индекс дорожки некорректен' }),
   loadProject: project => ipcRenderer.invoke('native-audio:load-project', project),
   playProject: (deviceIndex, startFrame) => validDeviceIndex(deviceIndex) && Number.isSafeInteger(startFrame) && startFrame >= 0
     ? ipcRenderer.invoke('native-audio:play-project', deviceIndex, startFrame)
