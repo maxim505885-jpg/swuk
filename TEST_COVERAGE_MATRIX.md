@@ -1,6 +1,6 @@
 # TEST_COVERAGE_MATRIX
 
-Последняя полная проверка main: [Windows CI run #45625694716](https://github.com/maxim505885-jpg/swuk/actions/runs/45625694716), commit `e4af2373ca647fb69d11e513b6719ab4411cbdd9`. Кандидат PR #29 также прошёл [run #45629167866](https://github.com/maxim505885-jpg/swuk/actions/runs/45629167866) на head `d5f2c4f`; он добавляет native mixer benchmark к release gate. Это автоматические проверки на Windows `windows-latest`, не ручная приёмка на Windows 11.
+Текущее main-дерево commit `09d3635a` совпадает с проверенным PR-head, для которого прошёл полный Windows release gate [#45630452982](https://github.com/maxim505885-jpg/swuk/actions/runs/45630452982). Отдельные benchmark-метрики приведены по [run #45629167866](https://github.com/maxim505885-jpg/swuk/actions/runs/45629167866). Это автоматические проверки на Windows `windows-latest`, не ручная приёмка на Windows 11.
 
 | Область | Проверка в pipeline | Результат | Граница доказательства |
 |---|---|---|---|
