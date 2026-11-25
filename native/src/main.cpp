@@ -548,9 +548,7 @@ public:
         }
         if (builderTracks_.size() <= index) builderTracks_.resize(static_cast<std::size_t>(index) + 1);
         if (channelId.size() > 128) return errorJson("Track id exceeds the native channel limit");
-        if (channelId.size() > 128) return errorJson("Track id exceeds the native channel limit");
         builderTracks_[index] = {gain, pan, mute, solo, reverb, delay, std::move(gainAutomation), equalizer, equalizerFrequencyHz, equalizerGainDb, equalizerQ};
-        builderTracks_[index].channelId = channelId;
         builderTracks_[index].channelId = channelId;
         builderTracks_[index].panAutomation = std::move(panAutomation);
         builderTracks_[index].equalizerBands = equalizerBands;
@@ -1121,7 +1119,6 @@ private:
     if (*operation == "set_track") {
         const auto index = numberField<std::uint32_t>(line, "index");
         const auto channelId = stringField(line, "trackId");
-        const auto channelId = stringField(line, "trackId");
         const auto gain = numberField<float>(line, "gain");
         const auto pan = numberField<float>(line, "pan");
         const auto mute = booleanField(line, "mute");
@@ -1181,8 +1178,6 @@ private:
         }
         if (!index || !gain || !pan || !mute || !solo || !isBus || !outputBusIndex)
             return errorJson("set_track requires index, gain, pan, mute, solo, isBus and outputBusIndex");
-        if (line.find("\"trackId\"") != std::string_view::npos && !channelId)
-            return errorJson("set_track trackId is malformed");
         if (line.find("\"trackId\"") != std::string_view::npos && !channelId)
             return errorJson("set_track trackId is malformed");
         return host.setTrackMix(*index, *gain, *pan, *mute, *solo, reverb.value_or(false), delay.value_or(false), std::move(gainAutomation), std::move(panAutomation),
