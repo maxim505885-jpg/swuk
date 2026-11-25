@@ -143,16 +143,23 @@ async function loadNativeProject(project) {
           !isFiniteRange(value, index % 3 === 0 ? 20 : index % 3 === 1 ? -24 : 0.1, index % 3 === 0 ? 20_000 : index % 3 === 1 ? 24 : 18))) {
       return { ok: false, error: 'В native-проекте есть некорректный микшерный канал' };
     }
-    const points = track.gainAutomation ?? [];
-    if (!Array.isArray(points) || points.length > 8192) return { ok: false, error: 'Кривая громкости native-проекта слишком велика' };
-    let previousFrame = -1;
-    for (const point of points) {
-      if (!Number.isSafeInteger(point?.frame) || point.frame < 0 || point.frame <= previousFrame || !isFiniteRange(point.value, 0, 4)) {
-        return { ok: false, error: 'В native-проекте есть некорректная точка автоматизации' };
+    const validateLane = (points, minimum, maximum, label) => {
+      if (!Array.isArray(points) || points.length > 8192) return { ok: false, error: `Кривая ${label} native-проекта слишком велика` };
+      let previousFrame = -1;
+      for (const point of points) {
+        if (!Number.isSafeInteger(point?.frame) || point.frame < 0 || point.frame <= previousFrame || !isFiniteRange(point.value, minimum, maximum)) {
+          return { ok: false, error: `В native-проекте есть некорректная точка автоматизации ${label}` };
+        }
+        previousFrame = point.frame;
       }
-      previousFrame = point.frame;
-    }
-    automationPointCount += points.length;
+      return { ok: true };
+    };
+    const gainPoints = track.gainAutomation ?? [], panPoints = track.panAutomation ?? [];
+    const gainValidation = validateLane(gainPoints, 0, 4, 'громкости');
+    if (!gainValidation.ok) return gainValidation;
+    const panValidation = validateLane(panPoints, -1, 1, 'панорамы');
+    if (!panValidation.ok) return panValidation;
+    automationPointCount += gainPoints.length + panPoints.length;
     if (automationPointCount > 8192) return { ok: false, error: 'Количество точек автоматизации превышает лимит' };
   }
 
@@ -166,6 +173,7 @@ async function loadNativeProject(project) {
       equalizer: track.equalizer, equalizerFrequencyHz: track.equalizerFrequencyHz, equalizerGainDb: track.equalizerGainDb, equalizerQ: track.equalizerQ,
       equalizerBands: track.equalizerBands,
       gainAutomation: (track.gainAutomation ?? []).flatMap(point => [point.frame, point.value]),
+      panAutomation: (track.panAutomation ?? []).flatMap(point => [point.frame, point.value]),
     });
     if (!result.ok) return result;
   }

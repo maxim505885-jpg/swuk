@@ -47,15 +47,15 @@ export function sampleAutomation(points, beat, fallback = 0) {
   return ordered.at(-1).value;
 }
 
-export function flattenGainAutomation(automationClips, fallbackGain, bpm, sampleRate = 48_000) {
-  if (!Array.isArray(automationClips) || !Number.isFinite(fallbackGain) || fallbackGain < 0 || fallbackGain > 4 ||
+export function flattenGainAutomation(automationClips, fallbackGain, bpm, sampleRate = 48_000, minimum = 0, maximum = 4) {
+  if (!Array.isArray(automationClips) || !Number.isFinite(fallbackGain) || fallbackGain < minimum || fallbackGain > maximum ||
       !Number.isFinite(bpm) || bpm <= 0 || !Number.isSafeInteger(sampleRate) || sampleRate < 1) return null;
   const ordered = automationClips.map((clip, index) => ({ clip, index }))
     .sort((left, right) => left.clip?.startBeat - right.clip?.startBeat || left.index - right.index);
   if (ordered.some(({ clip }) => !Number.isFinite(clip?.startBeat) || clip.startBeat < 0 ||
       !Number.isFinite(clip?.lengthBeats) || clip.lengthBeats <= 0 || !Array.isArray(clip.points) || clip.points.length < 2 ||
       clip.points.some(point => !Number.isFinite(point?.beat) || point.beat < 0 || point.beat > clip.lengthBeats ||
-        !Number.isFinite(point?.value) || point.value < 0 || point.value > 4))) return null;
+        !Number.isFinite(point?.value) || point.value < minimum || point.value > maximum))) return null;
   const starts = ordered.filter((entry, index) => index === ordered.length - 1 ||
     ordered[index + 1].clip.startBeat !== entry.clip.startBeat);
   const events = new Map(), framesPerBeat = sampleRate * 60 / bpm;

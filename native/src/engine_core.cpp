@@ -92,15 +92,19 @@ bool renderMixBlock(
         }
         anySolo = anySolo || track.solo;
         hasEffects = hasEffects || track.reverb || track.delay || track.equalizer || track.compressor || track.limiter;
-        hasAutomation = hasAutomation || !track.gainAutomation.empty();
-        if (track.gainAutomation.size() > 8192) return false;
-        std::uint64_t previousFrame = 0;
-        bool firstPoint = true;
-        for (const auto& point : track.gainAutomation) {
-            if ((!firstPoint && point.frame <= previousFrame) || !std::isfinite(point.value) || point.value < 0.0F || point.value > 4.0F) return false;
-            previousFrame = point.frame;
-            firstPoint = false;
-        }
+        hasAutomation = hasAutomation || !track.gainAutomation.empty() || !track.panAutomation.empty();
+        const auto validAutomation = [](const std::vector<AutomationPoint>& points, const float minimum, const float maximum) noexcept {
+            if (points.size() > 8192) return false;
+            std::uint64_t previousFrame = 0;
+            bool firstPoint = true;
+            for (const auto& point : points) {
+                if ((!firstPoint && point.frame <= previousFrame) || !std::isfinite(point.value) || point.value < minimum || point.value > maximum) return false;
+                previousFrame = point.frame;
+                firstPoint = false;
+            }
+            return true;
+        };
+        if (!validAutomation(track.gainAutomation, 0.0F, 4.0F) || !validAutomation(track.panAutomation, -1.0F, 1.0F)) return false;
     }
 
     const bool collectTrackPeaks = trackPeaks != nullptr;
@@ -113,8 +117,9 @@ bool renderMixBlock(
         state->effectSlots.size() != project.trackCount || frameCount > state->maxBlockFrames)) return false;
     if (hasAutomation) {
         for (std::size_t trackIndex = 0; trackIndex < project.trackCount; ++trackIndex) {
-            const auto& points = project.tracks[trackIndex].gainAutomation;
-            if (!points.empty() && state->tracks[trackIndex].gainAutomationValues.size() < frameCount) return false;
+            const auto& settings = project.tracks[trackIndex];
+            if (!settings.gainAutomation.empty() && state->tracks[trackIndex].gainAutomationValues.size() < frameCount) return false;
+            if (!settings.panAutomation.empty() && state->tracks[trackIndex].panAutomationValues.size() < frameCount) return false;
         }
     }
     if (hasEffects) {
@@ -147,29 +152,30 @@ bool renderMixBlock(
 
     if (hasAutomation) {
         for (std::size_t trackIndex = 0; trackIndex < project.trackCount; ++trackIndex) {
-            const auto& points = project.tracks[trackIndex].gainAutomation;
-            if (points.empty()) continue;
-            auto& values = state->tracks[trackIndex].gainAutomationValues;
-            auto nextPoint = std::upper_bound(points.begin(), points.end(), firstProjectFrame,
-                [](const std::uint64_t frame, const AutomationPoint& point) { return frame < point.frame; });
-            std::size_t currentIndex = nextPoint == points.begin() ? points.size() : static_cast<std::size_t>(nextPoint - points.begin() - 1);
-            for (std::size_t frame = 0; frame < frameCount; ++frame) {
-                const auto projectFrame = firstProjectFrame + frame;
-                while (nextPoint != points.end() && nextPoint->frame <= projectFrame) {
-                    currentIndex = static_cast<std::size_t>(nextPoint - points.begin());
-                    ++nextPoint;
+            const auto renderAutomation = [&](const std::vector<AutomationPoint>& points, std::vector<float>& values, const float fallback) {
+                if (points.empty()) return;
+                auto nextPoint = std::upper_bound(points.begin(), points.end(), firstProjectFrame,
+                    [](const std::uint64_t frame, const AutomationPoint& point) { return frame < point.frame; });
+                std::size_t currentIndex = nextPoint == points.begin() ? points.size() : static_cast<std::size_t>(nextPoint - points.begin() - 1);
+                for (std::size_t frame = 0; frame < frameCount; ++frame) {
+                    const auto projectFrame = firstProjectFrame + frame;
+                    while (nextPoint != points.end() && nextPoint->frame <= projectFrame) {
+                        currentIndex = static_cast<std::size_t>(nextPoint - points.begin());
+                        ++nextPoint;
+                    }
+                    if (currentIndex == points.size()) values[frame] = fallback;
+                    else if (nextPoint == points.end()) values[frame] = points[currentIndex].value;
+                    else {
+                        const auto& start = points[currentIndex];
+                        const auto& end = *nextPoint;
+                        const float amount = static_cast<float>(projectFrame - start.frame) / static_cast<float>(end.frame - start.frame);
+                        values[frame] = start.value + (end.value - start.value) * amount;
+                    }
                 }
-                if (currentIndex == points.size()) {
-                    values[frame] = project.tracks[trackIndex].gain;
-                } else if (nextPoint == points.end()) {
-                    values[frame] = points[currentIndex].value;
-                } else {
-                    const auto& start = points[currentIndex];
-                    const auto& end = *nextPoint;
-                    const float amount = static_cast<float>(projectFrame - start.frame) / static_cast<float>(end.frame - start.frame);
-                    values[frame] = start.value + (end.value - start.value) * amount;
-                }
-            }
+            };
+            const auto& settings = project.tracks[trackIndex];
+            renderAutomation(settings.gainAutomation, state->tracks[trackIndex].gainAutomationValues, settings.gain);
+            renderAutomation(settings.panAutomation, state->tracks[trackIndex].panAutomationValues, settings.pan);
         }
     }
 
@@ -219,6 +225,7 @@ bool renderMixBlock(
             float left{};
             float right{};
             const float trackGain = track.gainAutomation.empty() ? track.gain : state->tracks[clip.trackIndex].gainAutomationValues[frame];
+            const float trackPan = track.panAutomation.empty() ? track.pan : state->tracks[clip.trackIndex].panAutomationValues[frame];
             float fadeGain = 1.0F;
             if (clip.fadeInFrames > 0 && relativeFrame < clip.fadeInFrames) {
                 fadeGain = std::min(fadeGain, static_cast<float>(relativeFrame) / static_cast<float>(clip.fadeInFrames));
@@ -230,7 +237,7 @@ bool renderMixBlock(
             const float frameGain = gain * trackGain * fadeGain;
             if (source->channels == 1) {
                 const float mono = sampleAt(sourceFrame, 0) * frameGain;
-                const float combinedPan = std::clamp(clip.pan + track.pan, -1.0F, 1.0F);
+                const float combinedPan = std::clamp(clip.pan + trackPan, -1.0F, 1.0F);
                 const float angle = (combinedPan + 1.0F) * std::numbers::pi_v<float> * 0.25F;
                 left = mono * std::cos(angle);
                 right = mono * std::sin(angle);
@@ -242,7 +249,7 @@ bool renderMixBlock(
                     else if (pan > 0.0F) leftSample *= 1.0F - pan;
                 };
                 applyBalance(left, right, clip.pan);
-                applyBalance(left, right, track.pan);
+                applyBalance(left, right, trackPan);
             }
 
             destination[frame * 2] += left;
@@ -416,6 +423,7 @@ bool configureProjectMixState(ProjectMixState& state, const ProjectMixView& proj
                 }
             }
             if (!settings.gainAutomation.empty()) trackState.gainAutomationValues.assign(prepared.maxBlockFrames, settings.gain);
+            if (!settings.panAutomation.empty()) trackState.panAutomationValues.assign(prepared.maxBlockFrames, settings.pan);
             if (!settings.reverb && !settings.delay && !settings.equalizer && !settings.compressor && !settings.limiter) continue;
             prepared.effectSlots[index] = static_cast<int>(effectCount++);
             if (settings.reverb) {

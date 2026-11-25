@@ -34,7 +34,7 @@ test('project validator saves bounded, ordered track-volume automation points', 
   assert.equal(validateProjectDocument(project({ tracks: [{ id: 'track-1', type: 'audio', clips: [outOfRange] }] })).code, 'invalid-automation');
   const unsorted = structuredClone(automation); unsorted.points.reverse();
   assert.equal(validateProjectDocument(project({ tracks: [{ id: 'track-1', type: 'audio', clips: [unsorted] }] })).code, 'invalid-automation');
-  const missingTarget = structuredClone(automation); missingTarget.target = 'pan';
+  const missingTarget = structuredClone(automation); missingTarget.target = 'unknown';
   assert.equal(validateProjectDocument(project({ tracks: [{ id: 'track-1', type: 'audio', clips: [missingTarget] }] })).code, 'invalid-automation');
 });
 
@@ -205,4 +205,15 @@ test('project validator persists bounded tempo-stretch metadata only with its re
   assert.equal(validateProjectDocument(invalidRatio).code, 'invalid-clips');
   const missingRender = structuredClone(value); missingRender.tracks[0].clips[0].renderedAssetId = 'missing';
   assert.equal(validateProjectDocument(missingRender).code, 'invalid-clips');
+});
+
+test('project validator persists pan automation and rejects values outside the pan range', () => {
+  const valid = project({ tracks: [{ id: 'track-1', type: 'audio', clips: [{
+    id: 'clip-pan-auto', kind: 'automation', target: 'pan', startBeat: 0, lengthBeats: 4,
+    points: [{ beat: 0, value: -1 }, { beat: 4, value: 1 }],
+  }] }] });
+  assert.equal(validateProjectDocument(valid).ok, true);
+  const invalid = structuredClone(valid);
+  invalid.tracks[0].clips[0].points[0].value = -1.1;
+  assert.equal(validateProjectDocument(invalid).code, 'invalid-automation');
 });

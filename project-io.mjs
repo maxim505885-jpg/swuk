@@ -124,8 +124,9 @@ export function validateProjectDocument(data, limits = PROJECT_LIMITS) {
           eventCount += row.hits.length;
         }
       } else if (clip.kind === 'automation') {
-        if (clip.target !== 'volume' || !Array.isArray(clip.points) || clip.points.length < 2 || clip.points.length > 8192 || clip.points.length > limits.events - eventCount ||
-            clip.points.some((point, index) => !plainObject(point) || !finiteBetween(point.beat, 0, clip.lengthBeats) || !finiteBetween(point.value, 0, 1.2) ||
+        const valueRange = clip.target === 'volume' ? [0, 1.2] : clip.target === 'pan' ? [-1, 1] : null;
+        if (!valueRange || !Array.isArray(clip.points) || clip.points.length < 2 || clip.points.length > 8192 || clip.points.length > limits.events - eventCount ||
+            clip.points.some((point, index) => !plainObject(point) || !finiteBetween(point.beat, 0, clip.lengthBeats) || !finiteBetween(point.value, valueRange[0], valueRange[1]) ||
               (index > 0 && point.beat <= clip.points[index - 1].beat))) return { ok: false, code: 'invalid-automation' };
         eventCount += clip.points.length;
       } else if (!idValue(clip.assetId) || !assetIds.has(clip.assetId) ||

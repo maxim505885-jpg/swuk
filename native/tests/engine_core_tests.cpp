@@ -159,6 +159,44 @@ void testTrackGainAutomationInterpolatesAcrossBlocksAndSeeks() {
         "linear automation remains continuous across blocks and holds its last value");
 }
 
+void testTrackPanAutomationInterpolatesAcrossBlocksAndSeeks() {
+    const float samples[]{1.0F, 1.0F, 1.0F, 1.0F, 1.0F, 1.0F};
+    const sonora::audio::PcmSourceView source{samples, 6, 1, 48'000.0};
+    sonora::audio::TrackMixSettings tracks[]{{1.0F, 0.0F, false, false}};
+    tracks[0].panAutomation = {{2, -1.0F}, {4, 1.0F}};
+    const sonora::audio::AudioClipView clips[]{{&source, 0, 0, 0, 6, 1.0, 1.0F, 0.0F}};
+    const sonora::audio::ProjectMixView project{tracks, 1, clips, 1, 1.0F};
+    sonora::audio::ProjectMixState state;
+    require(sonora::audio::configureProjectMixState(state, project), "pan automation scratch is prepared off the callback");
+    float output[12]{};
+    require(sonora::audio::renderMixBlock(output, 3, 48'000.0, 0, project, &state), "first pan automation block renders");
+    require(std::abs(output[0] - 0.7071068F) < 1.0e-5F && std::abs(output[1] - output[0]) < 1.0e-5F,
+        "static center pan applies before the first automation point");
+    require(std::abs(output[4] - 1.0F) < 1.0e-5F && std::abs(output[5]) < 1.0e-5F,
+        "pan automation reaches full left at its first point");
+    require(sonora::audio::renderMixBlock(output, 3, 48'000.0, 3, project, &state), "seeking into a pan automation segment renders");
+    require(std::abs(output[0] - 0.7071068F) < 1.0e-5F && std::abs(output[1] - output[0]) < 1.0e-5F,
+        "pan automation interpolates continuously across blocks");
+    require(std::abs(output[4]) < 1.0e-5F && std::abs(output[5] - 1.0F) < 1.0e-5F,
+        "pan automation reaches and holds full right");
+}
+
+void testInvalidPanAutomationIsRejectedBeforeWriting() {
+    const float sample[]{1.0F};
+    const sonora::audio::PcmSourceView source{sample, 1, 1, 48'000.0};
+    sonora::audio::TrackMixSettings tracks[]{{}};
+    tracks[0].panAutomation = {{2, 0.8F}, {1, -0.2F}};
+    const sonora::audio::AudioClipView clips[]{{&source, 0, 0, 0, 1, 1.0, 1.0F, 0.0F}};
+    const sonora::audio::ProjectMixView project{tracks, 1, clips, 1, 1.0F};
+    sonora::audio::ProjectMixState state;
+    require(sonora::audio::configureProjectMixState(state, project), "pan automation state prepares before validation");
+    float output[]{0.25F, -0.5F};
+    require(!sonora::audio::renderMixBlock(output, 1, 48'000.0, 0, project, &state), "out-of-order pan automation is rejected");
+    require(output[0] == 0.25F && output[1] == -0.5F, "invalid pan automation leaves output untouched");
+    tracks[0].panAutomation = {{0, 1.1F}};
+    require(!sonora::audio::renderMixBlock(output, 1, 48'000.0, 0, project, &state), "pan automation outside [-1, 1] is rejected");
+}
+
 void testInvalidTrackGainAutomationIsRejectedBeforeWriting() {
     const float sample[]{1.0F};
     const sonora::audio::PcmSourceView source{sample, 1, 1, 48'000.0};
@@ -476,6 +514,8 @@ int main() {
     testProjectSampleRateAndPlaybackRate();
     testProjectSoloAndMute();
     testTrackGainAutomationInterpolatesAcrossBlocksAndSeeks();
+    testTrackPanAutomationInterpolatesAcrossBlocksAndSeeks();
+    testInvalidPanAutomationIsRejectedBeforeWriting();
     testInvalidTrackGainAutomationIsRejectedBeforeWriting();
     testTrackPeakMetersReportPostEffectPreMasterLevels();
     testInvalidProjectMixIsRejectedBeforeWriting();
@@ -490,6 +530,6 @@ int main() {
     testCaptureRingReportsBackpressureAndHonorsFrameLimit();
     testCaptureRecorderWritesFinalizedPcmWave();
     testSpectrumAnalyzerFindsToneAndResets();
-    std::cout << "24 native audio core tests passed\n";
+    std::cout << "26 native audio core tests passed\n";
     return EXIT_SUCCESS;
 }
