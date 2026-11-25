@@ -20,13 +20,16 @@ function harness(outputLength = 60000) {
     }
     async startRendering() { calls.rendered = true; return { ...rendered, length: calls.context.length, numberOfChannels: calls.context.channels, sampleRate: calls.context.sampleRate }; }
   }
-  const loadFactory = async () => async (context, options) => {
-    calls.options = options;
-    return {
-      async addBuffers(channels) { calls.buffers = channels; },
-      connect(destination) { calls.destination = destination; },
-      async start(...args) { calls.start = args; },
+  const loadFactory = async () => {
+    const factory = async (context, options) => {
+      calls.options = options; calls.moduleUrl = factory.moduleUrl;
+      return {
+        async addBuffers(channels) { calls.buffers = channels; },
+        connect(destination) { calls.destination = destination; },
+        async start(...args) { calls.start = args; },
+      };
     };
+    return factory;
   };
   return { calls, rendered, FakeOfflineAudioContext, loadFactory };
 }
@@ -37,6 +40,7 @@ test('Signalsmith renderer schedules stretch ratio and preserves source channel 
   assert.equal(h.calls.context.channels, 2);
   assert.equal(h.calls.context.length, 60000);
   assert.deepEqual(h.calls.options, { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2] });
+  assert.match(h.calls.moduleUrl, /native\/vendor\/signalsmith-stretch\/web\/release\/SignalsmithStretch\.mjs$/);
   assert.deepEqual(h.calls.start, [0, 0, 1.25, .8, 0]);
   assert.equal(h.calls.buffers.length, 2);
   assert.notEqual(h.calls.buffers[0].buffer, input.data[0].buffer);

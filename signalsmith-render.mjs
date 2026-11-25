@@ -28,6 +28,7 @@ export async function renderTempoStretch(audioBuffer, ratio, options = {}) {
   const module = await (options.loadFactory || (() => import('./native/vendor/signalsmith-stretch/web/release/SignalsmithStretch.mjs')))();
   const createStretch = typeof module === 'function' ? module : module?.default;
   if (typeof createStretch !== 'function') throw new Error('Signalsmith Stretch module could not be loaded');
+  createStretch.moduleUrl = options.moduleUrl || new URL('./native/vendor/signalsmith-stretch/web/release/SignalsmithStretch.mjs', import.meta.url).href;
   const stretch = await createStretch(context, {
     numberOfInputs: 0,
     numberOfOutputs: 1,
