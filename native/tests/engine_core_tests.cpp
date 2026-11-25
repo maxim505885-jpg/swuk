@@ -352,6 +352,29 @@ void testTrackCompressorReducesSignalAboveThreshold() {
     require(untouched[0] == 0.25F && untouched[1] == -0.5F, "invalid compressor settings leave output untouched");
 }
 
+void testTrackLimiterCapsOutputAtConfiguredCeilingAndRejectsInvalidSettings() {
+    constexpr std::size_t frameCount = 4096;
+    std::vector<float> samples(frameCount * 2, 0.8F);
+    const sonora::audio::PcmSourceView source{samples.data(), frameCount, 2, 48'000.0};
+    sonora::audio::TrackMixSettings track{1.0F, 0.0F, false, false};
+    track.limiter = true; track.limiterCeilingDb = -6.0F; track.limiterReleaseMs = 80.0F;
+    const sonora::audio::AudioClipView clip{&source, 0, 0, 0, frameCount, 1.0, 1.0F, 0.0F};
+    const sonora::audio::ProjectMixView project{&track, 1, &clip, 1, 1.0F};
+    sonora::audio::ProjectMixState state;
+    require(sonora::audio::configureProjectMixState(state, project), "limiter runtime is prepared before audio rendering");
+    std::vector<float> output(frameCount * 2);
+    require(sonora::audio::renderMixBlock(output.data(), frameCount, 48'000.0, 0, project, &state), "limiter processes audio");
+    const float ceiling = std::pow(10.0F, -6.0F / 20.0F);
+    float peak = 0.0F;
+    for (const float sample : output) peak = std::max(peak, std::abs(sample));
+    require(peak <= ceiling + 1.0e-5F && peak > ceiling - 1.0e-5F, "limiter clamps the signal to its configured ceiling");
+    track.limiterCeilingDb = 1.0F;
+    std::array<float, 2> untouched{0.25F, -0.5F};
+    require(!sonora::audio::renderMixBlock(untouched.data(), 1, 48'000.0, 0, project, &state),
+        "limiter rejects a ceiling above 0 dB");
+    require(untouched[0] == 0.25F && untouched[1] == -0.5F, "invalid limiter settings leave output untouched");
+}
+
 void testEffectsRequirePreallocatedRuntimeBeforeWriting() {
     const float impulse[]{1.0F};
     const sonora::audio::PcmSourceView source{impulse, 1, 1, 48'000.0};
@@ -437,10 +460,11 @@ int main() {
     testParametricEqualizerBoostsCenterFrequencyAndRejectsInvalidSettings();
     testSevenParametricEqualizerBandsShapeTheirOwnFrequencies();
     testTrackCompressorReducesSignalAboveThreshold();
+    testTrackLimiterCapsOutputAtConfiguredCeilingAndRejectsInvalidSettings();
     testEffectsRequirePreallocatedRuntimeBeforeWriting();
     testCaptureRingChannelModes();
     testCaptureRingReportsBackpressureAndHonorsFrameLimit();
     testCaptureRecorderWritesFinalizedPcmWave();
-    std::cout << "22 native audio core tests passed\n";
+    std::cout << "23 native audio core tests passed\n";
     return EXIT_SUCCESS;
 }
