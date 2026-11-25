@@ -52,7 +52,7 @@ contextBridge.exposeInMainWorld('sonoraNative', Object.freeze({
     ? ipcRenderer.invoke('native-clap:render', selectionToken, wavBytes, values)
     : Promise.resolve({ ok: false, error: 'Некорректный WAV для обработки CLAP' }),
   inspectVst3Effect: () => ipcRenderer.invoke('native-vst3:inspect'),
-  loadRealtimeVst3Effect: selectionToken => typeof selectionToken === 'string' && /^[\\da-f-]{36}$/i.test(selectionToken)
+  loadRealtimeVst3Effect: selectionToken => typeof selectionToken === 'string' && /^[\da-f-]{36}$/i.test(selectionToken)
     ? ipcRenderer.invoke('native-vst3:load-realtime', selectionToken)
     : Promise.resolve({ ok: false, error: 'Некорректный идентификатор VST3' }),
   unloadRealtimeVst3Effect: () => ipcRenderer.invoke('native-vst3:unload-realtime'),
