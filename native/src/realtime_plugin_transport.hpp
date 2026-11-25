@@ -22,6 +22,7 @@ struct AudioBlock {
     std::uint64_t sequence{};
     std::uint32_t frameCount{};
     std::uint64_t projectFrame{};
+    std::uint64_t steadyTime{};
     std::array<float, kPluginAudioBlockSamples> samples{};
 };
 
@@ -35,7 +36,8 @@ public:
         const std::uint64_t sequence,
         const std::span<const float> interleavedStereo,
         const std::uint32_t frameCount,
-        const std::uint64_t projectFrame = 0) noexcept {
+        const std::uint64_t projectFrame = 0,
+        const std::uint64_t steadyTime = 0) noexcept {
         if (frameCount == 0 || frameCount > kPluginAudioBlockFrames ||
             interleavedStereo.size() != static_cast<std::size_t>(frameCount) * kPluginAudioChannels) {
             return false;
@@ -48,6 +50,7 @@ public:
         block.sequence = sequence;
         block.frameCount = frameCount;
         block.projectFrame = projectFrame;
+        block.steadyTime = steadyTime;
         for (std::size_t index = 0; index < interleavedStereo.size(); ++index) block.samples[index] = interleavedStereo[index];
         writeIndex_.store(write + 1, std::memory_order_release);
         return true;
@@ -84,7 +87,7 @@ enum class HostStatus : std::uint32_t {
 
 struct SharedTransport {
     static constexpr std::uint32_t kMagic = 0x534F4E50U; // "SONP"
-    static constexpr std::uint32_t kVersion = 1;
+    static constexpr std::uint32_t kVersion = 2;
 
     std::uint32_t magic{kMagic};
     std::uint32_t version{kVersion};
@@ -97,3 +100,4 @@ struct SharedTransport {
 };
 
 } // namespace sonora::plugin
+
