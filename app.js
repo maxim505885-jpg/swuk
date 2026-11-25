@@ -1,6 +1,6 @@
 import { beatFromRulerPointer, flattenGainAutomation, normalizeLoopRange, normalizeTrackName, projectRenderDurationSeconds, sampleAutomation, splitAudioClip, splitSequencerEvents, wrapLoopBeat } from './arrangement-core.mjs?v=7';
-import { drumHitOccurs, instrumentWaveAt, normalizeDrumRowSettings, normalizeSynthSettings, renderSequencedClip as renderSequencedPcm } from './sequencer-audio.mjs?v=5';
-import { createProjectDocument, PROJECT_LIMITS, validateProjectDocument } from './project-io.mjs?v=4';
+import { drumHitOccurs, instrumentWaveAt, normalizeDrumRowSettings, normalizeDrumStepSettings, normalizeSynthSettings, renderSequencedClip as renderSequencedPcm } from './sequencer-audio.mjs?v=6';
+import { createProjectDocument, PROJECT_LIMITS, validateProjectDocument } from './project-io.mjs?v=5';
 import { normalizeTheme, readTheme, THEMES, THEME_KEY } from './theme-core.mjs';
 import { analyzeMeter, presentMeter } from './audio-meter.mjs?v=1';
 import { sampleWaveformPeaks } from './waveform-core.mjs?v=2';
@@ -831,7 +831,7 @@ function createClipElement(clip, track) {
     for (let i = 0; i < 16; i++) {
       const bar = document.createElement('i');
       const hits = (clip.steps || []).reduce((total, row, rowIndex) => {
-        const { probability, ratchets } = normalizeDrumRowSettings(row);
+        const { probability, ratchets } = normalizeDrumStepSettings(row, i);
         return total + row.hits.filter(hit => hit === i && drumHitOccurs(clip.id, rowIndex, hit, probability)).length * ratchets;
       }, 0);
       bar.style.height = `${5 + hits * 4}px`; preview.append(bar);
@@ -1097,8 +1097,37 @@ function renderEditor() {
     eyebrow.textContent = 'СЕКВЕНСОР'; title.textContent = 'Шаговый секвенсор'; actions.innerHTML = '<button class="button quiet compact" id="createPatternBtn">＋ Ритм-партия</button><button class="button quiet compact" id="createNotesBtn">＋ MIDI-партия</button>'; bindEditorActions();
     const clip = selected.clip?.kind === 'drums' ? selected.clip : track?.clips.find(item => item.kind === 'drums');
     if (!clip) { body.innerHTML = '<div class="empty-editor"><div class="empty-editor-copy"><strong>Соберите ритм по шагам</strong><p>Каждая ячейка — шестнадцатая доля. Готовый ритм можно услышать и изменить на шкале.</p></div><button class="quick-chip" id="emptyPatternBtn">Создать ритм-партию</button></div>'; $('#emptyPatternBtn')?.addEventListener('click', createDrumPattern); return; }
-    body.innerHTML = '<div class="step-grid" id="stepGrid"></div>'; const grid = $('#stepGrid');
-    for (const row of clip.steps) {
+    body.innerHTML = '<div class="step-editor-controls"><label>ШАГ<select id="stepEditStep" aria-label="Выбранный шаг"></select></label><label>ДОРОЖКА<select id="stepEditRow" aria-label="Дорожка шага"></select></label><label>ШАНС<select id="stepEditProbability" aria-label="Вероятность выбранного шага"><option value="">Как в дорожке</option></select></label><label>ПОВТОРЫ<select id="stepEditRatchets" aria-label="Повторы выбранного шага"><option value="">Как в дорожке</option></select></label></div><div class="step-grid" id="stepGrid"></div>'; const grid = $('#stepGrid');
+    const stepRowSelect = $('#stepEditRow'), stepNumber = $('#stepEditStep'), stepProbability = $('#stepEditProbability'), stepRatchets = $('#stepEditRatchets');
+    for (const [index, row] of clip.steps.entries()) stepRowSelect.append(new Option(row.name, String(index)));
+    for (let index = 0; index < 16; index++) stepNumber.append(new Option(String(index + 1), String(index + 1)));
+    stepProbability.insertAdjacentHTML('beforeend', Array.from({ length: 21 }, (_, index) => { const value = index / 20; return '<option value="' + value.toFixed(2) + '">' + (index * 5) + '%</option>'; }).join(''));
+    stepRatchets.insertAdjacentHTML('beforeend', Array.from({ length: 8 }, (_, index) => '<option value="' + (index + 1) + '">' + (index + 1) + '×</option>').join(''));
+    let selectedRowIndex = 0, selectedStep = clip.steps[0]?.hits[0] ?? 0;
+    const updateStepControls = () => {
+      const row = clip.steps[selectedRowIndex]; if (!row) return;
+      const override = row.stepOverrides?.[String(selectedStep)] || {};
+      stepRowSelect.value = String(selectedRowIndex); stepNumber.value = String(selectedStep + 1);
+      stepProbability.value = override.probability === undefined ? '' : String(override.probability);
+      stepRatchets.value = override.ratchets === undefined ? '' : String(override.ratchets);
+    };
+    const updateStepOverride = (key, value) => {
+      const row = clip.steps[selectedRowIndex]; if (!row) return;
+      row.stepOverrides ||= {};
+      const settings = { ...(row.stepOverrides[String(selectedStep)] || {}) };
+      if (value === '') delete settings[key]; else settings[key] = Number(value);
+      if (Object.keys(settings).length) row.stepOverrides[String(selectedStep)] = settings;
+      else delete row.stepOverrides[String(selectedStep)];
+      if (!Object.keys(row.stepOverrides).length) delete row.stepOverrides;
+      markProjectDirty(); restartProjectPlaybackIfActive(); renderTimeline();
+    };
+    stepRowSelect.addEventListener('change', () => { selectedRowIndex = Number(stepRowSelect.value); updateStepControls(); });
+    stepNumber.addEventListener('change', () => { selectedStep = Number(stepNumber.value) - 1; grid.querySelectorAll('.selected-step').forEach(selected => selected.classList.remove('selected-step')); const selectedCell = grid.querySelectorAll('.step-cell')[selectedStep]; selectedCell?.classList.add('selected-step'); updateStepControls(); });
+    stepProbability.addEventListener('focus', recordUndo, { once: true });
+    stepProbability.addEventListener('change', () => updateStepOverride('probability', stepProbability.value));
+    stepRatchets.addEventListener('focus', recordUndo, { once: true });
+    stepRatchets.addEventListener('change', () => updateStepOverride('ratchets', stepRatchets.value));
+    for (const [rowIndex, row] of clip.steps.entries()) {
       row.velocity = clamp(Number(row.velocity ?? .78), 0, 1);
       const rowSettings = normalizeDrumRowSettings(row);
       const label = document.createElement('label'); label.className = 'step-label';
@@ -1122,10 +1151,11 @@ function renderEditor() {
       for (let step = 0; step < 16; step++) {
         const active = row.hits.includes(step), cell = document.createElement('button'); cell.className = `step-cell ${active ? 'active' : ''}`;
         cell.setAttribute('aria-label', `${row.name}, шаг ${step + 1}`); cell.setAttribute('aria-pressed', String(active));
-        cell.addEventListener('click', () => { const adding = !row.hits.includes(step); if (adding && !canAddEvents(1)) return; recordUndo(); row.hits = adding ? [...row.hits, step].sort((a, b) => a - b) : row.hits.filter(hit => hit !== step); const enabled = row.hits.includes(step); cell.classList.toggle('active', enabled); cell.setAttribute('aria-pressed', String(enabled)); renderTimeline(); });
+        cell.addEventListener('click', () => { const adding = !row.hits.includes(step); if (adding && !canAddEvents(1)) return; recordUndo(); row.hits = adding ? [...row.hits, step].sort((a, b) => a - b) : row.hits.filter(hit => hit !== step); selectedRowIndex = rowIndex; selectedStep = step; updateStepControls(); grid.querySelectorAll('.selected-step').forEach(selected => selected.classList.remove('selected-step')); cell.classList.add('selected-step'); const enabled = row.hits.includes(step); cell.classList.toggle('active', enabled); cell.setAttribute('aria-pressed', String(enabled)); renderTimeline(); });
         grid.append(cell);
       }
     }
+    updateStepControls();
     return;
   }
   if (state.view === 'piano') {
@@ -2018,8 +2048,8 @@ function scheduleProject(context, fromBeat = 0, destination = context.destinatio
       if (clipEnd <= fromBeat) continue;
       if (clip.kind === 'drums') {
         for (const [rowIndex, row] of (clip.steps || []).entries()) {
-          const { probability, ratchets } = normalizeDrumRowSettings(row);
           for (const hit of row.hits) {
+            const { probability, ratchets } = normalizeDrumStepSettings(row, hit);
             if (!drumHitOccurs(clip.id, rowIndex, hit, probability)) continue;
             const beat = clip.startBeat + hit / 4, sourceBuffer = createSampleBuffer(row.kind, context);
             for (let ratchet = 0; ratchet < ratchets; ratchet++) {

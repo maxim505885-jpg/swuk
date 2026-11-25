@@ -462,7 +462,9 @@ try {
   await evaluate("document.querySelector('#inspectorOpenEditorBtn').click()");
   await waitUntil(() => evaluate("Boolean(document.querySelector('.step-probability') && document.querySelector('.step-ratchets'))"), Boolean, 'probability and ratchet controls');
   const stepControls = await evaluate("(() => { const chance=document.querySelector('.step-probability'),repeat=document.querySelector('.step-ratchets'); chance.value='0.55';chance.dispatchEvent(new Event('input',{bubbles:true}));chance.dispatchEvent(new Event('change',{bubbles:true}));repeat.value='4';repeat.dispatchEvent(new Event('change',{bubbles:true}));return {chance:document.querySelector('.step-probability-value').textContent,repeat:repeat.value+'×'}; })()");
-  assert.deepEqual(stepControls, { chance: '55%', repeat: '4×' }, 'step probability and ratchet controls update their displayed values');
+  assert.deepEqual(stepControls, { chance: '55%', repeat: '4×' }, 'row defaults remain editable');
+  const perStepControls = await evaluate("(() => { const cell=document.querySelector('.step-cell');cell.click();const step=document.querySelector('#stepEditStep'),chance=document.querySelector('#stepEditProbability'),repeat=document.querySelector('#stepEditRatchets');chance.value='0.25';chance.dispatchEvent(new Event('change',{bubbles:true}));repeat.value='3';repeat.dispatchEvent(new Event('change',{bubbles:true}));return {step:step.value,chance:chance.value,repeat:repeat.value}; })()");
+  assert.deepEqual(perStepControls, { step: '1', chance: '0.25', repeat: '3' }, 'selected step probability and ratchets can override row defaults');
   assert.deepEqual(exceptions, [], 'step sequencer rendering and controls must not throw renderer exceptions');
   const pianoProject = structuredClone(largeProject);
   pianoProject.tracks.forEach(track => { track.clips = []; });
