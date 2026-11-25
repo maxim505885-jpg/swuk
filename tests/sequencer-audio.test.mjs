@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { instrumentWaveAt, normalizeSynthSettings, renderSequencedClip } from '../sequencer-audio.mjs';
+import { drumHitOccurs, instrumentWaveAt, normalizeDrumRowSettings, normalizeSynthSettings, renderSequencedClip } from '../sequencer-audio.mjs';
 
 test('instrument waveforms are distinct and match the built-in timbre definitions', () => {
   assert.ok(Math.abs(instrumentWaveAt('soft-keys', .25) - .88) < 1e-6);
@@ -69,6 +69,34 @@ test('sequencer renderer rejects malformed or unbounded patterns', () => {
   const denseNotes = Array.from({ length: 50 }, () => ({ beat: 0, length: 20, note: 60, velocity: .5 }));
   assert.equal(renderSequencedClip({ kind: 'midi', lengthBeats: 240, notes: denseNotes }, { bpm: 120 }), null);
 });
+test('drum probability is deterministic and ratchets retrigger within one step', () => {
+  assert.deepEqual(normalizeDrumRowSettings({ probability: 1.5, ratchets: 3.2 }), { probability: 1, ratchets: 3 });
+  assert.equal(drumHitOccurs('pattern-a', 1, 4, 0), false);
+  assert.equal(drumHitOccurs('pattern-a', 1, 4, 1), true);
+  assert.equal(drumHitOccurs('pattern-a', 1, 4, .5), drumHitOccurs('pattern-a', 1, 4, .5), 'probability decisions remain stable for browser and native rendering');
+  const randomHits = Array.from({ length: 64 }, (_, hit) => hit);
+  const variedClip = { id: 'stable-probability', kind: 'drums', lengthBeats: 16, steps: [{ kind: 'hat', hits: randomHits, probability: .5 }] };
+  const renderOptions = { bpm: 120, sampleRate: 8000, createDrumSample: () => new Float32Array([1]) };
+  const varied = renderSequencedClip(variedClip, renderOptions), repeated = renderSequencedClip(variedClip, renderOptions);
+  assert.deepEqual(repeated, varied, 'the same project produces the same probability decisions on repeated renders');
+  const triggered = varied.reduce((count, value) => count + Number(value !== 0), 0);
+  assert.ok(triggered > 0 && triggered < randomHits.length, 'intermediate probability suppresses some steps and keeps others');
+  const sample = new Float32Array([1, 0]);
+  const clip = { id: 'pattern-a', kind: 'drums', lengthBeats: 1, steps: [{ kind: 'kick', hits: [0], ratchets: 3 }] };
+  const pcm = renderSequencedClip(clip, { bpm: 120, sampleRate: 8000, createDrumSample: () => sample });
+  assert.equal(pcm.length, 4000);
+  assert.ok(Math.abs(pcm[0] - .78) < 1e-6);
+  assert.ok(Math.abs(pcm[333] - .78) < 1e-6);
+  assert.ok(Math.abs(pcm[666] - .78) < 1e-6);
+  const silent = renderSequencedClip({ ...clip, steps: [{ kind: 'kick', hits: [0], probability: 0 }] }, {
+    bpm: 120, sampleRate: 8000, createDrumSample: () => sample,
+  });
+  assert.equal(silent.some(value => value !== 0), false, 'zero probability suppresses a step');
+  assert.equal(renderSequencedClip({ ...clip, steps: [{ kind: 'kick', hits: [0], ratchets: 9 }] }, {
+    bpm: 120, sampleRate: 8000, createDrumSample: () => sample,
+  }), null, 'ratchet count is bounded');
+});
+
 test('sampler MIDI notes transpose an imported mono source from its root key', () => {
   const source = Float32Array.from({ length: 600 }, (_, index) => index / 600);
   const clip = { kind: 'midi', lengthBeats: 1, notes: [{ beat: 0, length: .5, note: 60, velocity: 1 }] };

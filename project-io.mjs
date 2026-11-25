@@ -154,7 +154,10 @@ export function validateProjectDocument(data, limits = PROJECT_LIMITS) {
         if (!Array.isArray(clip.steps) || clip.steps.length > 128) return { ok: false, code: 'invalid-drums' };
         for (const row of clip.steps) {
           if (!plainObject(row) || typeof row.kind !== 'string' || !Array.isArray(row.hits) || row.hits.length > limits.events - eventCount ||
-              (row.velocity !== undefined && !finiteBetween(row.velocity, 0, 1)) || row.hits.some(hit => !finiteBetween(hit, 0, 4095))) return { ok: false, code: 'invalid-drums' };
+              (row.velocity !== undefined && !finiteBetween(row.velocity, 0, 1)) ||
+              (row.probability !== undefined && !finiteBetween(row.probability, 0, 1)) ||
+              (row.ratchets !== undefined && (!Number.isInteger(row.ratchets) || row.ratchets < 1 || row.ratchets > 8)) ||
+              row.hits.some(hit => !finiteBetween(hit, 0, 4095))) return { ok: false, code: 'invalid-drums' };
           eventCount += row.hits.length;
         }
       } else if (clip.kind === 'automation') {

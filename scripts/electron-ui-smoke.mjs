@@ -445,7 +445,26 @@ try {
   assert.equal(samplerEditor.root, '60', 'sampler editor restores its MIDI root key');
   assert.ok(samplerEditor.option.length > 0, 'sampler editor shows the imported WAV name');
   assert.deepEqual(exceptions, [], 'sampler project load and editor must not throw renderer exceptions');
-  console.log(`Electron UI smoke passed: sampler WAV/root-note editor, 128-clip Arrangement, zoom, spectrum analyzer, EQ, compressor, limiter, split/slicing, undo/redo, project round-trip, WAV export and loop selection`);
+  const drumProject = structuredClone(largeProject);
+  drumProject.tracks.forEach(track => { track.clips = []; });
+  drumProject.tracks.push({
+    id: 'qa-drum-track', name: 'QA drums', type: 'drums', volume: .8, pan: 0, mute: false, solo: false,
+    clips: [{ id: 'qa-drum-pattern', name: 'QA pattern', kind: 'drums', startBeat: 0, lengthBeats: 4,
+      steps: [{ name: 'Kick', kind: 'kick', velocity: .8, probability: 1, ratchets: 1, hits: [0, 4, 8, 12] }] }],
+  });
+  drumProject.selectedTrackId = 'qa-drum-track';
+  const drumProjectText = JSON.stringify(drumProject);
+  await evaluate("(() => { const previous=window.confirm; window.confirm=()=>true; document.querySelector('#newProjectBtn').click(); window.confirm=previous; })()");
+  await waitUntil(() => evaluate("document.querySelectorAll('.track-lane .clip').length"), count => count === 0, 'empty Arrangement before loading step sequencer session');
+  await evaluate(`(() => { const file=new File([${JSON.stringify(drumProjectText)}],'qa-step-sequencer.sonora',{type:'application/json'}),transfer=new DataTransfer();transfer.items.add(file);const input=document.querySelector('#projectFile');input.files=transfer.files;input.dispatchEvent(new Event('change',{bubbles:true}));return true; })()`);
+  await waitUntil(() => evaluate("Boolean(document.querySelector('[data-track=\\\"qa-drum-track\\\"]'))"), Boolean, 'loaded QA drum track');
+  await waitUntil(() => evaluate("document.querySelector('#inspectorOpenEditorBtn')?.textContent"), text => text?.includes('секвенсор'), 'step sequencer track inspector');
+  await evaluate("document.querySelector('#inspectorOpenEditorBtn').click()");
+  await waitUntil(() => evaluate("Boolean(document.querySelector('.step-probability') && document.querySelector('.step-ratchets'))"), Boolean, 'probability and ratchet controls');
+  const stepControls = await evaluate("(() => { const chance=document.querySelector('.step-probability'),repeat=document.querySelector('.step-ratchets'); chance.value='0.55';chance.dispatchEvent(new Event('input',{bubbles:true}));chance.dispatchEvent(new Event('change',{bubbles:true}));repeat.value='4';repeat.dispatchEvent(new Event('change',{bubbles:true}));return {chance:document.querySelector('.step-probability-value').textContent,repeat:repeat.value+'×'}; })()");
+  assert.deepEqual(stepControls, { chance: '55%', repeat: '4×' }, 'step probability and ratchet controls update their displayed values');
+  assert.deepEqual(exceptions, [], 'step sequencer rendering and controls must not throw renderer exceptions');
+  console.log(`Electron UI smoke passed: sampler editor, probability/ratchet controls, 128-clip Arrangement, zoom, spectrum analyzer, EQ, compressor, limiter, split/slicing, undo/redo, project round-trip, WAV export and loop selection`);
 } finally {
   if (socket && socket.readyState < WebSocket.CLOSING) socket.close();
   if (child.exitCode === null) {

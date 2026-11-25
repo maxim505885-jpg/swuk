@@ -27,6 +27,18 @@ test('project validator accepts an empty supported project and generated MIDI st
   assert.equal(validateProjectDocument(midi).ok, true);
 });
 
+test('project validator bounds step sequencer probability and ratchets', () => {
+  const valid = { id: 'drums-1', type: 'drums', clips: [{
+    id: 'pattern-1', kind: 'drums', startBeat: 0, lengthBeats: 4,
+    steps: [{ kind: 'kick', hits: [0, 8], probability: .55, ratchets: 4 }],
+  }] };
+  assert.equal(validateProjectDocument(project({ tracks: [valid] })).ok, true);
+  const invalidProbability = structuredClone(valid); invalidProbability.clips[0].steps[0].probability = 1.1;
+  assert.equal(validateProjectDocument(project({ tracks: [invalidProbability] })).code, 'invalid-drums');
+  const invalidRatchets = structuredClone(valid); invalidRatchets.clips[0].steps[0].ratchets = 0;
+  assert.equal(validateProjectDocument(project({ tracks: [invalidRatchets] })).code, 'invalid-drums');
+});
+
 test('project validator requires sampler references to point at a bundled audio asset', () => {
   const sampler = { id: 'sampler-1', type: 'instrument', instrument: 'sampler', samplerAssetId: 'sample-1', samplerRootNote: 60, clips: [] };
   const assets = [{ id: 'sample-1', wav: pcmWavBase64() }];

@@ -1,5 +1,5 @@
 import { beatFromRulerPointer, flattenGainAutomation, normalizeLoopRange, normalizeTrackName, projectRenderDurationSeconds, sampleAutomation, splitAudioClip, splitSequencerEvents, wrapLoopBeat } from './arrangement-core.mjs?v=7';
-import { instrumentWaveAt, normalizeSynthSettings, renderSequencedClip as renderSequencedPcm } from './sequencer-audio.mjs?v=4';
+import { drumHitOccurs, instrumentWaveAt, normalizeDrumRowSettings, normalizeSynthSettings, renderSequencedClip as renderSequencedPcm } from './sequencer-audio.mjs?v=5';
 import { createProjectDocument, PROJECT_LIMITS, validateProjectDocument } from './project-io.mjs?v=4';
 import { normalizeTheme, readTheme, THEMES, THEME_KEY } from './theme-core.mjs';
 import { analyzeMeter, presentMeter } from './audio-meter.mjs?v=1';
@@ -591,10 +591,10 @@ function createDrumPattern() {
   let track = getTrack(state.selectedTrackId); if (!track || track.type !== 'drums') track = addTrack('drums', 'Drum rack');
   if (!track || !canAddClip() || !canAddEvents(12)) return;
   recordUndo(); const palette = themePalette(); const steps = [
-    { name: 'Бочка', kind: 'kick', color: palette[0], velocity: .82, hits: [0, 8] },
-    { name: 'Малый', kind: 'snare', color: palette[1], velocity: .76, hits: [4, 12] },
-    { name: 'Хэт', kind: 'hat', color: palette[2], velocity: .62, hits: [0, 2, 4, 6, 8, 10, 12, 14] },
-    { name: 'Хлопок', kind: 'clap', color: palette[3], velocity: .78, hits: [] },
+    { name: 'Бочка', kind: 'kick', color: palette[0], velocity: .82, probability: 1, ratchets: 1, hits: [0, 8] },
+    { name: 'Малый', kind: 'snare', color: palette[1], velocity: .76, probability: 1, ratchets: 1, hits: [4, 12] },
+    { name: 'Хэт', kind: 'hat', color: palette[2], velocity: .62, probability: 1, ratchets: 1, hits: [0, 2, 4, 6, 8, 10, 12, 14] },
+    { name: 'Хлопок', kind: 'clap', color: palette[3], velocity: .78, probability: 1, ratchets: 1, hits: [] },
   ];
   track.steps = steps; state.view = 'rack';
   const clip = { id: uid('clip'), name: 'Ритм · 1 такт', kind: 'drums', startBeat: snapBeat(state.playheadBeat), lengthBeats: 4, steps: steps.map(row => ({ ...row, hits: [...row.hits] })), color: track.color };
@@ -825,7 +825,14 @@ function createClipElement(clip, track) {
   $('.clip-header span', el).textContent = clip.name;
   if (clip.kind === 'drums') {
     const preview = document.createElement('div'); preview.className = 'pattern-preview';
-    for (let i = 0; i < 16; i++) { const bar = document.createElement('i'); bar.style.height = `${5 + ((clip.steps || []).reduce((n, row) => n + row.hits.filter(hit => hit === i).length, 0) * 4)}px`; preview.append(bar); }
+    for (let i = 0; i < 16; i++) {
+      const bar = document.createElement('i');
+      const hits = (clip.steps || []).reduce((total, row, rowIndex) => {
+        const { probability, ratchets } = normalizeDrumRowSettings(row);
+        return total + row.hits.filter(hit => hit === i && drumHitOccurs(clip.id, rowIndex, hit, probability)).length * ratchets;
+      }, 0);
+      bar.style.height = `${5 + hits * 4}px`; preview.append(bar);
+    }
     el.append(preview);
   } else if (clip.kind === 'midi') {
     const preview = document.createElement('div'); preview.className = 'pattern-preview';
@@ -1090,15 +1097,24 @@ function renderEditor() {
     body.innerHTML = '<div class="step-grid" id="stepGrid"></div>'; const grid = $('#stepGrid');
     for (const row of clip.steps) {
       row.velocity = clamp(Number(row.velocity ?? .78), 0, 1);
+      const rowSettings = normalizeDrumRowSettings(row);
       const label = document.createElement('label'); label.className = 'step-label';
-      label.innerHTML = '<i></i><span></span><input type="range" min="0" max="1" step="0.01" /><output></output>';
+      label.innerHTML = '<i></i><span class="step-name"></span><span class="step-control"><small>СИЛА</small><input class="step-velocity" type="range" min="0" max="1" step="0.01" /></span><output class="step-velocity-value"></output><span class="step-control"><small>ШАНС</small><input class="step-probability" type="range" min="0" max="1" step="0.05" /></span><output class="step-probability-value"></output><select class="step-ratchets" aria-label="Повторы шага"></select>';
       const rowColor = /^#[\da-f]{6}$/i.test(row.color || '') ? row.color : themePalette()[0];
-      $('i', label).style.backgroundColor = rowColor; $('span', label).textContent = row.name;
-      const velocity = $('input', label), output = $('output', label);
-      velocity.value = row.velocity; velocity.setAttribute('aria-label', `Сила удара: ${row.name}`); output.textContent = `${Math.round(row.velocity * 100)}%`;
-      velocity.addEventListener('focus', recordUndo);
-      velocity.addEventListener('input', () => { row.velocity = Number(velocity.value); output.textContent = `${Math.round(row.velocity * 100)}%`; markProjectDirty(); });
-      velocity.addEventListener('change', () => { if (nativePlaybackActive) restartPlaybackIfActive(); });
+      $('i', label).style.backgroundColor = rowColor; $('.step-name', label).textContent = row.name;
+      const velocity = $('.step-velocity', label), velocityOutput = $('.step-velocity-value', label);
+      const probability = $('.step-probability', label), probabilityOutput = $('.step-probability-value', label);
+      const ratchets = $('.step-ratchets', label);
+      velocity.value = row.velocity; velocity.setAttribute('aria-label', `Сила удара: ${row.name}`); velocityOutput.textContent = `${Math.round(row.velocity * 100)}%`;
+      probability.value = rowSettings.probability; probability.setAttribute('aria-label', `Вероятность: ${row.name}`); probabilityOutput.textContent = `${Math.round(rowSettings.probability * 100)}%`;
+      ratchets.innerHTML = Array.from({ length: 8 }, (_, index) => `<option value="${index + 1}">${index + 1}×</option>`).join('');
+      ratchets.value = String(rowSettings.ratchets); ratchets.setAttribute('aria-label', `Ratchets: ${row.name}`);
+      for (const control of [velocity, probability, ratchets]) control.addEventListener('focus', recordUndo, { once: true });
+      velocity.addEventListener('input', () => { row.velocity = Number(velocity.value); velocityOutput.textContent = `${Math.round(row.velocity * 100)}%`; markProjectDirty(); });
+      velocity.addEventListener('change', restartProjectPlaybackIfActive);
+      probability.addEventListener('input', () => { row.probability = Number(probability.value); probabilityOutput.textContent = `${Math.round(row.probability * 100)}%`; markProjectDirty(); });
+      probability.addEventListener('change', restartProjectPlaybackIfActive);
+      ratchets.addEventListener('change', () => { row.ratchets = Number(ratchets.value); markProjectDirty(); restartProjectPlaybackIfActive(); });
       grid.append(label);
       for (let step = 0; step < 16; step++) {
         const active = row.hits.includes(step), cell = document.createElement('button'); cell.className = `step-cell ${active ? 'active' : ''}`;
@@ -1952,10 +1968,21 @@ function scheduleProject(context, fromBeat = 0, destination = context.destinatio
       const clipStart = clip.startBeat, clipEnd = clip.startBeat + clip.lengthBeats;
       if (clipEnd <= fromBeat) continue;
       if (clip.kind === 'drums') {
-        for (const row of clip.steps || []) for (const hit of row.hits) {
-          const beat = clip.startBeat + hit / 4; if (beat < fromBeat) continue;
-          const sourceBuffer = createSampleBuffer(row.kind, context); const source = context.createBufferSource(), gain = context.createGain(); source.buffer = sourceBuffer; gain.gain.value = clamp(Number(row.velocity ?? .78), 0, 1); source.connect(gain); gain.connect(trackGain); source.start(now + (beat - fromBeat) * secondsPerBeat);
-          scheduledNodes.push(source);
+        for (const [rowIndex, row] of (clip.steps || []).entries()) {
+          const { probability, ratchets } = normalizeDrumRowSettings(row);
+          for (const hit of row.hits) {
+            if (!drumHitOccurs(clip.id, rowIndex, hit, probability)) continue;
+            const beat = clip.startBeat + hit / 4, sourceBuffer = createSampleBuffer(row.kind, context);
+            for (let ratchet = 0; ratchet < ratchets; ratchet++) {
+              const ratchetBeat = beat + ratchet / (4 * ratchets);
+              if (ratchetBeat < fromBeat) continue;
+              const source = context.createBufferSource(), gain = context.createGain();
+              source.buffer = sourceBuffer; gain.gain.value = clamp(Number(row.velocity ?? .78), 0, 1);
+              source.connect(gain); gain.connect(trackGain);
+              source.start(now + (ratchetBeat - fromBeat) * secondsPerBeat);
+              scheduledNodes.push(source);
+            }
+          }
         }
       } else if (clip.kind === 'midi') {
         for (const note of clip.notes || []) {
