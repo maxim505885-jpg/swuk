@@ -1,4 +1,4 @@
-import { beatFromRulerPointer, flattenGainAutomation, normalizeLoopRange, normalizeTrackName, projectRenderDurationSeconds, sampleAutomation, splitSequencerEvents, wrapLoopBeat } from './arrangement-core.mjs?v=5';
+import { beatFromRulerPointer, flattenGainAutomation, normalizeLoopRange, normalizeTrackName, projectRenderDurationSeconds, sampleAutomation, splitAudioClip, splitSequencerEvents, wrapLoopBeat } from './arrangement-core.mjs?v=6';
 import { instrumentWaveAt, normalizeSynthSettings, renderSequencedClip as renderSequencedPcm } from './sequencer-audio.mjs?v=3';
 import { createProjectDocument, PROJECT_LIMITS, validateProjectDocument } from './project-io.mjs?v=2';
 import { normalizeTheme, readTheme, THEMES, THEME_KEY } from './theme-core.mjs';
@@ -855,16 +855,25 @@ async function handleDrop(event, track, lane) {
 function splitClip(clip) {
   const found = getClip(clip.id), point = state.playheadBeat;
   if (!found.track || point <= clip.startBeat || point >= clip.startBeat + clip.lengthBeats) { showToast('Курсор должен находиться внутри клипа'); return; }
-  const leftLength = snapBeat(point - clip.startBeat);
+  const leftLength = point - clip.startBeat;
   if (!canAddClip()) return;
+  const audioParts = !clip.kind ? splitAudioClip(clip, point, state.tempo) : null;
+  if (!clip.kind && !audioParts) { showToast('Не удалось разделить аудиоклип'); return; }
   const partition = clip.kind === 'midi' || clip.kind === 'drums' ? splitSequencerEvents(clip, leftLength) : null;
   if ((clip.kind === 'midi' || clip.kind === 'drums') && !partition) { showToast('Не удалось разделить содержимое партии'); return; }
   const additionalEvents = clip.kind === 'midi' ? Math.max(0, partition.leftEvents.length + partition.rightEvents.length - clip.notes.length)
     : clip.kind === 'automation' ? 1 : 0;
   if (!canAddEvents(additionalEvents)) return;
-  recordUndo(); const right = structuredClone(clip); right.id = uid('clip'); right.startBeat = point; right.lengthBeats = clip.lengthBeats - leftLength;
-  if (!clip.kind) { right.offsetSec = (clip.offsetSec || 0) + leftLength * beatSeconds(); clip.lengthBeats = leftLength; }
-  else if (clip.kind === 'automation') {
+  recordUndo();
+  const right = structuredClone(clip);
+  if (!clip.kind) {
+    Object.assign(clip, audioParts.left);
+    Object.assign(right, audioParts.right);
+  } else {
+    right.id = uid('clip'); right.startBeat = point; right.lengthBeats = clip.lengthBeats - leftLength;
+  }
+  right.id = uid('clip');
+  if (clip.kind === 'automation') {
     const splitValue = sampleAutomation(clip.points, leftLength, found.track.volume ?? .8);
     const originalPoints = clip.points;
     clip.points = [...originalPoints.filter(point => point.beat < leftLength), { beat: leftLength, value: splitValue }];
@@ -874,7 +883,7 @@ function splitClip(clip) {
     if (clip.kind === 'midi') { clip.notes = partition.leftEvents; right.notes = partition.rightEvents; }
     else { clip.steps = partition.leftEvents; right.steps = partition.rightEvents; }
     clip.lengthBeats = leftLength;
-  } else { clip.lengthBeats = leftLength; }
+  } else if (clip.kind) { clip.lengthBeats = leftLength; }
   found.track.clips.push(right); state.selectedClipId = right.id; renderAll(); showToast('Клип разделён');
 }
 
