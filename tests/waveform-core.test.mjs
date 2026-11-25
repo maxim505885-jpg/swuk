@@ -20,3 +20,9 @@ test('waveform peak sampler bounds bucket count and rejects invalid input', () =
   assert.equal(sampleWaveformPeaks(new Float32Array(0)).length, 0);
   assert.equal(sampleWaveformPeaks(new Float32Array(4), 8).length, 4);
 });
+
+test('waveform peak sampler renders the requested source range', () => {
+  const samples = new Float32Array([.9,.8,.1,-.6,.2,.7,.3,.4]);
+  assert.deepEqual([...sampleWaveformPeaks(samples,3,2,7)],[.6,.7,.7]);
+  assert.equal(sampleWaveformPeaks(samples,3,7,2).length,0);
+});

@@ -3,7 +3,7 @@ import { instrumentWaveAt, normalizeSynthSettings, renderSequencedClip as render
 import { createProjectDocument, PROJECT_LIMITS, validateProjectDocument } from './project-io.mjs?v=2';
 import { normalizeTheme, readTheme, THEMES, THEME_KEY } from './theme-core.mjs';
 import { analyzeMeter, presentMeter } from './audio-meter.mjs?v=1';
-import { sampleWaveformPeaks } from './waveform-core.mjs?v=1';
+import { sampleWaveformPeaks } from './waveform-core.mjs?v=2';
 import { detectTransientFrames } from './transient-core.mjs?v=1';
 import { clampMidiPitch, midiOctaveStart, shiftMidiOctave } from './midi-edit-core.mjs?v=1';
 import { normalizeClipFades, scheduleClipFade } from './clip-fade-core.mjs?v=1';
@@ -802,7 +802,7 @@ function createClipElement(clip, track) {
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path'); path.setAttribute('d', automationSvgPath(clip)); preview.append(path); el.append(preview);
   } else {
     const canvas = document.createElement('canvas'); canvas.className = 'waveform'; canvas.width = 420; canvas.height = 52; el.append(canvas);
-    const asset = state.assets.get(clip.renderedAssetId && !clip.bypassProcessing ? clip.renderedAssetId : clip.assetId); if (asset) drawWaveform(canvas, asset.buffer, track.color);
+    const asset = state.assets.get(clip.renderedAssetId && !clip.bypassProcessing ? clip.renderedAssetId : clip.assetId); if (asset) drawWaveform(canvas, asset.buffer, track.color, clip);
     const durationSec = clip.lengthBeats * 60 / state.tempo;
     const fades = normalizeClipFades(durationSec, clip.fadeInSec, clip.fadeOutSec);
     for (const [side, seconds] of [['in', fades.fadeInSec], ['out', fades.fadeOutSec]]) if (seconds > 0) {
@@ -816,10 +816,13 @@ function createClipElement(clip, track) {
   return el;
 }
 
-function drawWaveform(canvas, buffer, color) {
-  const ctx = canvas.getContext('2d'), width = canvas.width, height = canvas.height, data = buffer.getChannelData(0), step = Math.ceil(data.length / width);
-  ctx.clearRect(0, 0, width, height); ctx.fillStyle = color || '#80c7a6';
-  for (let x = 0; x < width; x++) { let peak = 0; for (let i = 0; i < step; i++) peak = Math.max(peak, Math.abs(data[x * step + i] || 0)); const h = Math.max(1, peak * height * .86); ctx.fillRect(x, (height - h) / 2, 1, h); }
+function drawWaveform(canvas, buffer, color, clip = null) {
+  const ctx=canvas.getContext('2d'),width=canvas.width,height=canvas.height,data=buffer.getChannelData(0);
+  const start=clip?getClipSourceOffsetSec(clip):0,end=clip?Math.min(buffer.duration-getClipSourceTrimEndSec(clip),start+clip.lengthBeats*beatSeconds()*getClipPlaybackRate(clip)):buffer.duration;
+  const first=clamp(Math.floor(start*buffer.sampleRate),0,data.length),last=clamp(Math.ceil(end*buffer.sampleRate),first,data.length);
+  const peaks=sampleWaveformPeaks(data,width,first,last),step=peaks.length?width/peaks.length:0;
+  ctx.clearRect(0,0,width,height);ctx.fillStyle=color||'#80c7a6';
+  for(let x=0;x<peaks.length;x++){const h=Math.max(1,peaks[x]*height*.86);ctx.fillRect(x*step,(height-h)/2,Math.max(1,step),h);}
 }
 
 async function sliceAudioAtTransients(clip, sensitivity, minSpacingMs) {

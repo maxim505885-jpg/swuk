@@ -144,8 +144,35 @@ try {
     'the source offset on the retimed right-hand clip',
   );
   assert.ok(Math.abs(splitOffset - .94) < .005);
-  assert.deepEqual(exceptions, [], 'EQ and audio split interactions must not throw renderer exceptions');
-  console.log('Electron UI smoke passed: seven EQ bands respond and a 1.5x audio clip splits at the cursor with the correct PCM source offset');
+  const fixtureFrames = await evaluate(`(() => {
+    const sr=48000,frames=sr*2,header=new Uint8Array(44),h=new DataView(header.buffer);
+    const write=(o,s)=>[...s].forEach((c,i)=>h.setUint8(o+i,c.charCodeAt(0)));
+    write(0,'RIFF');h.setUint32(4,36+frames*2,true);write(8,'WAVE');write(12,'fmt ');
+    h.setUint32(16,16,true);h.setUint16(20,1,true);h.setUint16(22,1,true);h.setUint32(24,sr,true);
+    h.setUint32(28,sr*2,true);h.setUint16(32,2,true);h.setUint16(34,16,true);write(36,'data');h.setUint32(40,frames*2,true);
+    const pcm=new Uint8Array(frames*2),v=new DataView(pcm.buffer);
+    for(const[at,amp]of[[.3,.6],[1,.4]]){const first=Math.round(at*sr);for(let i=first;i<first+2880;i++){const t=(i-first)/sr;v.setInt16(i*2,Math.round(amp*Math.sin(2*Math.PI*440*t)*Math.exp(-t/.018)*32767),true);}}
+    const file=new File([header,pcm],'qa-transients.wav',{type:'audio/wav'}),dt=new DataTransfer();dt.items.add(file);
+    const input=document.querySelector('#audioFiles');input.files=dt.files;input.dispatchEvent(new Event('change',{bubbles:true}));return frames;
+  })()`);
+  assert.equal(fixtureFrames,96000);
+  await waitUntil(()=>evaluate("document.querySelectorAll('.track-lane .clip').length"),n=>n===3,'transient PCM clip import');
+  const clickClip=async index=>{
+    const p=await evaluate(`(()=>{const r=document.querySelectorAll('.track-lane .clip')[${index}].getBoundingClientRect();return{x:r.left+r.width/2,y:r.top+r.height/2}})()`);
+    await send('Input.dispatchMouseEvent',{type:'mousePressed',x:p.x,y:p.y,button:'left'});
+    await send('Input.dispatchMouseEvent',{type:'mouseReleased',x:p.x,y:p.y,button:'left'});
+  };
+  await clickClip(2);
+  assert.equal(await waitUntil(()=>evaluate("Boolean(document.querySelector('#sliceTransientsBtn')&&!document.querySelector('#sliceTransientsBtn').disabled"),Boolean,'transient slicer'),true);
+  await evaluate("document.querySelector('#sliceTransientsBtn').click()");
+  await waitUntil(()=>evaluate("document.querySelectorAll('.track-lane .clip').length"),n=>n===5,'two detected cuts');
+  await clickClip(3);
+  const offset2=await waitUntil(()=>evaluate("Number(document.querySelector('#clipOffset')?.value"),v=>Math.abs(v-.3)<.02,'second slice offset');
+  await clickClip(4);
+  const offset3=await waitUntil(()=>evaluate("Number(document.querySelector('#clipOffset')?.value"),v=>Math.abs(v-1)<.02,'third slice offset');
+  assert.ok(Math.abs(offset2-.3)<.02&&Math.abs(offset3-1)<.02);
+  assert.deepEqual(exceptions,[], 'transient slicing must not throw renderer exceptions');
+  console.log('Electron UI smoke passed: EQ, retimed split and two transient cuts preserve PCM offsets');
 } finally {
   if (socket && socket.readyState < WebSocket.CLOSING) socket.close();
   if (child.exitCode === null) {
