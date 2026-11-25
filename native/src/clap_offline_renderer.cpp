@@ -599,7 +599,7 @@ int main() {
             for (int index = 5; index < argumentCount; ++index) parameters.push_back(parseParameterValue(wideArguments[index]));
             processWav(wideToUtf8(wideArguments[2]), wideToUtf8(wideArguments[3]), wideToUtf8(wideArguments[4]), parameters);
         } else {
-            throw std::runtime_error("Usage: sonora-clap-offline.exe inspect <plugin.clap> | process <plugin.clap> <input.wav> <output.wav> [id=value ...]");
+            throw std::runtime_error("Usage: sonora-clap-offline.exe inspect <plugin.clap> | serve <plugin.clap> <shared-memory-name> | selftest <plugin.clap> | process <plugin.clap> <input.wav> <output.wav> [id=value ...]");
         }
         LocalFree(wideArguments);
         return 0;
