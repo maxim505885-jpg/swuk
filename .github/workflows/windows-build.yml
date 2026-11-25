@@ -16,6 +16,11 @@ jobs:
         run: git submodule update --init --depth=1 native/vendor/signalsmith-stretch
       - name: Initialize RtMidi
         run: git submodule update --init --depth=1 native/vendor/rtmidi
+      - name: Initialize VST3 hosting SDK
+        shell: pwsh
+        run: |
+          git submodule update --init --depth=1 native/references/vst3sdk
+          git -C native/references/vst3sdk submodule update --init --depth=1 base cmake pluginterfaces public.sdk
       - uses: actions/setup-node@v4
         with:
           node-version: 24
