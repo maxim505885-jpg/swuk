@@ -42,6 +42,11 @@ contextBridge.exposeInMainWorld('sonoraNative', Object.freeze({
     ? ipcRenderer.invoke('native-audio:stage-asset', assetId, wavBytes)
     : Promise.resolve({ ok: false, error: 'Некорректный WAV или идентификатор аудио' }),
   inspectClapEffect: () => ipcRenderer.invoke('native-clap:inspect'),
+  loadRealtimeClapEffect: selectionToken => typeof selectionToken === 'string' && /^[\da-f-]{36}$/i.test(selectionToken)
+    ? ipcRenderer.invoke('native-clap:load-realtime', selectionToken)
+    : Promise.resolve({ ok: false, error: 'Некорректный идентификатор CLAP' }),
+  unloadRealtimeClapEffect: () => ipcRenderer.invoke('native-clap:unload-realtime'),
+  realtimeClapStatus: () => ipcRenderer.invoke('native-clap:realtime-status'),
   renderClapEffect: (selectionToken, wavBytes, values) => typeof selectionToken === 'string' && /^[\da-f-]{36}$/i.test(selectionToken) && validWav(wavBytes) &&
     values && typeof values === 'object' && !Array.isArray(values) && Object.keys(values).length <= 128
     ? ipcRenderer.invoke('native-clap:render', selectionToken, wavBytes, values)
@@ -58,3 +63,4 @@ contextBridge.exposeInMainWorld('sonoraNative', Object.freeze({
     : Promise.resolve({ ok: false, error: 'Недопустимые параметры WASAPI-записи' }),
   stopCapture: () => ipcRenderer.invoke('native-audio:stop-capture'),
 }));
+
