@@ -6,6 +6,7 @@
 #include "engine_core.hpp"
 #include "capture_wav_recorder.hpp"
 #include "spectrum_analyzer.hpp"
+#include "midi_host.hpp"
 
 #include <algorithm>
 #include <array>
@@ -221,6 +222,81 @@ public:
         appendDevices(response, captureDevices_);
         response += "}}";
         return response;
+    }
+
+    [[nodiscard]] std::string midiDevicesJson() {
+        try {
+            const auto inputs = midiHost_.inputPorts();
+            const auto outputs = midiHost_.outputPorts();
+            const auto appendPorts = [](std::string& json, const std::vector<sonora::midi::Port>& ports) {
+                json.push_back('[');
+                for (std::size_t index = 0; index < ports.size(); ++index) {
+                    if (index != 0) json.push_back(',');
+                    json += "{\"index\":" + std::to_string(ports[index].index) +
+                        ",\"name\":\"" + jsonEscape(ports[index].name) + "\"}";
+                }
+                json.push_back(']');
+            };
+            std::string response = "{\"version\":1,\"ok\":true,\"devices\":{\"inputs\":";
+            appendPorts(response, inputs);
+            response += ",\"outputs\":";
+            appendPorts(response, outputs);
+            response += "},\"inputOpen\":";
+            response += midiHost_.inputOpen() ? "true" : "false";
+            response += ",\"outputOpen\":";
+            response += midiHost_.outputOpen() ? "true" : "false";
+            response += ",\"inputName\":\"" + jsonEscape(midiHost_.inputName()) +
+                "\",\"outputName\":\"" + jsonEscape(midiHost_.outputName()) + "\"}";
+            return response;
+        } catch (const std::exception& exception) {
+            return errorJson(exception.what());
+        }
+    }
+
+    [[nodiscard]] std::string midiOpenInput(const std::uint32_t deviceIndex) {
+        std::string error;
+        if (!midiHost_.openInput(deviceIndex, error)) return errorJson(error);
+        return midiDevicesJson();
+    }
+
+    [[nodiscard]] std::string midiCloseInput() {
+        midiHost_.closeInput();
+        return midiDevicesJson();
+    }
+
+    [[nodiscard]] std::string midiOpenOutput(const std::uint32_t deviceIndex) {
+        std::string error;
+        if (!midiHost_.openOutput(deviceIndex, error)) return errorJson(error);
+        return midiDevicesJson();
+    }
+
+    [[nodiscard]] std::string midiCloseOutput() {
+        midiHost_.closeOutput();
+        return midiDevicesJson();
+    }
+
+    [[nodiscard]] std::string midiReadEventsJson() {
+        const auto events = midiHost_.readEvents();
+        std::string response = "{\"version\":1,\"ok\":true,\"events\":[";
+        for (std::size_t index = 0; index < events.size(); ++index) {
+            if (index != 0) response.push_back(',');
+            response += "{\"bytes\":[";
+            for (std::size_t byte = 0; byte < events[index].size; ++byte) {
+                if (byte != 0) response.push_back(',');
+                response += std::to_string(events[index].bytes[byte]);
+            }
+            response += "],\"deltaSeconds\":" + std::to_string(events[index].deltaSeconds) + "}";
+        }
+        response += "],\"dropped\":" + std::to_string(midiHost_.takeDroppedCount()) + "}";
+        return response;
+    }
+
+    [[nodiscard]] std::string midiSendNote(
+        const std::uint32_t channel, const std::uint32_t pitch,
+        const std::uint32_t velocity, const bool noteOn) {
+        std::string error;
+        if (!midiHost_.sendNote(channel, pitch, velocity, noteOn, error)) return errorJson(error);
+        return "{\"version\":1,\"ok\":true}";
     }
 
     [[nodiscard]] std::string statusJson() const {
@@ -747,6 +823,7 @@ private:
         output.push_back(']');
     }
 
+    sonora::midi::Host midiHost_;
     ma_context context_{};
     ma_device device_{};
     ma_device captureDevice_{};
@@ -795,6 +872,28 @@ private:
     }
     if (*operation == "ping") return "{\"version\":1,\"ok\":true,\"engine\":\"SONORA Native Audio\"}";
     if (*operation == "devices") return host.devicesJson();
+    if (*operation == "midi_devices") return host.midiDevicesJson();
+    if (*operation == "midi_open_input") {
+        const auto index = numberField<std::uint32_t>(line, "deviceIndex");
+        if (!index) return errorJson("midi_open_input requires deviceIndex");
+        return host.midiOpenInput(*index);
+    }
+    if (*operation == "midi_close_input") return host.midiCloseInput();
+    if (*operation == "midi_open_output") {
+        const auto index = numberField<std::uint32_t>(line, "deviceIndex");
+        if (!index) return errorJson("midi_open_output requires deviceIndex");
+        return host.midiOpenOutput(*index);
+    }
+    if (*operation == "midi_close_output") return host.midiCloseOutput();
+    if (*operation == "midi_read") return host.midiReadEventsJson();
+    if (*operation == "midi_send_note") {
+        const auto channel = numberField<std::uint32_t>(line, "channel");
+        const auto pitch = numberField<std::uint32_t>(line, "pitch");
+        const auto velocity = numberField<std::uint32_t>(line, "velocity");
+        const auto noteOn = booleanField(line, "on");
+        if (!channel || !pitch || !velocity || !noteOn) return errorJson("midi_send_note requires channel, pitch, velocity and on");
+        return host.midiSendNote(*channel, *pitch, *velocity, *noteOn);
+    }
     if (*operation == "status") return host.statusJson();
     if (*operation == "diagnostics") return host.diagnosticsJson();
     if (*operation == "stop") return host.stopJson();

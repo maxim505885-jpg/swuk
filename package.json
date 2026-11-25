@@ -16,7 +16,7 @@
     "native:bench": "powershell -ExecutionPolicy Bypass -File native/build.ps1 -Mode Bench",
     "native:smoke": "node --test tests/native-smoke.mjs",
     "qa:stability": "node scripts/native-soak.mjs",
-    "qa:quick": "node --test --test-isolation=none tests/arrangement-core.test.mjs tests/audio-meter.test.mjs tests/clip-fade-core.test.mjs tests/clip-envelope.test.mjs tests/dsp.test.mjs tests/eq-core.test.mjs tests/midi-edit-core.test.mjs tests/preload.test.mjs tests/project-io.test.mjs tests/record-worklet.test.mjs tests/recording-core.test.mjs tests/sequencer-audio.test.mjs tests/server.test.mjs tests/theme-core.test.mjs tests/transient-core.test.mjs tests/wave-window-core.test.mjs tests/waveform-core.test.mjs",
+    "qa:quick": "node --test --test-isolation=none tests/arrangement-core.test.mjs tests/audio-meter.test.mjs tests/clip-fade-core.test.mjs tests/clip-envelope.test.mjs tests/dsp.test.mjs tests/eq-core.test.mjs tests/midi-edit-core.test.mjs tests/midi-message-core.test.mjs tests/preload.test.mjs tests/project-io.test.mjs tests/record-worklet.test.mjs tests/recording-core.test.mjs tests/sequencer-audio.test.mjs tests/server.test.mjs tests/theme-core.test.mjs tests/transient-core.test.mjs tests/wave-window-core.test.mjs tests/waveform-core.test.mjs",
     "qa:audio": "npm run native:test && npm run native:smoke",
     "qa:plugin": "npm run native:clap:test",
     "qa:hardware-output": "node scripts/native-output-check.mjs",
@@ -53,6 +53,7 @@
       "waveform-core.mjs",
       "transient-core.mjs",
       "midi-edit-core.mjs",
+      "midi-message-core.mjs",
       "clip-fade-core.mjs",
       "clip-envelope.mjs",
       "eq-core.mjs",
@@ -91,6 +92,10 @@
       {
         "from": "native/vendor/signalsmith-stretch/LICENSE.txt",
         "to": "licenses/signalsmith-stretch/LICENSE.txt"
+      },
+      {
+        "from": "native/vendor/rtmidi/LICENSE",
+        "to": "licenses/rtmidi/LICENSE"
       }
     ],
     "win": {

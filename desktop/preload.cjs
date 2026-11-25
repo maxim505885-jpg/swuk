@@ -17,6 +17,21 @@ function validWav(value) {
 
 contextBridge.exposeInMainWorld('sonoraNative', Object.freeze({
   audioDevices: () => ipcRenderer.invoke('native-audio:devices'),
+  midiDevices: () => ipcRenderer.invoke('native-midi:devices'),
+  openMidiInput: deviceIndex => Number.isInteger(deviceIndex) && deviceIndex >= 0 && deviceIndex <= 128
+    ? ipcRenderer.invoke('native-midi:open-input', deviceIndex)
+    : Promise.resolve({ ok: false, error: 'Недопустимый номер MIDI-входа' }),
+  closeMidiInput: () => ipcRenderer.invoke('native-midi:close-input'),
+  readMidiEvents: () => ipcRenderer.invoke('native-midi:read'),
+  openMidiOutput: deviceIndex => Number.isInteger(deviceIndex) && deviceIndex >= 0 && deviceIndex <= 128
+    ? ipcRenderer.invoke('native-midi:open-output', deviceIndex)
+    : Promise.resolve({ ok: false, error: 'Недопустимый номер MIDI-выхода' }),
+  closeMidiOutput: () => ipcRenderer.invoke('native-midi:close-output'),
+  sendMidiNote: (channel, pitch, velocity, on) => Number.isInteger(channel) && channel >= 0 && channel <= 15 &&
+      Number.isInteger(pitch) && pitch >= 0 && pitch <= 127 &&
+      Number.isInteger(velocity) && velocity >= 0 && velocity <= 127 && typeof on === 'boolean'
+    ? ipcRenderer.invoke('native-midi:send-note', channel, pitch, velocity, on)
+    : Promise.resolve({ ok: false, error: 'Параметры MIDI-ноты некорректны' }),
   audioStatus: () => ipcRenderer.invoke('native-audio:status'),
   startTestTone: deviceIndex => {
     if (!validDeviceIndex(deviceIndex)) return Promise.resolve({ ok: false, error: 'Недопустимый номер устройства' });

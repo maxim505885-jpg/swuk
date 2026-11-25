@@ -17,6 +17,9 @@ $clapRendererOutput = Join-Path $outputDirectory 'sonora-clap-offline.exe'
 $includeDirectory = Join-Path $PSScriptRoot 'src'
 $miniaudioDirectory = Join-Path $PSScriptRoot 'vendor/miniaudio'
 $clapIncludeDirectory = Join-Path $PSScriptRoot 'vendor/clap/include'
+$rtMidiDirectory = Join-Path $PSScriptRoot 'vendor/rtmidi'
+$rtMidiSource = Join-Path $rtMidiDirectory 'RtMidi.cpp'
+if (-not (Test-Path -LiteralPath $rtMidiSource -PathType Leaf)) { throw 'RtMidi is missing. Run git submodule update --init native/vendor/rtmidi.' }
 $localZig = Join-Path $repoRoot '.tools/native-toolchain/ziglang/zig.exe'
 $zig = $null
 
@@ -40,13 +43,13 @@ function Invoke-ZigCompiler([string[]]$Arguments) {
 
 $commonArguments = @(
     '-std=c++20', '-O2', '-Wall', '-Wextra', '-Wpedantic',
-    '-DWIN32_LEAN_AND_MEAN', '-DNOMINMAX',
+    '-DWIN32_LEAN_AND_MEAN', '-DNOMINMAX', '-DRTMIDI_API_WINMM',
     "-I$includeDirectory"
 )
 
 if ($Mode -in @('Build', 'All')) {
     Invoke-ZigCompiler ($commonArguments + @(
-        "-I$miniaudioDirectory", $coreSource, $engineSource, '-o', $engineOutput,
+        "-I$miniaudioDirectory", "-I$rtMidiDirectory", $coreSource, $engineSource, $rtMidiSource, '-o', $engineOutput,
         '-lole32', '-loleaut32', '-lwinmm', '-luuid', '-lavrt', '-lksuser', '-lpsapi'
     ))
     Write-Output "Built $engineOutput"
