@@ -137,6 +137,21 @@ try {
     count => count === 1,
     'the disposable two-second audio clip',
   );
+  const clickPoint = await evaluate("(() => { const rect=document.querySelector('.track-lane .clip').getBoundingClientRect(); return {x:rect.left+rect.width/2,y:rect.top+rect.height/2}; })()");
+  await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: clickPoint.x, y: clickPoint.y, button: 'left' });
+  await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: clickPoint.x, y: clickPoint.y, button: 'left' });
+  await evaluate("document.querySelector('#undoBtn').click()");
+  await waitUntil(
+    () => evaluate("document.querySelectorAll('.track-lane .clip').length"),
+    count => count === 0,
+    'clip selection does not create a spurious undo entry',
+  );
+  await evaluate("document.querySelector('#redoBtn').click()");
+  await waitUntil(
+    () => evaluate("document.querySelectorAll('.track-lane .clip').length"),
+    count => count === 1,
+    'redo restores the imported clip after no-op selection',
+  );
   await evaluate("(() => { const rate = document.querySelector('#clipRate'); rate.value = '1.5'; rate.dispatchEvent(new Event('input', { bubbles: true })); })()");
   const rulerPoint = await evaluate(`(() => {
     const ruler = document.querySelector('#barRuler'), bounds = ruler.getBoundingClientRect();
@@ -163,6 +178,37 @@ try {
     'the source offset on the retimed right-hand clip',
   );
   assert.ok(Math.abs(splitOffset - .94) < .005);
+  const originalRightLeft = await evaluate("document.querySelectorAll('.track-lane .clip')[1].style.left");
+  const dragPoint = await evaluate("(() => { const rect=document.querySelectorAll('.track-lane .clip')[1].getBoundingClientRect(); return {x:rect.left+rect.width/2,y:rect.top+rect.height/2}; })()");
+  await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: dragPoint.x, y: dragPoint.y, button: 'left' });
+  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: dragPoint.x + 60, y: dragPoint.y, button: 'left', buttons: 1 });
+  await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: dragPoint.x + 60, y: dragPoint.y, button: 'left' });
+  const movedRightLeft = await waitUntil(
+    () => evaluate("document.querySelectorAll('.track-lane .clip')[1]?.style.left"),
+    value => value && value !== originalRightLeft,
+    'moving an Arrangement clip',
+  );
+  await evaluate("document.querySelector('#undoBtn').click()");
+  await waitUntil(
+    () => evaluate("document.querySelectorAll('.track-lane .clip')[1]?.style.left"),
+    value => value === originalRightLeft,
+    'undo restores the clip start',
+  );
+  await evaluate("document.querySelector('#redoBtn').click()");
+  await waitUntil(
+    () => evaluate("document.querySelectorAll('.track-lane .clip')[1]?.style.left"),
+    value => value === movedRightLeft,
+    'redo restores the moved clip start',
+  );
+  const fadeIn = await evaluate("document.querySelector('#clipFadeIn')?.value");
+  assert.ok(fadeIn !== undefined, 'the selected audio clip exposes fade controls');
+  await evaluate("(() => { const input=document.querySelector('#clipFadeIn'); input.focus(); input.value='0.12'; input.dispatchEvent(new Event('change',{bubbles:true})); })()");
+  await waitUntil(() => evaluate("Number(document.querySelector('#clipFadeIn')?.value)"), value => Math.abs(value - .12) < .001, 'fade-in edit');
+  await evaluate("document.querySelector('#undoBtn').click()");
+  await waitUntil(() => evaluate("Number(document.querySelector('#clipFadeIn')?.value)"), value => Math.abs(value) < .001, 'undo restores fade-in');
+  await evaluate("document.querySelector('#redoBtn').click()");
+  await waitUntil(() => evaluate("Number(document.querySelector('#clipFadeIn')?.value)"), value => Math.abs(value - .12) < .001, 'redo restores fade-in');
+  assert.deepEqual(exceptions, [], 'clip move and fade history must not throw renderer exceptions');
   const fixtureFrames = await evaluate(`(() => {
     const sr=48000,frames=sr*2,header=new Uint8Array(44),h=new DataView(header.buffer);
     const write=(o,s)=>[...s].forEach((c,i)=>h.setUint8(o+i,c.charCodeAt(0)));
