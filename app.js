@@ -1116,7 +1116,7 @@ function renderEditor() {
     const pageStart = () => barIndex * 16;
     const requiredBars = () => Math.max(1, ...clip.steps.map(row => Math.ceil(((row.hits.length ? Math.max(...row.hits) : -1) + 1) / 16)));
     const updatePageControls = () => {
-      const lengthBars = Math.max(1, Math.ceil(clip.lengthBeats / 4)), maxBars = Math.min(128, Math.max(8, lengthBars, requiredBars()));
+      const lengthBars = Math.max(1, Math.ceil(clip.lengthBeats / 4)), maxBars = Math.min(128, Math.max(8, Math.floor(state.tempo / 2), lengthBars));
       stepLength.innerHTML = ''; stepBar.innerHTML = '';
       for (let index = 1; index <= maxBars; index++) {
         const lengthOption = new Option(String(index), String(index)); lengthOption.disabled = index < requiredBars(); stepLength.append(lengthOption);
