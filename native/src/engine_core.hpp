@@ -104,6 +104,7 @@ struct AudioClipView {
     float pan{};
     std::uint64_t fadeInFrames{};
     std::uint64_t fadeOutFrames{};
+    std::vector<AutomationPoint> gainEnvelope;
 };
 
 struct ProjectMixView {
