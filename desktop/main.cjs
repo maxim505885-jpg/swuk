@@ -301,6 +301,19 @@ function registerAudioHandlers() {
     return { ok: true, selectionToken, ...description };
   });
 
+  ipcMain.handle('native-clap:load-realtime', (event, selectionToken) => {
+    if (!trustedRenderer(event)) return { ok: false, error: 'Запрос отклонён' };
+    const clapSelection = typeof selectionToken === 'string' ? clapSelections.get(selectionToken) : null;
+    if (!clapSelection) return { ok: false, error: 'Сначала выберите локальный CLAP-эффект' };
+    return requestAudioEngine('load_clap', { path: clapSelection.pluginPath });
+  });
+  ipcMain.handle('native-clap:unload-realtime', event => trustedRenderer(event)
+    ? requestAudioEngine('unload_clap')
+    : { ok: false, error: 'Запрос отклонён' });
+  ipcMain.handle('native-clap:realtime-status', event => trustedRenderer(event)
+    ? requestAudioEngine('clap_status')
+    : { ok: false, error: 'Запрос отклонён' });
+
   ipcMain.handle('native-clap:render', async (event, selectionToken, wavValue, values) => {
     if (!trustedRenderer(event)) return { ok: false, error: 'Запрос отклонён' };
     const clapSelection = typeof selectionToken === 'string' ? clapSelections.get(selectionToken) : null;
@@ -480,3 +493,4 @@ app.on('before-quit', event => {
   event.preventDefault();
   stopAudioEngine().finally(() => app.quit());
 });
+
