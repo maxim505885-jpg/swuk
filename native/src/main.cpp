@@ -299,6 +299,12 @@ public:
         return "{\"version\":1,\"ok\":true}";
     }
 
+    [[nodiscard]] std::string midiSendRealtime(const std::uint32_t status, const std::uint32_t count) {
+        std::string error;
+        if (!midiHost_.sendRealtime(status, count, error)) return errorJson(error);
+        return "{\"version\":1,\"ok\":true}";
+    }
+
     [[nodiscard]] std::string statusJson() const {
         const bool playing = remainingToneFrames_.load(std::memory_order_relaxed) > 0 || projectPlaying_.load(std::memory_order_relaxed);
         const auto* const project = activeProject_.load(std::memory_order_acquire);
@@ -893,6 +899,12 @@ private:
         const auto noteOn = booleanField(line, "on");
         if (!channel || !pitch || !velocity || !noteOn) return errorJson("midi_send_note requires channel, pitch, velocity and on");
         return host.midiSendNote(*channel, *pitch, *velocity, *noteOn);
+    }
+    if (*operation == "midi_send_realtime") {
+        const auto status = numberField<std::uint32_t>(line, "status");
+        const auto count = numberField<std::uint32_t>(line, "count");
+        if (!status || !count) return errorJson("midi_send_realtime requires status and count");
+        return host.midiSendRealtime(*status, *count);
     }
     if (*operation == "status") return host.statusJson();
     if (*operation == "diagnostics") return host.diagnosticsJson();
