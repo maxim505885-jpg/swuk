@@ -6,7 +6,8 @@ import { analyzeMeter, presentMeter } from './audio-meter.mjs?v=1';
 import { sampleWaveformPeaks } from './waveform-core.mjs?v=2';
 import { detectTransientFrames } from './transient-core.mjs?v=1';
 import { clampMidiPitch, midiOctaveStart, shiftMidiOctave } from './midi-edit-core.mjs?v=1';
-import { normalizeClipFades, scheduleClipFade } from './clip-fade-core.mjs?v=1';
+import { normalizeClipFades } from './clip-fade-core.mjs?v=1';
+import { CLIP_GAIN_ENVELOPE_MAX_POINTS, normalizeClipGainEnvelope, sampleClipGainEnvelope, scheduleClipGain, splitClipGainEnvelope } from './clip-envelope.mjs?v=1';
 import { EQ_BAND_FREQUENCIES, normalizeEqSettings } from './eq-core.mjs?v=2';
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -829,6 +830,12 @@ function createClipElement(clip, track) {
       const fade = document.createElement('span'); fade.className = `clip-fade clip-fade-${side}`;
       fade.style.width = `${Math.min(50, seconds / durationSec * 100)}%`; el.append(fade);
     }
+    if (clip.gainEnvelope) {
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.classList.add('clip-gain-envelope-curve'); svg.setAttribute('viewBox', '0 0 100 100'); svg.setAttribute('preserveAspectRatio', 'none'); svg.setAttribute('aria-hidden', 'true');
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', clipGainEnvelopeSvgPath(clip)); svg.append(path); el.append(svg);
+    }
   }
   el.addEventListener('pointerdown', event => beginClipDrag(event, clip, el));
   el.addEventListener('click', event => { event.stopPropagation(); state.selectedClipId = clip.id; state.selectedTrackId = track.id; if (clip.kind === 'automation') state.view = 'automation'; renderTimeline(); renderEditor(); renderInspector(); });
@@ -894,6 +901,34 @@ async function sliceAudioAtTransients(clip, sensitivity, minSpacingMs) {
   }
 }
 
+function clipGainEnvelopeSvgPath(clip) {
+  return normalizeClipGainEnvelope(clip.gainEnvelope)
+    .map((point, index) => `${index ? 'L' : 'M'}${(point.position * 100).toFixed(2)},${(88 - point.gain / 1.5 * 70).toFixed(2)}`)
+    .join(' ');
+}
+
+function renderClipGainEnvelopeControls(clip) {
+  if (!clip.gainEnvelope) return `<div class="property clip-gain-envelope-property">
+    <label>ОГИБАЮЩАЯ УСИЛЕНИЯ КЛИПА</label>
+    <small class="field-help">Задайте форму громкости внутри клипа, не меняя исходный звук.</small>
+    <button class="button quiet compact" id="createClipGainEnvelope" type="button">Создать кривую громкости</button>
+  </div>`;
+  const points = normalizeClipGainEnvelope(clip.gainEnvelope);
+  const rows = points.map((point, index) => `<div class="clip-gain-point">
+    <label for="clipGainPosition${index}">Точка ${index + 1} · доли</label>
+    <input id="clipGainPosition${index}" data-clip-gain-position="${index}" type="number" min="0" max="${clip.lengthBeats}" step="0.25" value="${(point.position * clip.lengthBeats).toFixed(2)}" ${index === 0 || index === points.length - 1 ? 'disabled' : ''} />
+    <label for="clipGainValue${index}">Уровень</label>
+    <div class="clip-gain-value"><input id="clipGainValue${index}" data-clip-gain-value="${index}" type="range" min="0" max="1.5" step="0.01" value="${point.gain}" /><output>${point.gain.toFixed(2)}×</output></div>
+    <button class="button quiet compact" data-clip-gain-remove="${index}" type="button" ${points.length <= 2 ? 'disabled' : ''} aria-label="Удалить точку ${index + 1}">−</button>
+  </div>`).join('');
+  return `<div class="property clip-gain-envelope-property">
+    <label>ОГИБАЮЩАЯ УСИЛЕНИЯ КЛИПА</label>
+    <small class="field-help">Кривая действует в воспроизведении, WASAPI и WAV-экспорте.</small>
+    <div class="clip-gain-envelope-actions"><button class="button quiet compact" id="addClipGainEnvelopePoint" type="button" ${points.length >= CLIP_GAIN_ENVELOPE_MAX_POINTS ? 'disabled' : ''}>＋ Точка у курсора</button><button class="button quiet compact" id="removeClipGainEnvelope" type="button">Убрать кривую</button></div>
+    <div class="clip-gain-points">${rows}</div>
+  </div>`;
+}
+
 function beginClipDrag(event, clip, element) {
   if (event.button !== 0) return; event.stopPropagation();
   if (splitMode) { splitClip(clip); splitMode = false; $('#splitTool').classList.remove('selected'); return; }
@@ -932,6 +967,11 @@ function splitClip(clip) {
   if (!canAddClip()) return;
   const audioParts = !clip.kind ? splitAudioClip(clip, point, state.tempo) : null;
   if (!clip.kind && !audioParts) { showToast('Не удалось разделить аудиоклип'); return; }
+  if (!clip.kind && clip.gainEnvelope) {
+    const envelope = splitClipGainEnvelope(clip.gainEnvelope, leftLength / clip.lengthBeats);
+    if (!envelope) { showToast('Не удалось разделить огибающую громкости'); return; }
+    audioParts.left.gainEnvelope = envelope.left; audioParts.right.gainEnvelope = envelope.right;
+  }
   const partition = clip.kind === 'midi' || clip.kind === 'drums' ? splitSequencerEvents(clip, leftLength) : null;
   if ((clip.kind === 'midi' || clip.kind === 'drums') && !partition) { showToast('Не удалось разделить содержимое партии'); return; }
   const additionalEvents = clip.kind === 'midi' ? Math.max(0, partition.leftEvents.length + partition.rightEvents.length - clip.notes.length)
@@ -958,6 +998,50 @@ function splitClip(clip) {
     clip.lengthBeats = leftLength;
   } else if (clip.kind) { clip.lengthBeats = leftLength; }
   found.track.clips.push(right); state.selectedClipId = right.id; renderAll(); showToast('Клип разделён');
+}
+
+function bindClipGainEnvelopeEditor(clip) {
+  $('#createClipGainEnvelope')?.addEventListener('click', () => {
+    recordUndo(); clip.gainEnvelope = [{ position: 0, gain: 1 }, { position: 1, gain: 1 }]; renderAll();
+  });
+  $('#removeClipGainEnvelope')?.addEventListener('click', () => {
+    recordUndo(); delete clip.gainEnvelope; restartPlaybackIfActive(); renderAll();
+  });
+  $('#addClipGainEnvelopePoint')?.addEventListener('click', () => {
+    const position = clamp((state.playheadBeat - clip.startBeat) / clip.lengthBeats, 0, 1);
+    const points = normalizeClipGainEnvelope(clip.gainEnvelope);
+    if (points.length >= CLIP_GAIN_ENVELOPE_MAX_POINTS) { showToast('Достигнут предел точек огибающей'); return; }
+    if (position <= 0 || position >= 1 || points.some(point => Math.abs(point.position - position) < .001)) { showToast('Переместите курсор внутрь клипа, в свободную позицию'); return; }
+    recordUndo(); points.push({ position, gain: sampleClipGainEnvelope(points, position) }); points.sort((a, b) => a.position - b.position);
+    clip.gainEnvelope = points; renderAll();
+  });
+  $('[data-clip-gain-position]').forEach(input => {
+    input.addEventListener('focus', recordUndo, { once: true });
+    input.addEventListener('change', () => {
+      const index = Number(input.dataset.clipGainPosition), points = normalizeClipGainEnvelope(clip.gainEnvelope);
+      if (index <= 0 || index >= points.length - 1) return;
+      const minimum = points[index - 1].position + .001, maximum = points[index + 1].position - .001;
+      points[index].position = clamp(Number(input.value) / clip.lengthBeats, minimum, maximum);
+      clip.gainEnvelope = points; markProjectDirty(); renderAll(); restartPlaybackIfActive();
+    });
+  });
+  $('[data-clip-gain-value]').forEach(input => {
+    const index = Number(input.dataset.clipGainValue), output = input.parentElement.querySelector('output');
+    input.addEventListener('focus', recordUndo, { once: true });
+    input.addEventListener('input', () => {
+      const points = normalizeClipGainEnvelope(clip.gainEnvelope);
+      points[index].gain = clamp(Number(input.value), 0, 1.5); clip.gainEnvelope = points;
+      output.textContent = `${points[index].gain.toFixed(2)}×`; markProjectDirty();
+      const element = $('.clip').find(item => item.dataset.clip === clip.id);
+      $('.clip-gain-envelope-curve path', element)?.setAttribute('d', clipGainEnvelopeSvgPath(clip));
+    });
+    input.addEventListener('change', restartPlaybackIfActive);
+  });
+  $('[data-clip-gain-remove]').forEach(button => button.addEventListener('click', () => {
+    const points = normalizeClipGainEnvelope(clip.gainEnvelope), index = Number(button.dataset.clipGainRemove);
+    if (points.length <= 2 || index <= 0 || index >= points.length - 1) return;
+    recordUndo(); points.splice(index, 1); clip.gainEnvelope = points; renderAll(); restartPlaybackIfActive();
+  }));
 }
 
 function renderEditor() {
@@ -1034,6 +1118,7 @@ function renderEditor() {
       <div class="property"><label>АВТОТЮН · МОНОФОНИЯ</label><button class="button quiet compact" id="applyAutotuneBtn">Исправить по тональности</button></div>
       <div class="property"><label>ГРОМКОСТЬ</label><input id="clipVolume" type="range" min="0" max="1.5" step="0.01" value="${clip.volume ?? 1}" /></div>
       <div class="property"><label>ПАНОРАМА</label><input id="clipPan" type="range" min="-1" max="1" step="0.01" value="${clip.pan || 0}" /></div>
+      ${renderClipGainEnvelopeControls(clip)}
       <div class="property"><label>FADE-IN · СЕК</label><input id="clipFadeIn" type="number" min="0" max="30" step="0.01" value="${Number(clip.fadeInSec || 0).toFixed(2)}" /></div>
       <div class="property"><label>FADE-OUT · СЕК</label><input id="clipFadeOut" type="number" min="0" max="30" step="0.01" value="${Number(clip.fadeOutSec || 0).toFixed(2)}" /></div>
       <div class="property">
@@ -1055,8 +1140,9 @@ function renderEditor() {
     $('#applyClapBtn').onclick = () => applyClipClap(clip);
     $('#applyAutotuneBtn').onclick = () => applyClipAutotune(clip, { enabled: true, key: state.key, strength: Number($('#autotuneStrength').value) / 100, speed: Number($('#autotuneSpeed').value) / 100 });
     $('#toggleClipProcessingBtn')?.addEventListener('click', () => { recordUndo(); clip.bypassProcessing = !clip.bypassProcessing; restartPlaybackIfActive(); renderAll(); });
-    $('#clipVolume').addEventListener('input', event => { clip.volume = Number(event.target.value); markProjectDirty(); if (clip.fadeInSec || clip.fadeOutSec) restartPlaybackIfActive(); else { const gain = liveClipGains.get(clip.id); if (gain) gain.gain.setTargetAtTime(clip.volume, getAudioContext().currentTime, .015); if (nativePlaybackActive) restartPlaybackIfActive(); } });
+    $('#clipVolume').addEventListener('input', event => { clip.volume = Number(event.target.value); markProjectDirty(); if (clip.gainEnvelope || clip.fadeInSec || clip.fadeOutSec) restartPlaybackIfActive(); else { const gain = liveClipGains.get(clip.id); if (gain) gain.gain.setTargetAtTime(clip.volume, getAudioContext().currentTime, .015); if (nativePlaybackActive) restartPlaybackIfActive(); } });
     $('#clipPan').addEventListener('input', event => { clip.pan = Number(event.target.value); markProjectDirty(); const pan = liveClipPans.get(clip.id); if (pan) pan.pan.setTargetAtTime(clip.pan, getAudioContext().currentTime, .015); if (nativePlaybackActive) restartPlaybackIfActive(); });
+    bindClipGainEnvelopeEditor(clip);
     const updateClipFades = () => {
       const durationSec = clip.lengthBeats * 60 / state.tempo;
       const fades = normalizeClipFades(durationSec, Number($('#clipFadeIn').value), Number($('#clipFadeOut').value));
@@ -1868,7 +1954,7 @@ function scheduleProject(context, fromBeat = 0, destination = context.destinatio
         const outputDuration = Math.max(.02, clipEnd * secondsPerBeat - Math.max(fromBeat, clipStart) * secondsPerBeat);
         const duration = Math.min(remaining, outputDuration * playbackRate);
         const fadeDuration = clip.lengthBeats * secondsPerBeat;
-        scheduleClipFade(clipGain.gain, sourceAt, fadeDuration, clip.volume ?? 1, clip.fadeInSec, clip.fadeOutSec, Math.max(0, fromBeat - clipStart) * secondsPerBeat);
+        scheduleClipGain(clipGain.gain, sourceAt, fadeDuration, clip.volume ?? 1, clip.gainEnvelope, clip.fadeInSec, clip.fadeOutSec, Math.max(0, fromBeat - clipStart) * secondsPerBeat);
          try { source.start(sourceAt, offset, duration); } catch { source.start(sourceAt, offset); }
         scheduledNodes.push(source);
       }
@@ -2186,7 +2272,8 @@ function buildNativeProjectPlan() {
       endBeat = Math.max(endBeat, clip.startBeat + durationBeats);
       const fades = normalizeClipFades(durationFrames / 48_000, clip.fadeInSec, clip.fadeOutSec);
       clips.push({ assetId: nativeAssetId, trackIndex, startFrame, sourceOffsetFrame, durationFrames, playbackRate, gain: clip.volume ?? 1, pan: clip.pan || 0,
-        fadeInFrames: Math.round(fades.fadeInSec * 48_000), fadeOutFrames: Math.round(fades.fadeOutSec * 48_000) });
+        fadeInFrames: Math.round(fades.fadeInSec * 48_000), fadeOutFrames: Math.round(fades.fadeOutSec * 48_000),
+        gainAutomation: clip.gainEnvelope ? clip.gainEnvelope.flatMap(point => [Math.round(point.position * durationFrames), point.gain]) : [] });
     }
   }
   if (!clips.length) return null;
