@@ -88,6 +88,7 @@ struct SharedTransport {
     std::atomic<HostStatus> status{HostStatus::starting};
     std::atomic<std::uint64_t> inputOverruns{};
     std::atomic<std::uint64_t> outputUnderruns{};
+    std::atomic<std::uint64_t> outputOverruns{};
     AudioBlockQueue input;
     AudioBlockQueue output;
 };
