@@ -35,13 +35,13 @@ export function recordMidiNoteEvent(take, message, beat) {
       (message.type !== 'noteon' && message.type !== 'noteoff')) return false;
   const key = message.channel + ':' + message.pitch;
   if (message.type === 'noteon') {
-    const replaced = closeOpenNote(take, key, beat);
+    closeOpenNote(take, key, beat);
     take.active.set(key, {
       beat: Math.max(take.clip.startBeat, beat),
       pitch: message.pitch,
       velocity: Math.max(0, Math.min(1, (Number(message.velocity) || 0) / 127)),
     });
-    return true || replaced;
+    return true;
   }
   return closeOpenNote(take, key, beat);
 }
