@@ -1117,7 +1117,7 @@ function renderInspector() {
       const valueForControl = () => bandIndex === null ? track.eqSettings.q : track.eqSettings.bands[bandIndex][key];
       const formatValue = value => key === 'frequencyHz' ? `${Math.round(value)} Hz` : key === 'gainDb' ? `${value.toFixed(1)} dB` : value.toFixed(1);
       const updateValue = () => {
-        if (control.type !== 'number') control.value = String(valueForControl());
+        control.value = String(valueForControl());
         if (output) output.textContent = formatValue(valueForControl());
         if (bandIndex !== null) { const label = control.closest('.inspector-eq-band')?.querySelector('[data-eq-band-label]'); if (label) label.textContent = `${String(bandIndex + 1).padStart(2, '0')} · ${Math.round(track.eqSettings.bands[bandIndex].frequencyHz)} Гц`; }
       };
