@@ -16,6 +16,7 @@
 #include <iostream>
 #include <iterator>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -630,6 +631,29 @@ void testRealtimePluginAudioBlockQueueBackpressureAndOrder() {
     require(queue.sizeApprox() == 0, "realtime plugin queue returns to empty");
 }
 
+void testRealtimePluginAudioBlockQueueAcrossThreads() {
+    sonora::plugin::AudioBlockQueue queue;
+    constexpr std::uint64_t kBlockCount = 20'000;
+    std::thread producer([&queue]() {
+        std::array<float, 2> samples{};
+        for (std::uint64_t sequence = 0; sequence < kBlockCount; ++sequence) {
+            samples[0] = static_cast<float>(sequence % 1000) / 1000.0F;
+            samples[1] = -samples[0];
+            while (!queue.tryPush(sequence, samples, 1)) std::this_thread::yield();
+        }
+    });
+
+    sonora::plugin::AudioBlock block{};
+    for (std::uint64_t expected = 0; expected < kBlockCount; ++expected) {
+        while (!queue.tryPop(block)) std::this_thread::yield();
+        const float expectedSample = static_cast<float>(expected % 1000) / 1000.0F;
+        require(block.sequence == expected, "realtime plugin queue publishes cross-thread blocks in sequence");
+        require(block.frameCount == 1 && block.samples[0] == expectedSample && block.samples[1] == -expectedSample,
+            "realtime plugin queue publishes complete block data before its sequence");
+    }
+    producer.join();
+}
+
 int main() {
     testToneFrequencyAndStereoAlignment();
     testInvalidToneIsRejectedWithoutWriting();
@@ -663,6 +687,7 @@ int main() {
     testMidiEventQueueDropsNewestOnOverflowAndCountsLoss();
     testRealtimePluginAudioBlockQueue();
     testRealtimePluginAudioBlockQueueBackpressureAndOrder();
-    std::cout << "32 native audio core tests passed\n";
+    testRealtimePluginAudioBlockQueueAcrossThreads();
+    std::cout << "33 native audio core tests passed\n";
     return EXIT_SUCCESS;
 }
