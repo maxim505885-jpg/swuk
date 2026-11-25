@@ -75,7 +75,10 @@ export function validateProjectDocument(data, limits = PROJECT_LIMITS) {
         (track.mute !== undefined && typeof track.mute !== 'boolean') || (track.solo !== undefined && typeof track.solo !== 'boolean') ||
         (track.effects !== undefined && (!plainObject(track.effects) || Object.values(track.effects).some(value => typeof value !== 'boolean'))) ||
         (track.eqSettings !== undefined && (!plainObject(track.eqSettings) || !finiteBetween(track.eqSettings.frequencyHz, 20, 20_000) ||
-          !finiteBetween(track.eqSettings.gainDb, -24, 24) || !finiteBetween(track.eqSettings.q, 0.1, 18))) ||
+          !finiteBetween(track.eqSettings.gainDb, -24, 24) || !finiteBetween(track.eqSettings.q, 0.1, 18) ||
+          (track.eqSettings.bands !== undefined && (!Array.isArray(track.eqSettings.bands) || track.eqSettings.bands.length !== 7 ||
+            track.eqSettings.bands.some(band => !plainObject(band) || !finiteBetween(band.frequencyHz, 20, 20_000) ||
+              !finiteBetween(band.gainDb, -24, 24) || !finiteBetween(band.q, 0.1, 18)))))) ||
         !Array.isArray(track.clips)) return { ok: false, code: 'invalid-tracks' };
     trackIds.add(track.id);
     if (track.clips.length > limits.clips - clipCount) return { ok: false, code: 'too-many-clips' };

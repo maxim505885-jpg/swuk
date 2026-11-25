@@ -85,10 +85,12 @@ test('native engine decodes a project clip and advances WASAPI transport with di
   assert.equal(project.ok, true);
   const malformedAutomation = await request({ version: 1, op: 'set_track', index: 0, gain: 0.8, pan: 0, mute: false, solo: false, reverb: false, delay: false, gainAutomation: [48_000, 0.2, 24_000, 0.8] });
   assert.equal(malformedAutomation.ok, false, 'the native protocol rejects out-of-order automation events');
+  const invalidBands = await request({ version: 1, op: 'set_track', index: 0, gain: 0.8, pan: 0, mute: false, solo: false, reverb: false, delay: false, equalizer: true, equalizerBands: [60, 0, 1] });
+  assert.equal(invalidBands.ok, false, 'the native protocol requires seven complete EQ band triples');
   const invalidEq = await request({ version: 1, op: 'set_track', index: 0, gain: 0.8, pan: 0, mute: false, solo: false, reverb: false, delay: false, equalizer: true, equalizerFrequencyHz: 1000, equalizerGainDb: 6, equalizerQ: 0 });
   assert.equal(invalidEq.ok, true, 'track settings are staged before the native graph is prepared');
   assert.equal((await request({ version: 1, op: 'commit_project' })).ok, false, 'the native graph rejects an out-of-range EQ Q');
-  const track = await request({ version: 1, op: 'set_track', index: 0, gain: 0.8, pan: 0, mute: false, solo: false, reverb: true, delay: true, equalizer: true, equalizerFrequencyHz: 1000, equalizerGainDb: 6, equalizerQ: 1, gainAutomation: [0, 0.8, 48_000, 0.2] });
+  const track = await request({ version: 1, op: 'set_track', index: 0, gain: 0.8, pan: 0, mute: false, solo: false, reverb: true, delay: true, equalizer: true, equalizerFrequencyHz: 1000, equalizerGainDb: 0, equalizerQ: 1, equalizerBands: [60, 3, 1, 150, 0, 1, 400, 0, 1, 1000, 0, 1, 2400, -2, 1, 6000, 0, 1, 14000, 1, 1], gainAutomation: [0, 0.8, 48_000, 0.2] });
   assert.equal(track.ok, true);
   const invalidFades = await request({ version: 1, op: 'add_clip', assetId: 'smoke-tone', trackIndex: 0, startFrame: 0, sourceOffsetFrame: 0, durationFrames: 48_000, playbackRate: 1, gain: 1, pan: 0, fadeInFrames: 30_000, fadeOutFrames: 20_000 });
   assert.equal(invalidFades.ok, false, 'the native protocol rejects fades whose combined duration exceeds the clip');

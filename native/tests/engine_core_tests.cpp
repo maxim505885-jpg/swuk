@@ -290,6 +290,39 @@ void testParametricEqualizerBoostsCenterFrequencyAndRejectsInvalidSettings() {
     require(!sonora::audio::configureProjectMixState(invalidState, invalidProject), "invalid EQ Q is rejected before playback");
 }
 
+void testSevenParametricEqualizerBandsShapeTheirOwnFrequencies() {
+    const auto measure = [](const float frequencyHz, const std::size_t bandIndex) {
+        constexpr std::size_t frameCount = 4800;
+        std::vector<float> input(frameCount * 2);
+        for (std::size_t frame = 0; frame < frameCount; ++frame) {
+            const float sample = 0.2F * std::sin(2.0F * 3.14159265358979323846F * frequencyHz * static_cast<float>(frame) / 48'000.0F);
+            input[frame * 2] = sample;
+            input[frame * 2 + 1] = sample;
+        }
+        const sonora::audio::PcmSourceView source{input.data(), frameCount, 2, 48'000.0};
+        const sonora::audio::AudioClipView clip{&source, 0, 0, 0, frameCount, 1.0, 1.0F, 0.0F};
+        auto track = sonora::audio::TrackMixSettings{1.0F, 0.0F, false, false, false, false};
+        track.equalizer = true;
+        track.equalizerBands = sonora::audio::kDefaultEqualizerBands;
+        track.equalizerBands[bandIndex].gainDb = 6.0F;
+        const sonora::audio::ProjectMixView project{&track, 1, &clip, 1, 1.0F};
+        sonora::audio::ProjectMixState state;
+        require(sonora::audio::configureProjectMixState(state, project), "seven-band EQ state configures");
+        std::vector<float> output(frameCount * 2);
+        require(sonora::audio::renderMixBlock(output.data(), frameCount, 48'000.0, 0, project, &state), "seven-band EQ renders");
+        double inputEnergy = 0.0, outputEnergy = 0.0;
+        for (std::size_t frame = 500; frame < frameCount; ++frame) {
+            inputEnergy += static_cast<double>(input[frame * 2]) * input[frame * 2];
+            outputEnergy += static_cast<double>(output[frame * 2]) * output[frame * 2];
+        }
+        return std::sqrt(outputEnergy / inputEnergy);
+    };
+    const double lowBandRatio = measure(400.0F, 2);
+    const double upperBandRatio = measure(2400.0F, 4);
+    require(lowBandRatio > 1.9 && lowBandRatio < 2.1, "400 Hz band delivers an independent six-decibel boost");
+    require(upperBandRatio > 1.9 && upperBandRatio < 2.1, "2.4 kHz band delivers an independent six-decibel boost");
+}
+
 void testEffectsRequirePreallocatedRuntimeBeforeWriting() {
     const float impulse[]{1.0F};
     const sonora::audio::PcmSourceView source{impulse, 1, 1, 48'000.0};
@@ -373,10 +406,11 @@ int main() {
     testTrackDelayProducesDelayedTail();
     testTrackReverbProducesRoomTail();
     testParametricEqualizerBoostsCenterFrequencyAndRejectsInvalidSettings();
+    testSevenParametricEqualizerBandsShapeTheirOwnFrequencies();
     testEffectsRequirePreallocatedRuntimeBeforeWriting();
     testCaptureRingChannelModes();
     testCaptureRingReportsBackpressureAndHonorsFrameLimit();
     testCaptureRecorderWritesFinalizedPcmWave();
-    std::cout << "20 native audio core tests passed\n";
+    std::cout << "21 native audio core tests passed\n";
     return EXIT_SUCCESS;
 }

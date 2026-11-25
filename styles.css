@@ -158,3 +158,14 @@
 .inspector-eq-controls .field-help{margin:0;line-height:1.45}
 .properties{grid-template-columns:repeat(auto-fit,minmax(100px,1fr))}
 .clap-property{width:100%;min-width:0}
+
+.inspector-eq-bands{display:grid;gap:6px}
+.inspector-eq-band{display:grid;grid-template-columns:minmax(116px,.72fr) minmax(130px,1.28fr);align-items:center;gap:9px;padding:6px 0;border-bottom:1px solid var(--line)}
+.inspector-eq-band:last-child{border-bottom:0}
+.inspector-eq-frequency{display:grid;gap:3px;color:var(--muted);font-size:10px}
+.inspector-eq-frequency input{width:100%;min-height:28px;padding:4px 6px;border:1px solid var(--line);border-radius:4px;background:var(--surface);color:var(--text);font:inherit}
+.inspector-eq-gain{display:grid;grid-template-columns:minmax(60px,1fr) 44px;align-items:center;gap:8px}
+.inspector-eq-gain input{width:100%;min-width:0;accent-color:var(--accent)}
+.inspector-eq-gain output{color:var(--text);font-variant-numeric:tabular-nums;text-align:right;font-size:10px}
+.inspector-eq-controls input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media(max-width:420px){.inspector-eq-band{grid-template-columns:100px minmax(110px,1fr);gap:6px}.inspector-eq-controls{padding:8px}}
