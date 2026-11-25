@@ -224,9 +224,8 @@ bool renderMixBlock(
 
             float left{};
             float right{};
-            const auto& automationState = state->tracks[clip.trackIndex];
-            const float trackGain = track.gainAutomation.empty() ? track.gain : automationState.gainAutomationValues[frame];
-            const float trackPan = track.panAutomation.empty() ? track.pan : automationState.panAutomationValues[frame];
+            const float trackGain = track.gainAutomation.empty() ? track.gain : state->tracks[clip.trackIndex].gainAutomationValues[frame];
+            const float trackPan = track.panAutomation.empty() ? track.pan : state->tracks[clip.trackIndex].panAutomationValues[frame];
             float fadeGain = 1.0F;
             if (clip.fadeInFrames > 0 && relativeFrame < clip.fadeInFrames) {
                 fadeGain = std::min(fadeGain, static_cast<float>(relativeFrame) / static_cast<float>(clip.fadeInFrames));
