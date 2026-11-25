@@ -3323,6 +3323,7 @@ async function nativeMidiSettings() {
   outputPlaybackInput.onchange = () => {
     midiOutputPlaybackEnabled = outputPlaybackInput.checked;
     try { localStorage.setItem('sonora-midi-output-playback', String(midiOutputPlaybackEnabled)); } catch {}
+    if (!midiOutputPlaybackEnabled) void stopExternalMidiNotes();
     syncMidiOutputPlayback();
     updateStatus(midiOutputPlaybackEnabled ? 'Воспроизведение MIDI-клипов включено.' : 'Воспроизведение MIDI-клипов выключено.');
   };
