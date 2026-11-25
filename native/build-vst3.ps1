@@ -8,10 +8,10 @@ $sdkRoot = Join-Path $PSScriptRoot 'references/vst3sdk'
 $buildDirectory = Join-Path $PSScriptRoot 'build/vst3-sdk'
 $requiredPaths = @(
     (Join-Path $sdkRoot 'CMakeLists.txt'),
-    (Join-Path $sdkRoot 'base/CMakeLists.txt'),
+    (Join-Path $sdkRoot 'base/source/fstring.cpp'),
     (Join-Path $sdkRoot 'cmake/modules/SMTG_VST3_SDK.cmake'),
-    (Join-Path $sdkRoot 'pluginterfaces/CMakeLists.txt'),
-    (Join-Path $sdkRoot 'public.sdk/CMakeLists.txt')
+    (Join-Path $sdkRoot 'pluginterfaces/base/ipluginbase.h'),
+    (Join-Path $sdkRoot 'public.sdk/source/vst/hosting/module.h')
 )
 
 foreach ($path in $requiredPaths) {
