@@ -79,6 +79,7 @@ try {
   );
   assert.equal(ready, true);
   assert.equal(await evaluate('document.title'), 'SONORA — музыкальная студия');
+  assert.deepEqual(await evaluate("(()=>({canvas:document.querySelector('#spectrumCanvas')?.getAttribute('role'),label:document.querySelector('#spectrumCanvas')?.getAttribute('aria-label'),summary:document.querySelector('#spectrumSummary')?.textContent}))()"),{canvas:'img',label:'Спектральный анализатор мастер-выхода',summary:'Нет сигнала'},'accessible spectrum analyzer widget');
   assert.equal(await evaluate("Boolean(document.querySelector('[data-inspector-effect=equalizer]'))"), true);
 
   await evaluate("document.querySelector('[data-inspector-effect=equalizer]').click()");
@@ -245,7 +246,7 @@ try {
   await evaluate("document.querySelector('#loopBtn').click()");
   assert.deepEqual(await evaluate("(()=>({pressed:document.querySelector('#loopBtn').getAttribute('aria-pressed'),active:document.querySelector('#loopRegion').classList.contains('is-looping')}))()"),{pressed:'true',active:true},'selected range can be enabled as the playback loop');
   assert.deepEqual(exceptions,[], 'Arrangement range selection must not throw renderer exceptions');
-  console.log('Electron UI smoke passed: EQ, compressor, limiter, split/slicing, undo/redo, project round-trip, WAV export and loop selection');
+  console.log('Electron UI smoke passed: spectrum analyzer, EQ, compressor, limiter, split/slicing, undo/redo, project round-trip, WAV export and loop selection');
 } finally {
   if (socket && socket.readyState < WebSocket.CLOSING) socket.close();
   if (child.exitCode === null) {

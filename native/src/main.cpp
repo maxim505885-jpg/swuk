@@ -5,6 +5,7 @@
 
 #include "engine_core.hpp"
 #include "capture_wav_recorder.hpp"
+#include "spectrum_analyzer.hpp"
 
 #include <algorithm>
 #include <array>
@@ -236,6 +237,11 @@ public:
                 if (trackIndex != 0) response.push_back(',');
                 response += std::to_string(trackPeaks_[trackIndex].load(std::memory_order_relaxed));
             }
+        }
+        response += "],\"spectrum\":[";
+        for (std::size_t bandIndex = 0; bandIndex < sonora::audio::kSpectrumBandCount; ++bandIndex) {
+            if (bandIndex != 0) response.push_back(',');
+            response += std::to_string(spectrumBands_[bandIndex].load(std::memory_order_relaxed));
         }
         response += "],\"backend\":\"WASAPI shared\"}}";
         return response;
@@ -581,6 +587,11 @@ private:
         for (auto& peak : trackPeaks_) peak.store(0.0F, std::memory_order_relaxed);
     }
 
+    void clearSpectrum() noexcept {
+        spectrumAnalyzer_.reset();
+        for (auto& band : spectrumBands_) band.store(0.0F, std::memory_order_relaxed);
+    }
+
     static void captureDataCallback(ma_device* device, void*, const void* input, const ma_uint32 frameCount) noexcept {
         auto* const host = static_cast<AudioHost*>(device->pUserData);
         if (host == nullptr || input == nullptr || !host->captureRecorder_) return;
@@ -611,6 +622,7 @@ private:
         if (!host->projectPlaying_.load(std::memory_order_acquire) || project == nullptr || device->playback.channels != 2) {
             host->projectPeak_.store(0.0F, std::memory_order_relaxed);
             host->clearTrackPeaks();
+            host->clearSpectrum();
             ma_silence_pcm_frames(output, frameCount, ma_format_f32, device->playback.channels);
             return;
         }
@@ -619,6 +631,7 @@ private:
             host->projectPlaying_.store(false, std::memory_order_release);
             host->projectPeak_.store(0.0F, std::memory_order_relaxed);
             host->clearTrackPeaks();
+            host->clearSpectrum();
             ma_silence_pcm_frames(output, frameCount, ma_format_f32, device->playback.channels);
             return;
         }
@@ -638,6 +651,11 @@ private:
         if (framesToRender < frameCount) {
             auto* const remainder = static_cast<float*>(output) + framesToRender * device->playback.channels;
             ma_silence_pcm_frames(remainder, frameCount - framesToRender, ma_format_f32, device->playback.channels);
+        }
+        host->spectrumAnalyzer_.process(static_cast<const float*>(output), framesToRender);
+        const auto& spectrum = host->spectrumAnalyzer_.bands();
+        for (std::size_t bandIndex = 0; bandIndex < spectrum.size(); ++bandIndex) {
+            host->spectrumBands_[bandIndex].store(spectrum[bandIndex], std::memory_order_relaxed);
         }
         const auto nextFrame = firstFrame + framesToRender;
         float peak = 0.0F;
@@ -731,6 +749,8 @@ private:
     std::atomic<std::uint64_t> projectFrame_{0};
     std::atomic<float> projectPeak_{0.0F};
     std::array<std::atomic<float>, kMaxProjectTracks> trackPeaks_{};
+    sonora::audio::SpectrumAnalyzer spectrumAnalyzer_{static_cast<double>(kSampleRate)};
+    std::array<std::atomic<float>, sonora::audio::kSpectrumBandCount> spectrumBands_{};
     std::uint64_t totalAssetBytes_{};
     float builderMasterGain_{1.0F};
     double phase_{0.0};
