@@ -6,6 +6,7 @@ import { analyzeMeter, presentMeter } from './audio-meter.mjs?v=1';
 import { sampleWaveformPeaks } from './waveform-core.mjs?v=2';
 import { moveWaveWindowEdge, normalizeWaveWindow, waveWindowSecondsAtX } from './wave-window-core.mjs?v=1';
 import { resolveRecordingStartBeat } from './recording-core.mjs?v=1';
+import { decodeMidiNoteEvent } from './midi-message-core.mjs?v=1';
 import { detectTransientFrames } from './transient-core.mjs?v=1';
 import { clampMidiPitch, generateChordPitches, midiOctaveStart, quantizeMidiNotes, shiftMidiOctave } from './midi-edit-core.mjs?v=3';
 import { normalizeClipFades } from './clip-fade-core.mjs?v=1';
@@ -104,6 +105,13 @@ let inspectorOpen = true;
 let nativeOutputDeviceIndex = 0;
 let nativeCaptureDevices = [];
 let nativeInputDeviceIndex = Number.isInteger(savedAudioPreferences.nativeInputDeviceIndex) && savedAudioPreferences.nativeInputDeviceIndex >= 0 ? savedAudioPreferences.nativeInputDeviceIndex : 0;
+let midiInputConnected = false;
+let midiOutputConnected = false;
+let midiInputDeviceIndex = 0;
+let midiOutputDeviceIndex = 0;
+let midiInputPollTimer = 0;
+let midiTestOffTimer = 0;
+const midiPreviewVoices = new Map();
 let nativePlaybackEndBeat = 0;
 let lastNativeMeterPoll = 0;
 let nativeMeterPollPending = false;
@@ -3080,6 +3088,7 @@ async function nativeAudioSettings(result) {
   const note = document.createElement('p'); note.className = 'native-engine-note';
   note.textContent = 'Запись WASAPI работает при наличии входного устройства; файл создаётся локально, лимит — 256 МиБ. MIDI и ударные рендерятся в PCM для WASAPI; метроном использует браузерный аудиослой.';
   panel.append(note);
+  if (window.sonoraNative?.midiDevices) panel.append(await nativeMidiSettings());
 
   if (!result?.ok) status.textContent = result?.error || 'Нативный аудиодвижок недоступен. Пересоберите приложение с native:build.';
   else {
@@ -3103,7 +3112,174 @@ async function nativeAudioSettings(result) {
     nativeToneActive = false; stopButton.disabled = false; stopButton.hidden = true; playButton.hidden = false;
     status.textContent = response?.ok ? 'Тестовый сигнал остановлен.' : response?.error || 'Сигнал остановлен.';
   };
+}
+async function nativeMidiSettings() {
+  const panel = document.createElement('section'); panel.className = 'native-engine-panel';
+  const title = document.createElement('h3'); title.textContent = 'Внешние MIDI-устройства'; panel.append(title);
+  const status = document.createElement('p'); status.className = 'native-engine-status'; status.setAttribute('role', 'status'); status.id = 'midiInputStatus'; panel.append(status);
+  const initial = await window.sonoraNative.midiDevices().catch(error => ({ ok: false, error: error.message }));
+  const inputs = initial?.ok ? initial.devices?.inputs || [] : [];
+  const outputs = initial?.ok ? initial.devices?.outputs || [] : [];
+  midiInputConnected = Boolean(initial?.inputOpen);
+  midiOutputConnected = Boolean(initial?.outputOpen);
+  if (midiInputConnected) {
+    const matching = inputs.find(device => device.name === initial.inputName);
+    if (matching) midiInputDeviceIndex = matching.index;
+  }
+  if (midiOutputConnected) {
+    const matching = outputs.find(device => device.name === initial.outputName);
+    if (matching) midiOutputDeviceIndex = matching.index;
+  }
+
+  const inputRow = document.createElement('label'); inputRow.className = 'device-row';
+  const inputLabel = document.createElement('span'); inputLabel.textContent = 'MIDI-вход'; inputRow.append(inputLabel);
+  const inputSelect = document.createElement('select'); inputSelect.setAttribute('aria-label', 'MIDI-вход');
+  inputs.forEach((device, index) => {
+    const option = document.createElement('option'); option.value = String(device.index); option.textContent = device.name || `MIDI-вход ${index + 1}`;
+    option.selected = device.index === midiInputDeviceIndex; inputSelect.append(option);
+  });
+  if (!inputs.length) { const option = document.createElement('option'); option.value = ''; option.textContent = 'MIDI-входы не найдены'; inputSelect.append(option); inputSelect.disabled = true; }
+  inputRow.append(inputSelect); panel.append(inputRow);
+
+  const outputRow = document.createElement('label'); outputRow.className = 'device-row';
+  const outputLabel = document.createElement('span'); outputLabel.textContent = 'MIDI-выход'; outputRow.append(outputLabel);
+  const outputSelect = document.createElement('select'); outputSelect.setAttribute('aria-label', 'MIDI-выход');
+  outputs.forEach((device, index) => {
+    const option = document.createElement('option'); option.value = String(device.index); option.textContent = device.name || `MIDI-выход ${index + 1}`;
+    option.selected = device.index === midiOutputDeviceIndex; outputSelect.append(option);
+  });
+  if (!outputs.length) { const option = document.createElement('option'); option.value = ''; option.textContent = 'MIDI-выходы не найдены'; outputSelect.append(option); outputSelect.disabled = true; }
+  outputRow.append(outputSelect); panel.append(outputRow);
+
+  const controls = document.createElement('div'); controls.className = 'native-engine-actions';
+  const inputButton = document.createElement('button'); inputButton.type = 'button'; inputButton.className = 'button quiet';
+  inputButton.textContent = midiInputConnected ? 'Отключить MIDI-вход' : 'Подключить MIDI-вход'; inputButton.disabled = !inputs.length;
+  const outputButton = document.createElement('button'); outputButton.type = 'button'; outputButton.className = 'button quiet';
+  outputButton.textContent = midiOutputConnected ? 'Отключить MIDI-выход' : 'Подключить MIDI-выход'; outputButton.disabled = !outputs.length;
+  const testButton = document.createElement('button'); testButton.type = 'button'; testButton.className = 'button quiet';
+  testButton.textContent = 'Проверить MIDI-выход'; testButton.disabled = !midiOutputConnected;
+  controls.append(inputButton, outputButton, testButton); panel.append(controls);
+
+  const note = document.createElement('p'); note.className = 'native-engine-note';
+  note.textContent = 'Вход играет выбранный инструмент для предпрослушивания. Тест выхода отправляет ноту C4; запись внешних MIDI-партий и MIDI clock будут добавлены отдельно.';
+  panel.append(note);
+  const updateStatus = message => {
+    const currentInput = midiInputConnected ? initial.inputName || inputs.find(device => device.index === midiInputDeviceIndex)?.name || 'подключён' : 'не подключён';
+    const currentOutput = midiOutputConnected ? initial.outputName || outputs.find(device => device.index === midiOutputDeviceIndex)?.name || 'подключён' : 'не подключён';
+    status.textContent = message || `Вход: ${currentInput}. Выход: ${currentOutput}. MIDI-устройства работают через Windows MIDI.`;
+  };
+  updateStatus(initial?.ok ? '' : initial?.error || 'Не удалось получить список MIDI-устройств.');
+  inputSelect.onchange = () => { if (Number.isInteger(Number(inputSelect.value))) midiInputDeviceIndex = Number(inputSelect.value); };
+  outputSelect.onchange = () => { if (Number.isInteger(Number(outputSelect.value))) midiOutputDeviceIndex = Number(outputSelect.value); };
+  inputButton.onclick = async () => {
+    inputButton.disabled = true;
+    if (midiInputConnected) {
+      const response = await window.sonoraNative.closeMidiInput().catch(error => ({ ok: false, error: error.message }));
+      setMidiInputConnected(false);
+      updateStatus(response?.ok ? '' : response?.error || 'Не удалось отключить MIDI-вход.');
+    } else {
+      try { await getAudioContext().resume(); } catch {}
+      const response = await window.sonoraNative.openMidiInput(midiInputDeviceIndex).catch(error => ({ ok: false, error: error.message }));
+      if (response?.ok) { midiInputConnected = Boolean(response.inputOpen); startMidiInputPolling(); updateStatus('MIDI-вход подключён. Нажмите клавишу на MIDI-контроллере.'); }
+      else updateStatus(response?.error || 'Не удалось подключить MIDI-вход.');
+    }
+    inputButton.textContent = midiInputConnected ? 'Отключить MIDI-вход' : 'Подключить MIDI-вход';
+    inputButton.disabled = !inputs.length;
+  };
+  outputButton.onclick = async () => {
+    outputButton.disabled = true;
+    if (midiOutputConnected) {
+      if (midiTestOffTimer) { clearTimeout(midiTestOffTimer); midiTestOffTimer = 0; await window.sonoraNative.sendMidiNote(0, 60, 0, false).catch(() => {}); }
+      const response = await window.sonoraNative.closeMidiOutput().catch(error => ({ ok: false, error: error.message }));
+      midiOutputConnected = false;
+      updateStatus(response?.ok ? '' : response?.error || 'Не удалось отключить MIDI-выход.');
+    } else {
+      const response = await window.sonoraNative.openMidiOutput(midiOutputDeviceIndex).catch(error => ({ ok: false, error: error.message }));
+      if (response?.ok) { midiOutputConnected = Boolean(response.outputOpen); updateStatus('MIDI-выход подключён.'); }
+      else updateStatus(response?.error || 'Не удалось подключить MIDI-выход.');
+    }
+    outputButton.textContent = midiOutputConnected ? 'Отключить MIDI-выход' : 'Подключить MIDI-выход';
+    testButton.disabled = !midiOutputConnected;
+    outputButton.disabled = !outputs.length;
+  };
+  testButton.onclick = async () => {
+    if (!midiOutputConnected) return;
+    testButton.disabled = true;
+    const response = await window.sonoraNative.sendMidiNote(0, 60, 96, true).catch(error => ({ ok: false, error: error.message }));
+    if (!response?.ok) updateStatus(response?.error || 'Не удалось отправить тестовую ноту.');
+    else {
+      updateStatus('Отправлена MIDI-нота C4.'); midiTestOffTimer = window.setTimeout(() => {
+        midiTestOffTimer = 0;
+        if (midiOutputConnected) window.sonoraNative.sendMidiNote(0, 60, 0, false).catch(() => {});
+        testButton.disabled = !midiOutputConnected;
+      }, 350);
+    }
+    if (!midiTestOffTimer) testButton.disabled = !midiOutputConnected;
+  };
   return panel;
+}
+function setMidiInputConnected(connected) {
+  midiInputConnected = connected;
+  if (!connected) {
+    if (midiInputPollTimer) { clearTimeout(midiInputPollTimer); midiInputPollTimer = 0; }
+    for (const key of [...midiPreviewVoices.keys()]) stopMidiPreviewVoice(key);
+  }
+}
+function startMidiInputPolling() {
+  if (!midiInputConnected || midiInputPollTimer) return;
+  midiInputPollTimer = window.setTimeout(async () => {
+    midiInputPollTimer = 0;
+    if (!midiInputConnected) return;
+    const response = await window.sonoraNative.readMidiEvents().catch(() => null);
+    if (response?.ok) {
+      for (const event of response.events || []) {
+        const midi = decodeMidiNoteEvent(event.bytes);
+        if (!midi) continue;
+        const key = `${midi.channel}:${midi.pitch}`;
+        if (midi.type === 'noteon') startMidiPreviewVoice(key, midi.pitch, midi.velocity);
+        else stopMidiPreviewVoice(key);
+      }
+      if (response.dropped > 0) {
+        const status = $('#midiInputStatus');
+        if (status && !$('#modalBackdrop').hidden) status.textContent = `Переполнение входной очереди: потеряно ${response.dropped} MIDI-событий.`;
+      }
+    } else {
+      setMidiInputConnected(false);
+      const status = $('#midiInputStatus');
+      if (status) status.textContent = 'MIDI-вход отключился. Проверьте подключение и обновите список.';
+      return;
+    }
+    startMidiInputPolling();
+  }, 25);
+}
+function startMidiPreviewVoice(key, pitch, velocity) {
+  stopMidiPreviewVoice(key);
+  if (!velocity) return;
+  try {
+    const context = getAudioContext(), track = getTrack(state.selectedTrackId);
+    const instrument = track?.type === 'instrument' && track.instrument !== 'sampler' ? track.instrument : 'soft-keys';
+    const settings = normalizeSynthSettings(track?.synthSettings || null, instrument);
+    const when = context.currentTime + .01, gain = context.createGain();
+    const level = Math.max(.0001, .18 * velocity / 127);
+    gain.gain.setValueAtTime(.0001, when);
+    gain.gain.exponentialRampToValueAtTime(level, when + Math.max(.002, settings.attackMs / 1000));
+    gain.connect(context.destination);
+    const sources = createInstrumentSources(context, gain, when, pitch, instrument, settings);
+    midiPreviewVoices.set(key, { context, gain, sources, releaseMs: settings.releaseMs });
+  } catch {}
+}
+function stopMidiPreviewVoice(key) {
+  const voice = midiPreviewVoices.get(key);
+  if (!voice) return;
+  midiPreviewVoices.delete(key);
+  const when = voice.context.currentTime;
+  const release = Math.max(.02, voice.releaseMs / 1000);
+  try {
+    voice.gain.gain.cancelScheduledValues(when);
+    voice.gain.gain.setValueAtTime(Math.max(.0001, voice.gain.gain.value), when);
+    voice.gain.gain.exponentialRampToValueAtTime(.0001, when + release);
+    for (const source of voice.sources) source.stop(when + release + .04);
+  } catch {}
 }
 function deviceSelect(label, devices, selected, id) {
   const wrap = document.createElement('label'); wrap.className = 'device-row'; const name = document.createElement('span'); name.textContent = label; wrap.append(name);
