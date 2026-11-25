@@ -98,7 +98,6 @@ try {
   assert.deepEqual(exceptions, [], 'the EQ interaction must not throw renderer exceptions');
   console.log('Electron UI smoke passed: seven EQ bands render and frequency, gain, and Q controls respond');
 
-  try { await send('Browser.close'); } catch {}
 } finally {
   if (socket && socket.readyState < WebSocket.CLOSING) socket.close();
   if (child.exitCode === null) {
