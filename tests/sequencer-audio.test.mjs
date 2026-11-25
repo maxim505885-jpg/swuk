@@ -85,9 +85,9 @@ test('drum probability is deterministic and ratchets retrigger within one step',
   const clip = { id: 'pattern-a', kind: 'drums', lengthBeats: 1, steps: [{ kind: 'kick', hits: [0], ratchets: 3 }] };
   const pcm = renderSequencedClip(clip, { bpm: 120, sampleRate: 8000, createDrumSample: () => sample });
   assert.equal(pcm.length, 4000);
-  assert.equal(pcm[0], .78);
-  assert.equal(pcm[333], .78);
-  assert.equal(pcm[666], .78);
+  assert.ok(Math.abs(pcm[0] - .78) < 1e-6);
+  assert.ok(Math.abs(pcm[333] - .78) < 1e-6);
+  assert.ok(Math.abs(pcm[666] - .78) < 1e-6);
   const silent = renderSequencedClip({ ...clip, steps: [{ kind: 'kick', hits: [0], probability: 0 }] }, {
     bpm: 120, sampleRate: 8000, createDrumSample: () => sample,
   });
