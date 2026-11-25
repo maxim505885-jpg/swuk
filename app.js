@@ -2779,7 +2779,7 @@ function clickMetronome(accent = false) {
   oscillator.type = 'sine'; oscillator.frequency.value = accent ? 1320 : 900; gain.gain.setValueAtTime(.001, now); gain.gain.exponentialRampToValueAtTime(accent ? .09 : .045, now + .004); gain.gain.exponentialRampToValueAtTime(.001, now + .055); oscillator.connect(gain); gain.connect(context.destination); oscillator.start(now); oscillator.stop(now + .06);
 }
 
-function buildNativeProjectPlan() {
+function buildNativeProjectPlan({ allowEmpty = false } = {}) {
   const native = window.sonoraNative;
   if (forceBrowserPlayback || !native?.stageAudioAsset || !native?.loadProject || !native?.playProject || state.metronome || !state.tracks.length) return null;
   if (nativeSynthCacheRevision !== nativeGraphRevision) { nativeSynthCache.clear(); nativeSynthCacheRevision = nativeGraphRevision; }
@@ -2788,6 +2788,7 @@ function buildNativeProjectPlan() {
     const panAutomation = flattenGainAutomation(track.clips.filter(clip => clip.kind === 'automation' && clip.target === 'pan'), track.pan || 0, state.tempo, 48_000, -1, 1);
     if (!gainAutomation || !panAutomation) return null;
     return {
+      trackId: track.id || '',
       gain: track.volume ?? 1, pan: track.pan || 0, mute: Boolean(track.mute), solo: Boolean(track.solo),
       reverb: Boolean(track.effects?.reverb), delay: Boolean(track.effects?.delay), gainAutomation, panAutomation,
       equalizer: Boolean(track.effects?.equalizer), compressor: Boolean(track.effects?.compressor), limiter: Boolean(track.effects?.limiter),
@@ -2807,6 +2808,7 @@ function buildNativeProjectPlan() {
     track.outputBusIndex = busIndex < 0 ? -1 : state.tracks.length + busIndex;
   });
   tracks.push(...state.buses.map(bus => ({
+    trackId: bus.id || '',
     gain: bus.volume ?? .8, pan: bus.pan || 0, mute: Boolean(bus.mute), solo: Boolean(bus.solo),
     reverb: Boolean(bus.effects?.reverb), delay: Boolean(bus.effects?.delay), gainAutomation: [], panAutomation: [],
     equalizer: Boolean(bus.effects?.equalizer), compressor: Boolean(bus.effects?.compressor), limiter: Boolean(bus.effects?.limiter),
@@ -2879,8 +2881,8 @@ function buildNativeProjectPlan() {
         gainAutomation: clip.gainEnvelope ? clip.gainEnvelope.flatMap(point => [Math.round(point.position * durationFrames), point.gain]) : [] });
     }
   }
-  if (!clips.length) return null;
-  if (state.loop && state.loopEndBeat > endBeat) return null;
+  if (!clips.length && !allowEmpty) return null;
+  if (!allowEmpty && state.loop && state.loopEndBeat > endBeat) return null;
   const hasEffectClips = clips.some(clip => tracks[clip.trackIndex].reverb || tracks[clip.trackIndex].delay) ||
     (clips.length > 0 && state.buses.some(bus => bus.effects?.reverb || bus.effects?.delay));
   const playbackEndBeat = endBeat + (hasEffectClips ? 3 / beatSeconds() : 0);
