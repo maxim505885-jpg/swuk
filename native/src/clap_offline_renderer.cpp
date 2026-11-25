@@ -1,6 +1,7 @@
 #define MINIAUDIO_IMPLEMENTATION
 #include "miniaudio.h"
 #include <clap/clap.h>
+#include "realtime_plugin_transport.hpp"
 
 #include <windows.h>
 #include <shellapi.h>
@@ -401,6 +402,182 @@ void processWav(const std::string& pluginPath, const std::string& inputPath, con
               << ",\"frames\":" << totalFrames << "}\n";
 }
 
+void serveRealtimePlugin(const std::string& pluginPath, const std::wstring_view mappingName) {
+    HANDLE mapping = OpenFileMappingW(FILE_MAP_ALL_ACCESS, FALSE, std::wstring(mappingName).c_str());
+    if (mapping == nullptr) throw std::runtime_error("Realtime plugin shared memory could not be opened");
+    auto* const transport = static_cast<sonora::plugin::SharedTransport*>(
+        MapViewOfFile(mapping, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(sonora::plugin::SharedTransport)));
+    if (transport == nullptr) {
+        CloseHandle(mapping);
+        throw std::runtime_error("Realtime plugin shared memory could not be mapped");
+    }
+
+    try {
+        if (transport->magic != sonora::plugin::SharedTransport::kMagic ||
+            transport->version != sonora::plugin::SharedTransport::kVersion) {
+            throw std::runtime_error("Realtime plugin transport version is incompatible");
+        }
+        PluginSession plugin(pluginPath);
+        plugin.activate(48'000);
+        std::exception_ptr processingError;
+        std::thread audioThread([&] {
+            try {
+                plugin.startProcessing();
+                transport->status.store(sonora::plugin::HostStatus::ready, std::memory_order_release);
+                std::array<float, sonora::plugin::kPluginAudioBlockFrames> leftInput{};
+                std::array<float, sonora::plugin::kPluginAudioBlockFrames> rightInput{};
+                std::array<float, sonora::plugin::kPluginAudioBlockFrames> leftOutput{};
+                std::array<float, sonora::plugin::kPluginAudioBlockFrames> rightOutput{};
+                std::array<float, sonora::plugin::kPluginAudioBlockSamples> interleavedOutput{};
+                sonora::plugin::AudioBlock block{};
+                while (transport->status.load(std::memory_order_acquire) == sonora::plugin::HostStatus::ready) {
+                    if (!transport->input.tryPop(block)) {
+                        Sleep(1);
+                        continue;
+                    }
+                    if (block.frameCount == 0 || block.frameCount > sonora::plugin::kPluginAudioBlockFrames) {
+                        throw std::runtime_error("Realtime plugin received an invalid audio block");
+                    }
+                    for (std::uint32_t frame = 0; frame < block.frameCount; ++frame) {
+                        leftInput[frame] = block.samples[frame * 2];
+                        rightInput[frame] = block.samples[frame * 2 + 1];
+                    }
+                    std::fill_n(leftOutput.data(), block.frameCount, 0.0F);
+                    std::fill_n(rightOutput.data(), block.frameCount, 0.0F);
+                    const auto steadyTime = static_cast<std::int64_t>(block.sequence * sonora::plugin::kPluginAudioBlockFrames);
+                    if (!plugin.process(leftInput.data(), rightInput.data(), leftOutput.data(), rightOutput.data(),
+                            block.frameCount, steadyTime, &kEmptyInputEvents)) {
+                        throw std::runtime_error("CLAP effect returned a real-time processing error");
+                    }
+                    for (std::uint32_t frame = 0; frame < block.frameCount; ++frame) {
+                        interleavedOutput[frame * 2] = leftOutput[frame];
+                        interleavedOutput[frame * 2 + 1] = rightOutput[frame];
+                    }
+                    const auto output = std::span<const float>(interleavedOutput.data(),
+                        static_cast<std::size_t>(block.frameCount) * sonora::plugin::kPluginAudioChannels);
+                    if (!transport->output.tryPush(block.sequence, output, block.frameCount)) {
+                        transport->outputOverruns.fetch_add(1, std::memory_order_relaxed);
+                    }
+                }
+            } catch (...) {
+                processingError = std::current_exception();
+                transport->status.store(sonora::plugin::HostStatus::failed, std::memory_order_release);
+            }
+            plugin.stopProcessing();
+        });
+
+        while (transport->status.load(std::memory_order_acquire) == sonora::plugin::HostStatus::starting ||
+               transport->status.load(std::memory_order_acquire) == sonora::plugin::HostStatus::ready) {
+            Sleep(10);
+        }
+        audioThread.join();
+        if (processingError) std::rethrow_exception(processingError);
+        if (transport->status.load(std::memory_order_acquire) == sonora::plugin::HostStatus::failed) {
+            throw std::runtime_error("Realtime CLAP host failed");
+        }
+    } catch (...) {
+        UnmapViewOfFile(transport);
+        CloseHandle(mapping);
+        throw;
+    }
+    UnmapViewOfFile(transport);
+    CloseHandle(mapping);
+}
+
+[[nodiscard]] std::string quoteWindowsArgument(const std::wstring_view argument) {
+    std::wstring quoted = L"\"" + std::wstring(argument) + L"\"";
+    const int required = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, quoted.data(),
+        static_cast<int>(quoted.size()), nullptr, 0, nullptr, nullptr);
+    if (required <= 0) throw std::runtime_error("Could not encode realtime plugin command line");
+    std::string result(static_cast<std::size_t>(required), '\0');
+    if (WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, quoted.data(), static_cast<int>(quoted.size()),
+            result.data(), required, nullptr, nullptr) != required) {
+        throw std::runtime_error("Could not encode realtime plugin command line");
+    }
+    return result;
+}
+
+void selfTestRealtimePluginProcess(const std::wstring_view pluginPath) {
+    const std::wstring mappingName = L"Local\\SONORA_CLAP_TEST_" + std::to_wstring(GetCurrentProcessId()) +
+        L"_" + std::to_wstring(GetTickCount64());
+    HANDLE mapping = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0,
+        static_cast<DWORD>(sizeof(sonora::plugin::SharedTransport)), mappingName.c_str());
+    if (mapping == nullptr) throw std::runtime_error("Realtime plugin self-test mapping could not be created");
+    auto* const transport = static_cast<sonora::plugin::SharedTransport*>(
+        MapViewOfFile(mapping, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(sonora::plugin::SharedTransport)));
+    if (transport == nullptr) {
+        CloseHandle(mapping);
+        throw std::runtime_error("Realtime plugin self-test mapping could not be mapped");
+    }
+    std::construct_at(transport);
+
+    PROCESS_INFORMATION process{};
+    auto cleanup = [&] {
+        transport->status.store(sonora::plugin::HostStatus::stopping, std::memory_order_release);
+        if (process.hProcess != nullptr) {
+            if (WaitForSingleObject(process.hProcess, 5'000) == WAIT_TIMEOUT) {
+                TerminateProcess(process.hProcess, 1);
+                WaitForSingleObject(process.hProcess, 1'000);
+            }
+            CloseHandle(process.hThread);
+            CloseHandle(process.hProcess);
+        }
+        UnmapViewOfFile(transport);
+        CloseHandle(mapping);
+    };
+    try {
+        std::array<wchar_t, 32'768> executable{};
+        const auto executableLength = GetModuleFileNameW(nullptr, executable.data(), static_cast<DWORD>(executable.size()));
+        if (executableLength == 0 || executableLength >= executable.size()) {
+            throw std::runtime_error("Realtime plugin self-test could not locate its host executable");
+        }
+        const auto pluginUtf8 = wideToUtf8(std::wstring(pluginPath).c_str());
+        const auto mappingUtf8 = wideToUtf8(mappingName.c_str());
+        std::wstring command = L"\"" + std::wstring(executable.data(), executableLength) + L"\" serve \"" +
+            std::wstring(pluginPath) + L"\" \"" + mappingName + L"\"";
+        std::vector<wchar_t> mutableCommand(command.begin(), command.end());
+        mutableCommand.push_back(L'\0');
+        STARTUPINFOW startup{};
+        startup.cb = sizeof(startup);
+        if (!CreateProcessW(nullptr, mutableCommand.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW,
+                nullptr, nullptr, &startup, &process)) {
+            throw std::runtime_error("Realtime CLAP host process could not be started");
+        }
+
+        const auto deadline = GetTickCount64() + 5'000;
+        while (transport->status.load(std::memory_order_acquire) != sonora::plugin::HostStatus::ready) {
+            if (transport->status.load(std::memory_order_acquire) == sonora::plugin::HostStatus::failed ||
+                WaitForSingleObject(process.hProcess, 0) == WAIT_OBJECT_0 || GetTickCount64() >= deadline) {
+                throw std::runtime_error("Realtime CLAP host process did not become ready");
+            }
+            Sleep(5);
+        }
+
+        std::array<float, 64> input{};
+        input.fill(0.8F);
+        if (!transport->input.tryPush(7, input, 32)) throw std::runtime_error("Realtime CLAP self-test input block was rejected");
+        sonora::plugin::AudioBlock output{};
+        bool received = false;
+        const auto outputDeadline = GetTickCount64() + 5'000;
+        while (!received && GetTickCount64() < outputDeadline) {
+            received = transport->output.tryPop(output);
+            if (!received) Sleep(1);
+        }
+        if (!received || output.sequence != 7 || output.frameCount != 32 ||
+            std::abs(output.samples[0] / input[0] - 0.5F) > 0.01F ||
+            std::abs(output.samples[1] / input[1] - 0.5F) > 0.01F) {
+            throw std::runtime_error("Realtime CLAP child did not process the shared stereo audio block correctly");
+        }
+        cleanup();
+        std::cout << "{\"ok\":true,\"isolatedProcess\":true,\"frames\":32}\n";
+    } catch (...) {
+        cleanup();
+        throw;
+    }
+    (void)pluginUtf8;
+    (void)mappingUtf8;
+}
+
 [[nodiscard]] std::pair<uint32_t, double> parseParameterValue(const std::wstring_view argument) {
     const auto utf8 = wideToUtf8(std::wstring(argument).c_str());
     const auto separator = utf8.find('=');
@@ -429,6 +606,10 @@ int main() {
         const std::wstring_view command(wideArguments[1]);
         if (command == L"inspect" && argumentCount == 3) {
             std::cout << inspectPlugin(wideToUtf8(wideArguments[2])) << '\n';
+        } else if (command == L"serve" && argumentCount == 4) {
+            serveRealtimePlugin(wideToUtf8(wideArguments[2]), wideArguments[3]);
+        } else if (command == L"selftest" && argumentCount == 3) {
+            selfTestRealtimePluginProcess(wideArguments[2]);
         } else if (command == L"process" && argumentCount >= 5 && argumentCount <= 133) {
             std::vector<std::pair<uint32_t, double>> parameters;
             parameters.reserve(static_cast<std::size_t>(argumentCount - 5));
