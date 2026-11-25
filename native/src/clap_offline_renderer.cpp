@@ -484,19 +484,6 @@ void serveRealtimePlugin(const std::string& pluginPath, const std::wstring_view 
     CloseHandle(mapping);
 }
 
-[[nodiscard]] std::string quoteWindowsArgument(const std::wstring_view argument) {
-    std::wstring quoted = L"\"" + std::wstring(argument) + L"\"";
-    const int required = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, quoted.data(),
-        static_cast<int>(quoted.size()), nullptr, 0, nullptr, nullptr);
-    if (required <= 0) throw std::runtime_error("Could not encode realtime plugin command line");
-    std::string result(static_cast<std::size_t>(required), '\0');
-    if (WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, quoted.data(), static_cast<int>(quoted.size()),
-            result.data(), required, nullptr, nullptr) != required) {
-        throw std::runtime_error("Could not encode realtime plugin command line");
-    }
-    return result;
-}
-
 void selfTestRealtimePluginProcess(const std::wstring_view pluginPath) {
     const std::wstring mappingName = L"Local\\SONORA_CLAP_TEST_" + std::to_wstring(GetCurrentProcessId()) +
         L"_" + std::to_wstring(GetTickCount64());
@@ -531,8 +518,6 @@ void selfTestRealtimePluginProcess(const std::wstring_view pluginPath) {
         if (executableLength == 0 || executableLength >= executable.size()) {
             throw std::runtime_error("Realtime plugin self-test could not locate its host executable");
         }
-        const auto pluginUtf8 = wideToUtf8(std::wstring(pluginPath).c_str());
-        const auto mappingUtf8 = wideToUtf8(mappingName.c_str());
         std::wstring command = L"\"" + std::wstring(executable.data(), executableLength) + L"\" serve \"" +
             std::wstring(pluginPath) + L"\" \"" + mappingName + L"\"";
         std::vector<wchar_t> mutableCommand(command.begin(), command.end());
@@ -574,8 +559,6 @@ void selfTestRealtimePluginProcess(const std::wstring_view pluginPath) {
         cleanup();
         throw;
     }
-    (void)pluginUtf8;
-    (void)mappingUtf8;
 }
 
 [[nodiscard]] std::pair<uint32_t, double> parseParameterValue(const std::wstring_view argument) {
