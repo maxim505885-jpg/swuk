@@ -96,8 +96,56 @@ try {
   assert.deepEqual(edited, { frequency: 575, gain: 4.5, gainLabel: '4.5 dB', q: 1.4 });
   await delay(200);
   assert.deepEqual(exceptions, [], 'the EQ interaction must not throw renderer exceptions');
-  console.log('Electron UI smoke passed: seven EQ bands render and frequency, gain, and Q controls respond');
-
+  const imported = await evaluate(`(() => {
+    const sampleRate = 48_000, frames = sampleRate * 2;
+    const header = new Uint8Array(44), view = new DataView(header.buffer);
+    const write = (offset, value) => [...value].forEach((character, index) => view.setUint8(offset + index, character.charCodeAt(0)));
+    write(0, 'RIFF'); view.setUint32(4, 36 + frames * 2, true); write(8, 'WAVE'); write(12, 'fmt ');
+    view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true);
+    view.setUint32(24, sampleRate, true); view.setUint32(28, sampleRate * 2, true);
+    view.setUint16(32, 2, true); view.setUint16(34, 16, true); write(36, 'data'); view.setUint32(40, frames * 2, true);
+    const pcm = new Uint8Array(frames * 2), pcmView = new DataView(pcm.buffer);
+    for (let frame = 0; frame < frames; frame++) pcmView.setInt16(frame * 2, Math.round(Math.sin(2 * Math.PI * 440 * frame / sampleRate) * 2500), true);
+    const file = new File([header, pcm], 'qa-split.wav', { type: 'audio/wav' });
+    const transfer = new DataTransfer(); transfer.items.add(file);
+    const input = document.querySelector('#audioFiles'); input.files = transfer.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    return { sampleRate, frames, peak: 2500 / 32768 };
+  })()`);
+  assert.deepEqual(imported, { sampleRate: 48000, frames: 96000, peak: 2500 / 32768 });
+  await waitUntil(
+    () => evaluate("document.querySelectorAll('.track-lane .clip').length"),
+    count => count === 1,
+    'the disposable two-second audio clip',
+  );
+  await evaluate("(() => { const rate = document.querySelector('#clipRate'); rate.value = '1.5'; rate.dispatchEvent(new Event('input', { bubbles: true })); })()");
+  const rulerPoint = await evaluate(`(() => {
+    const ruler = document.querySelector('#barRuler'), bounds = ruler.getBoundingClientRect();
+    const barWidth = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--bar'));
+    return { x: bounds.left + barWidth * 1.25 / 4, y: bounds.top + bounds.height / 2 };
+  })()`);
+  await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: rulerPoint.x, y: rulerPoint.y, button: 'left', clickCount: 1 });
+  await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: rulerPoint.x, y: rulerPoint.y, button: 'left', clickCount: 1 });
+  await evaluate("document.querySelector('#splitTool').click()");
+  const originalClip = await evaluate(`(() => { const rect = document.querySelector('.track-lane .clip').getBoundingClientRect(); return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }; })()`);
+  await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: originalClip.x, y: originalClip.y, button: 'left', clickCount: 1 });
+  await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: originalClip.x, y: originalClip.y, button: 'left', clickCount: 1 });
+  await waitUntil(
+    () => evaluate("document.querySelectorAll('.track-lane .clip').length"),
+    count => count === 2,
+    'the two clips created at the playhead',
+  );
+  const rightClip = await evaluate(`(() => { const rect = document.querySelectorAll('.track-lane .clip')[1].getBoundingClientRect(); return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }; })()`);
+  await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: rightClip.x, y: rightClip.y, button: 'left', clickCount: 1 });
+  await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: rightClip.x, y: rightClip.y, button: 'left', clickCount: 1 });
+  const splitOffset = await waitUntil(
+    () => evaluate("Number(document.querySelector('#clipOffset')?.value)"),
+    value => Math.abs(value - .94) < .005,
+    'the source offset on the retimed right-hand clip',
+  );
+  assert.ok(Math.abs(splitOffset - .94) < .005);
+  assert.deepEqual(exceptions, [], 'EQ and audio split interactions must not throw renderer exceptions');
+  console.log('Electron UI smoke passed: seven EQ bands respond and a 1.5x audio clip splits at the cursor with the correct PCM source offset');
 } finally {
   if (socket && socket.readyState < WebSocket.CLOSING) socket.close();
   if (child.exitCode === null) {
