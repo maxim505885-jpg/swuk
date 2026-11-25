@@ -1027,7 +1027,7 @@ function renderInspector() {
         <p class="field-help">Семиполосный стерео EQ. Меняйте частоту и усиление каждой полосы; настройки сохраняются в проекте.</p>
         <div class="inspector-eq-bands" role="group" aria-label="Семь полос эквалайзера">
           ${eqSettings.bands.map((band, index) => `<div class="inspector-eq-band" role="group" aria-label="Полоса ${index + 1}">
-            <label class="inspector-eq-frequency"><span>${String(index + 1).padStart(2, '0')} · ${EQ_BAND_FREQUENCIES[index]} Гц</span><input data-eq="frequencyHz" data-eq-band="${index}" type="number" min="20" max="20000" step="1" value="${band.frequencyHz}" aria-label="Частота полосы ${index + 1} в герцах" /></label>
+            <label class="inspector-eq-frequency"><span data-eq-band-label>${String(index + 1).padStart(2, '0')} · ${band.frequencyHz} Гц</span><input data-eq="frequencyHz" data-eq-band="${index}" type="number" min="20" max="20000" step="1" value="${band.frequencyHz}" aria-label="Частота полосы ${index + 1} в герцах" /></label>
             <label class="inspector-eq-gain"><span class="sr-only">Усиление полосы ${index + 1}</span><input data-eq="gainDb" data-eq-band="${index}" type="range" min="-24" max="24" step="0.1" value="${band.gainDb}" aria-label="Усиление полосы ${index + 1} в децибелах" /><output aria-live="polite">${band.gainDb.toFixed(1)} dB</output></label>
           </div>`).join('')}
         </div>
@@ -1116,7 +1116,11 @@ function renderInspector() {
       const output = control.parentElement.querySelector('output') || $('#inspectorEqQValue', host);
       const valueForControl = () => bandIndex === null ? track.eqSettings.q : track.eqSettings.bands[bandIndex][key];
       const formatValue = value => key === 'frequencyHz' ? `${Math.round(value)} Hz` : key === 'gainDb' ? `${value.toFixed(1)} dB` : value.toFixed(1);
-      const updateValue = () => { if (control.type !== 'number') control.value = String(valueForControl()); if (output) output.textContent = formatValue(valueForControl()); };
+      const updateValue = () => {
+        if (control.type !== 'number') control.value = String(valueForControl());
+        if (output) output.textContent = formatValue(valueForControl());
+        if (bandIndex !== null) { const label = control.closest('.inspector-eq-band')?.querySelector('[data-eq-band-label]'); if (label) label.textContent = `${String(bandIndex + 1).padStart(2, '0')} · ${Math.round(track.eqSettings.bands[bandIndex].frequencyHz)} Гц`; }
+      };
       updateValue(); control.addEventListener('focus', recordUndo, { once: true });
       const updateBand = event => {
         const nextValue = Number(event.target.value);
