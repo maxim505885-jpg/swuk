@@ -4,6 +4,7 @@ import { createProjectDocument, PROJECT_LIMITS, validateProjectDocument } from '
 import { normalizeTheme, readTheme, THEMES, THEME_KEY } from './theme-core.mjs';
 import { analyzeMeter, presentMeter } from './audio-meter.mjs?v=1';
 import { sampleWaveformPeaks } from './waveform-core.mjs?v=1';
+import { detectTransientFrames } from './transient-core.mjs?v=1';
 import { clampMidiPitch, midiOctaveStart, shiftMidiOctave } from './midi-edit-core.mjs?v=1';
 import { normalizeClipFades, scheduleClipFade } from './clip-fade-core.mjs?v=1';
 import { EQ_BAND_FREQUENCIES, normalizeEqSettings } from './eq-core.mjs?v=2';
@@ -821,6 +822,55 @@ function drawWaveform(canvas, buffer, color) {
   for (let x = 0; x < width; x++) { let peak = 0; for (let i = 0; i < step; i++) peak = Math.max(peak, Math.abs(data[x * step + i] || 0)); const h = Math.max(1, peak * height * .86); ctx.fillRect(x, (height - h) / 2, 1, h); }
 }
 
+async function sliceAudioAtTransients(clip, sensitivity, minSpacingMs) {
+  const button = $('#sliceTransientsBtn'), status = $('#sliceTransientStatus'), asset = state.assets.get(clip.assetId);
+  if (!button || button.disabled || getClip(clip.id).clip !== clip || !asset?.buffer) return;
+  if (clip.renderedAssetId || clip.timeStretchRatio || clip.clapPluginName || clip.autoTune || clip.bypassProcessing) {
+    status.textContent = 'Сначала сбросьте обработку клипа.'; return;
+  }
+  const buffer = asset.buffer, rate = getClipPlaybackRate(clip, false), tempo = state.tempo, sr = buffer.sampleRate;
+  const sourceStart = Math.max(0, Number(clip.offsetSec) || 0);
+  const sourceEnd = Math.min(buffer.duration - Math.max(0, Number(clip.trimEndSec) || 0),
+    sourceStart + clip.lengthBeats * beatSeconds() * rate);
+  const startFrame = clamp(Math.round(sourceStart * sr), 0, buffer.length);
+  const endFrame = clamp(Math.round(sourceEnd * sr), startFrame, buffer.length);
+  if (!Number.isFinite(rate) || rate <= 0 || endFrame - startFrame < sr * .05) {
+    status.textContent = 'В клипе слишком мало доступного аудио.'; return;
+  }
+  button.disabled = true; button.setAttribute('aria-busy', 'true'); button.textContent = 'Анализирую…';
+  status.textContent = 'Анализ выполняется локально…';
+  try {
+    const channels = Array.from({ length: buffer.numberOfChannels }, (_, index) => buffer.getChannelData(index));
+    const detections = await detectTransientFrames(channels, sr, { startFrame, endFrame, sensitivity, minSpacingMs });
+    if (detections === null) { status.textContent = 'Фрагмент слишком длинный или повреждён. Обрежьте и повторите.'; return; }
+    const gap = Math.round(minSpacingMs * sr / 1000);
+    const cuts = detections.filter(frame => frame - startFrame >= gap && endFrame - frame >= gap);
+    if (!cuts.length) { status.textContent = 'Транзиенты не найдены. Увеличьте чувствительность.'; return; }
+    if (cuts.length > 255) { status.textContent = 'Слишком много точек. Увеличьте минимальный интервал.'; return; }
+    const found = getClip(clip.id), track = found.track, index = track?.clips.indexOf(clip) ?? -1;
+    if (found.clip !== clip || state.selectedClipId !== clip.id || state.tempo !== tempo || index < 0) {
+      status.textContent = 'Клип изменился во время анализа. Повторите.'; return;
+    }
+    if (projectClipCount() + cuts.length > PROJECT_LIMITS.clips) { status.textContent = 'Достигнут лимит клипов проекта.'; return; }
+    const edges = [startFrame, ...cuts, endFrame], parts = [];
+    for (let i = 0; i < edges.length - 1; i++) {
+      const first = edges[i], last = edges[i + 1], part = structuredClone(clip);
+      part.id = i ? uid('clip') : clip.id; part.name = i ? clip.name + ' · ' + (i + 1) : clip.name;
+      part.startBeat = clip.startBeat + (first - startFrame) / sr / rate * tempo / 60;
+      part.lengthBeats = (last - first) / sr / rate * tempo / 60;
+      part.offsetSec = first / sr; part.trimEndSec = Math.max(0, buffer.duration - last / sr);
+      part.fadeInSec = i ? 0 : clip.fadeInSec || 0; part.fadeOutSec = i === edges.length - 2 ? clip.fadeOutSec || 0 : 0;
+      parts.push(part);
+    }
+    recordUndo(); track.clips.splice(index, 1, ...parts); state.selectedClipId = parts[0].id;
+    markProjectDirty(); restartPlaybackIfActive(); renderAll(); showToast('Клип нарезан на ' + parts.length + ' фрагмента');
+  } catch (error) {
+    console.error('Transient slicing failed', error); status.textContent = 'Не удалось проанализировать аудио.';
+  } finally {
+    if (button.isConnected) { button.disabled = false; button.removeAttribute('aria-busy'); button.textContent = 'Нарезать по транзиентам'; }
+  }
+}
+
 function beginClipDrag(event, clip, element) {
   if (event.button !== 0) return; event.stopPropagation();
   if (splitMode) { splitClip(clip); splitMode = false; $('#splitTool').classList.remove('selected'); return; }
@@ -948,6 +998,7 @@ function renderEditor() {
   if (selected.clip && !selected.clip.kind) {
     eyebrow.textContent = 'СВОЙСТВА КЛИПА'; title.textContent = selected.clip.name; actions.innerHTML = `${selected.clip.renderedAssetId ? `<button class="button quiet compact" id="toggleClipProcessingBtn">${selected.clip.bypassProcessing ? 'Слушать обработку' : 'Слушать оригинал'}</button>` : ''}<button class="button quiet compact" id="resetPitchBtn">Сбросить тон</button><button class="button quiet compact" id="deleteClipBtn">Удалить клип</button>`;
     const clip = selected.clip, asset = state.assets.get(clip.assetId), activeAsset = state.assets.get(clip.renderedAssetId && !clip.bypassProcessing ? clip.renderedAssetId : clip.assetId) || asset;
+    const canSliceTransients = !clip.renderedAssetId && !clip.timeStretchRatio && !clip.clapPluginName && !clip.autoTune && !clip.bypassProcessing;
     body.innerHTML = `<div class="properties">
       <div class="property"><label>ВЫСОТА · ПОЛУТОНЫ</label><input id="clipPitch" type="number" min="-24" max="24" value="${clip.pitch || 0}" /></div>
       <div class="property"><label>СКОРОСТЬ · ${Math.round((clip.rate || 1) * 100)}%</label><input id="clipRate" type="range" min="0.5" max="2" step="0.01" value="${clip.rate || 1}" /></div>
@@ -962,6 +1013,13 @@ function renderEditor() {
       <div class="property"><label>ПАНОРАМА</label><input id="clipPan" type="range" min="-1" max="1" step="0.01" value="${clip.pan || 0}" /></div>
       <div class="property"><label>FADE-IN · СЕК</label><input id="clipFadeIn" type="number" min="0" max="30" step="0.01" value="${Number(clip.fadeInSec || 0).toFixed(2)}" /></div>
       <div class="property"><label>FADE-OUT · СЕК</label><input id="clipFadeOut" type="number" min="0" max="30" step="0.01" value="${Number(clip.fadeOutSec || 0).toFixed(2)}" /></div>
+      <div class="property">
+        <label for="sliceTransientSensitivity">НАРЕЗКА ПО ТРАНЗИЕНТАМ</label>
+        <label>Чувствительность <output id="sliceSensitivityValue">55%</output></label><input id="sliceTransientSensitivity" type="range" min="5" max="95" step="1" value="55" aria-label="Чувствительность поиска транзиентов" />
+        <label>Минимальный интервал <output id="sliceGapValue">90 мс</output></label><input id="sliceTransientGap" type="range" min="50" max="250" step="10" value="90" aria-label="Минимальный интервал между транзиентами" />
+        <button class="button quiet compact" id="sliceTransientsBtn" type="button" ${canSliceTransients?'':'disabled'}>Нарезать по транзиентам</button>
+        <small class="field-help">${canSliceTransients?'Локальный анализ. Действие можно отменить.':'Сначала сбросьте обработку клипа.'}</small><p id="sliceTransientStatus" class="field-help" role="status" aria-live="polite"></p>
+      </div>
       <div class="property"><label>ОБРЕЗКА НАЧАЛА · СЕК</label><input id="clipOffset" type="number" min="0" max="${asset?.buffer.duration || 0}" step="0.01" value="${(clip.offsetSec || 0).toFixed(2)}" /></div>
       <div class="property"><label>ИСТОЧНИК</label><input readonly value="${escapeHtml(asset?.fileName || clip.name)}" /></div>
       <div class="note-banner">Pitch shift сохраняет длительность. Автотюн настраивает монофонический голос по тональности проекта; аккорды и многоголосие не корректируются.</div>
@@ -998,6 +1056,9 @@ function renderEditor() {
     $('#resetPitchBtn').textContent = 'Сбросить обработку';
     $('#resetPitchBtn').onclick = () => { recordUndo(); clip.pitch = 0; clip.autoTune = null; clip.renderedAssetId = null; if (clip.timeStretchRatio) { clip.lengthBeats = clip.stretchOriginalLengthBeats ?? clip.lengthBeats; clip.offsetSec = clip.stretchOriginalOffsetSec ?? clip.offsetSec; clip.trimEndSec = clip.stretchOriginalTrimEndSec ?? clip.trimEndSec; } if (clip.clapPluginName) { clip.lengthBeats = clip.clapOriginalLengthBeats ?? clip.lengthBeats; clip.offsetSec = clip.clapOriginalOffsetSec ?? clip.offsetSec; clip.trimEndSec = clip.clapOriginalTrimEndSec ?? clip.trimEndSec; } clip.timeStretchRatio = null; clip.timeStretchSourceTempo = null; clip.stretchOriginalLengthBeats = null; clip.stretchOriginalOffsetSec = null; clip.stretchOriginalTrimEndSec = null; clip.clapPluginName = null; clip.clapPluginId = null; clip.clapParameters = null; clip.clapSourceAssetId = null; clip.clapSourceOffsetSec = null; clip.clapSourceTrimEndSec = null; clip.clapOriginalLengthBeats = null; clip.clapOriginalOffsetSec = null; clip.clapOriginalTrimEndSec = null; clapSelections.delete(clip.id); clip.bypassProcessing = false; restartPlaybackIfActive(); renderAll(); };
     $('#deleteClipBtn').onclick = deleteSelectedClip;
+    $('#sliceTransientSensitivity').oninput = event => { $('#sliceSensitivityValue').textContent = event.target.value + '%'; };
+    $('#sliceTransientGap').oninput = event => { $('#sliceGapValue').textContent = event.target.value + ' мс'; };
+    $('#sliceTransientsBtn').onclick = () => sliceAudioAtTransients(clip, Number($('#sliceTransientSensitivity').value) / 100, Number($('#sliceTransientGap').value));
     renderClapControls(clip);
     return;
   }
