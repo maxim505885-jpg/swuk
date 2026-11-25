@@ -197,7 +197,7 @@ try {
   const clipWidthBeforeTrim = await evaluate("document.querySelectorAll('.track-lane .clip')[1].style.width");
   const trimRightPoint = await evaluate("(() => { const rect=document.querySelectorAll('.track-lane .clip')[1].getBoundingClientRect(); return {x:rect.right-3,y:rect.top+rect.height/2}; })()");
   await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: trimRightPoint.x, y: trimRightPoint.y, button: 'left' });
-  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: trimRightPoint.x - 18, y: trimRightPoint.y, button: 'left', buttons: 1 });
+  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: trimRightPoint.x - 6, y: trimRightPoint.y, button: 'left', buttons: 1 });
   await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: trimRightPoint.x - 6, y: trimRightPoint.y, button: 'left' });
   const trimmedWidth = await waitUntil(
     () => evaluate("document.querySelectorAll('.track-lane .clip')[1]?.style.width"),
@@ -212,7 +212,7 @@ try {
   const clipLeftBeforeTrim = await evaluate("document.querySelectorAll('.track-lane .clip')[1].style.left");
   const trimLeftPoint = await evaluate("(() => { const rect=document.querySelectorAll('.track-lane .clip')[1].getBoundingClientRect(); return {x:rect.left+3,y:rect.top+rect.height/2}; })()");
   await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: trimLeftPoint.x, y: trimLeftPoint.y, button: 'left' });
-  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: trimLeftPoint.x + 18, y: trimLeftPoint.y, button: 'left', buttons: 1 });
+  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: trimLeftPoint.x + 6, y: trimLeftPoint.y, button: 'left', buttons: 1 });
   await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: trimLeftPoint.x + 6, y: trimLeftPoint.y, button: 'left' });
   const trimmedLeft = await waitUntil(
     () => evaluate("document.querySelectorAll('.track-lane .clip')[1]?.style.left"),
