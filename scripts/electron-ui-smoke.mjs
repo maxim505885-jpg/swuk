@@ -85,6 +85,8 @@ try {
   assert.deepEqual(await evaluate("(()=>({label:document.querySelector('.automation-summary strong')?.textContent,min:document.querySelector('.automation-value')?.min,max:document.querySelector('.automation-value')?.max,points:document.querySelectorAll('.automation-value').length}))()"),{label:'Аудио 1 · панорама',min:'-1',max:'1',points:2},'pan automation lane and bounded controls');
   await evaluate("document.querySelector('#undoBtn').click()");
   await waitUntil(()=>evaluate("document.querySelector('.automation-summary')===null"),Boolean,'pan automation undo');
+  await evaluate("document.querySelector('#tab-view-arrangement').click()");
+  await waitUntil(()=>evaluate("document.querySelector('#tab-view-arrangement')?.classList.contains('selected') && document.querySelector('.automation-summary')===null"),Boolean,'return to Arrangement after automation undo');
 
 
   await evaluate("document.querySelector('[data-inspector-effect=equalizer]').click()");
