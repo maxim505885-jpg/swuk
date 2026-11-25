@@ -3153,9 +3153,9 @@ async function nativeMidiSettings() {
 
   const controls = document.createElement('div'); controls.className = 'native-engine-actions';
   const inputButton = document.createElement('button'); inputButton.type = 'button'; inputButton.className = 'button quiet';
-  inputButton.textContent = midiInputConnected ? 'Отключить MIDI-вход' : 'Подключить MIDI-вход'; inputButton.disabled = !inputs.length;
+  inputButton.textContent = midiInputConnected ? 'Отключить MIDI-вход' : 'Подключить MIDI-вход'; inputButton.disabled = !inputs.length && !midiInputConnected;
   const outputButton = document.createElement('button'); outputButton.type = 'button'; outputButton.className = 'button quiet';
-  outputButton.textContent = midiOutputConnected ? 'Отключить MIDI-выход' : 'Подключить MIDI-выход'; outputButton.disabled = !outputs.length;
+  outputButton.textContent = midiOutputConnected ? 'Отключить MIDI-выход' : 'Подключить MIDI-выход'; outputButton.disabled = !outputs.length && !midiOutputConnected;
   const testButton = document.createElement('button'); testButton.type = 'button'; testButton.className = 'button quiet';
   testButton.textContent = 'Проверить MIDI-выход'; testButton.disabled = !midiOutputConnected;
   controls.append(inputButton, outputButton, testButton); panel.append(controls);
@@ -3169,6 +3169,7 @@ async function nativeMidiSettings() {
     status.textContent = message || `Вход: ${currentInput}. Выход: ${currentOutput}. MIDI-устройства работают через Windows MIDI.`;
   };
   updateStatus(initial?.ok ? '' : initial?.error || 'Не удалось получить список MIDI-устройств.');
+  if (midiInputConnected) startMidiInputPolling();
   inputSelect.onchange = () => { if (Number.isInteger(Number(inputSelect.value))) midiInputDeviceIndex = Number(inputSelect.value); };
   outputSelect.onchange = () => { if (Number.isInteger(Number(outputSelect.value))) midiOutputDeviceIndex = Number(outputSelect.value); };
   inputButton.onclick = async () => {
@@ -3245,6 +3246,7 @@ function startMidiInputPolling() {
       }
     } else {
       setMidiInputConnected(false);
+      window.sonoraNative.closeMidiInput().catch(() => {});
       const status = $('#midiInputStatus');
       if (status) status.textContent = 'MIDI-вход отключился. Проверьте подключение и обновите список.';
       return;

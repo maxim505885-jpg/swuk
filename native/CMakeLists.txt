@@ -17,7 +17,7 @@ target_link_libraries(sonora-audio-engine PRIVATE sonora_engine_core)
 target_compile_options(sonora-audio-engine PRIVATE
     $<$<CXX_COMPILER_ID:MSVC>:/W4>
     $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall;-Wextra;-Wpedantic>)
-target_compile_definitions(sonora-audio-engine PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX __WINDOWS_MM__)
+target_compile_definitions(sonora-audio-engine PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX RTMIDI_API_WINMM)
 target_link_libraries(sonora-audio-engine PRIVATE ole32 oleaut32 winmm uuid avrt ksuser psapi)
 
 if(WIN32)

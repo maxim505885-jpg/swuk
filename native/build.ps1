@@ -43,7 +43,7 @@ function Invoke-ZigCompiler([string[]]$Arguments) {
 
 $commonArguments = @(
     '-std=c++20', '-O2', '-Wall', '-Wextra', '-Wpedantic',
-    '-DWIN32_LEAN_AND_MEAN', '-DNOMINMAX', '-D__WINDOWS_MM__',
+    '-DWIN32_LEAN_AND_MEAN', '-DNOMINMAX', '-DRTMIDI_API_WINMM',
     "-I$includeDirectory"
 )
 
