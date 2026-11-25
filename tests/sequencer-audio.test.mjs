@@ -74,6 +74,13 @@ test('drum probability is deterministic and ratchets retrigger within one step',
   assert.equal(drumHitOccurs('pattern-a', 1, 4, 0), false);
   assert.equal(drumHitOccurs('pattern-a', 1, 4, 1), true);
   assert.equal(drumHitOccurs('pattern-a', 1, 4, .5), drumHitOccurs('pattern-a', 1, 4, .5), 'probability decisions remain stable for browser and native rendering');
+  const randomHits = Array.from({ length: 64 }, (_, hit) => hit);
+  const variedClip = { id: 'stable-probability', kind: 'drums', lengthBeats: 16, steps: [{ kind: 'hat', hits: randomHits, probability: .5 }] };
+  const renderOptions = { bpm: 120, sampleRate: 8000, createDrumSample: () => new Float32Array([1]) };
+  const varied = renderSequencedClip(variedClip, renderOptions), repeated = renderSequencedClip(variedClip, renderOptions);
+  assert.deepEqual(repeated, varied, 'the same project produces the same probability decisions on repeated renders');
+  const triggered = varied.reduce((count, value) => count + Number(value !== 0), 0);
+  assert.ok(triggered > 0 && triggered < randomHits.length, 'intermediate probability suppresses some steps and keeps others');
   const sample = new Float32Array([1, 0]);
   const clip = { id: 'pattern-a', kind: 'drums', lengthBeats: 1, steps: [{ kind: 'kick', hits: [0], ratchets: 3 }] };
   const pcm = renderSequencedClip(clip, { bpm: 120, sampleRate: 8000, createDrumSample: () => sample });
