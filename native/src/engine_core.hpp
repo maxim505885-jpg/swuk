@@ -6,6 +6,7 @@
 #include <optional>
 #include <utility>
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace sonora::audio {
@@ -51,6 +52,7 @@ struct AutomationPoint {
 
 struct TrackMixSettings {
     TrackMixSettings() = default;
+    std::string channelId;
     TrackMixSettings(
         const float trackGain,
         const float trackPan,
