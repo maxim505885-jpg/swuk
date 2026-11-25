@@ -216,7 +216,21 @@ try {
   assert.equal(wav.size,44+wav.dataSize,'WAV data length matches its RIFF payload');
   assert.equal(wav.riffSize,wav.size-8,'RIFF length matches the encoded file');
   assert.deepEqual(exceptions,[], 'WAV export must not throw renderer exceptions');
-  console.log('Electron UI smoke passed: EQ, split/slicing, undo/redo, save/open and PCM WAV export');
+  const rulerSelection = await evaluate(`(() => {
+    const ruler=document.querySelector('#barRuler'),bounds=ruler.getBoundingClientRect();
+    const barWidth=Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--bar'));
+    return {start:{x:bounds.left+barWidth*.5,y:bounds.top+bounds.height/2},end:{x:bounds.left+barWidth*1.5,y:bounds.top+bounds.height/2},barWidth};
+  })()`);
+  await send('Input.dispatchMouseEvent',{type:'mousePressed',x:rulerSelection.start.x,y:rulerSelection.start.y,button:'left',clickCount:1});
+  await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:rulerSelection.end.x,y:rulerSelection.end.y,button:'left',buttons:1});
+  await send('Input.dispatchMouseEvent',{type:'mouseReleased',x:rulerSelection.end.x,y:rulerSelection.end.y,button:'left',clickCount:1});
+  const selectedRange=await waitUntil(()=>evaluate(`(()=>{const button=document.querySelector('#loopBtn'),region=document.querySelector('#loopRegion');return {label:button.getAttribute('aria-label'),left:Number.parseFloat(region.style.left),width:Number.parseFloat(region.style.width)}})()`),value=>value.label?.includes('1:3–2:3'),'Arrangement A–B range selection');
+  assert.ok(Math.abs(selectedRange.left-rulerSelection.barWidth/2)<1,'range starts at beat 2');
+  assert.ok(Math.abs(selectedRange.width-rulerSelection.barWidth)<1,'range spans four beats');
+  await evaluate("document.querySelector('#loopBtn').click()");
+  assert.deepEqual(await evaluate("(()=>({pressed:document.querySelector('#loopBtn').getAttribute('aria-pressed'),active:document.querySelector('#loopRegion').classList.contains('is-looping')}))()"),{pressed:'true',active:true},'selected range can be enabled as the playback loop');
+  assert.deepEqual(exceptions,[], 'Arrangement range selection must not throw renderer exceptions');
+  console.log('Electron UI smoke passed: EQ, split/slicing, undo/redo, project round-trip, WAV export and loop selection');
 } finally {
   if (socket && socket.readyState < WebSocket.CLOSING) socket.close();
   if (child.exitCode === null) {
