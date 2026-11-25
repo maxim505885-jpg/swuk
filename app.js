@@ -1128,7 +1128,9 @@ function renderInspector() {
           bandIndex === null || bandIndex === index ? { ...band, [key]: nextValue } : band);
         track.eqSettings = normalizeEqSettings({ ...track.eqSettings, bands: nextBands });
         updateValue(); markProjectDirty();
-        const filters = liveTrackEqualizers.get(track.id), now = getAudioContext().currentTime;
+        const filters = liveTrackEqualizers.get(track.id);
+        if (!filters) return;
+        const now = getAudioContext().currentTime;
         const apply = (filter, band) => {
           if (!filter || !band) return;
           if (key === 'frequencyHz') filter.frequency.setTargetAtTime(band.frequencyHz, now, .02);

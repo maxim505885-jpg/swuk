@@ -8,8 +8,8 @@
   "scripts": {
     "start": "node server.mjs",
     "desktop": "electron .",
-    "build:win": "npm run native:test && npm run native:build && npm run native:clap:test && npm test && npm run native:smoke && npm run qa:signalsmith && electron-builder --win nsis --publish never --config.electronDist=node_modules/electron/dist",
-    "build:win:dir": "npm run native:test && npm run native:build && npm run native:clap:test && npm test && npm run native:smoke && npm run qa:signalsmith && electron-builder --win --dir --publish never --config.electronDist=node_modules/electron/dist",
+    "build:win": "npm run native:test && npm run native:build && npm run native:clap:test && npm test && npm run native:smoke && npm run qa:signalsmith && npm run qa:ui-smoke && electron-builder --win nsis --publish never --config.electronDist=node_modules/electron/dist",
+    "build:win:dir": "npm run native:test && npm run native:build && npm run native:clap:test && npm test && npm run native:smoke && npm run qa:signalsmith && npm run qa:ui-smoke && electron-builder --win --dir --publish never --config.electronDist=node_modules/electron/dist",
     "native:build": "powershell -ExecutionPolicy Bypass -File native/build.ps1 -Mode Build",
     "native:clap:test": "powershell -ExecutionPolicy Bypass -File native/build-clap.ps1 -Test",
     "native:test": "powershell -ExecutionPolicy Bypass -File native/build.ps1 -Mode Test",
@@ -23,7 +23,8 @@
     "qa:load": "npm run native:bench",
     "qa:final": "npm run build:win",
     "test": "node --test --test-isolation=none",
-    "qa:signalsmith": "electron scripts/signalsmith-stretch-smoke.cjs"
+    "qa:signalsmith": "electron scripts/signalsmith-stretch-smoke.cjs",
+    "qa:ui-smoke": "node scripts/electron-ui-smoke.mjs"
   },
   "devDependencies": {
     "electron": "^45.4.1",
