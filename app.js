@@ -1781,8 +1781,8 @@ function renderPianoRoll(body, clip, track) {
   const previousBar = $('#pianoPreviousBar', body), nextBar = $('#pianoNextBar', body), zoomControl = $('#pianoZoom', body);
   $('#pianoBarReadout', body).textContent = `Такт ${pianoPageIndex + 1} / ${pageCount}`;
   previousBar.disabled = pianoPageIndex === 0; nextBar.disabled = pianoPageIndex >= pageCount - 1;
-  previousBar.addEventListener('click', () => { pianoPageStartBeat = Math.max(0, pianoPageStartBeat - 4); renderEditor(); });
-  nextBar.addEventListener('click', () => { pianoPageStartBeat = Math.min((pageCount - 1) * 4, pianoPageStartBeat + 4); renderEditor(); });
+  previousBar.addEventListener('click', () => { pianoPageStartBeat = Math.max(0, pianoPageStartBeat - 4); renderEditor(); requestAnimationFrame(() => $('#pianoPreviousBar')?.focus()); });
+  nextBar.addEventListener('click', () => { pianoPageStartBeat = Math.min((pageCount - 1) * 4, pianoPageStartBeat + 4); renderEditor(); requestAnimationFrame(() => $('#pianoNextBar')?.focus()); });
   zoomControl.value = String(pianoZoomPercent);
   zoomControl.addEventListener('change', () => { pianoZoomPercent = Number(zoomControl.value); renderEditor(); });
   octaveDown.addEventListener('click', () => { pianoRangeStart = shiftMidiOctave(pianoRangeStart, -1); selectedMidiNote = null; renderEditor(); requestAnimationFrame(() => $('#pianoOctaveDown')?.focus()); });
@@ -1835,7 +1835,7 @@ function renderPianoRoll(body, clip, track) {
           note.beat = clamp(snapBeat(startBeat + dx / bounds.width * 4), 0, Math.max(0, clip.lengthBeats - .25));
           note.note = clamp(startPitch - Math.round(dy / (bounds.height / 12)), pianoRangeStart, Math.min(127, pianoRangeStart + 11));
         }
-        noteEl.style.left = `${note.beat / 4 * 100}%`;
+        noteEl.style.left = `${(note.beat - pianoPageStartBeat) / 4 * 100}%`;
         noteEl.style.width = `${Math.max(5.5, note.length / 4 * 100 - .7)}%`;
         noteEl.style.top = `${((pianoRangeStart + 11 - note.note) / 12) * 100}%`;
       };
