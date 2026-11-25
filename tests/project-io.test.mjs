@@ -64,6 +64,20 @@ test('project validation and serialization preserve bounded parametric EQ settin
   assert.equal(validateProjectDocument(invalid).code, 'invalid-tracks');
 });
 
+test('project validation preserves all seven bounded EQ bands', () => {
+  const bands = [60, 150, 400, 1000, 2400, 6000, 14000].map(frequencyHz => ({ frequencyHz, gainDb: 0, q: 1 }));
+  bands[5] = { frequencyHz: 6200, gainDb: -3.5, q: 1.4 };
+  const track = { ...project().tracks[0], effects: { equalizer: true }, eqSettings: { frequencyHz: 1000, gainDb: 0, q: 1, bands } };
+  const state = { name: 'Seven band EQ', tempo: 120, key: 'До мажор', masterVolume: .8, loop: false, loopStartBeat: 0, loopEndBeat: 16, selectedTrackId: track.id, tracks: [track], markers: [] };
+  const document = createProjectDocument(state, []);
+  assert.deepEqual(document.tracks[0].eqSettings.bands, bands);
+  assert.equal(validateProjectDocument(document).ok, true);
+  const invalid = structuredClone(document); invalid.tracks[0].eqSettings.bands.pop();
+  assert.equal(validateProjectDocument(invalid).code, 'invalid-tracks');
+  const outOfRange = structuredClone(document); outOfRange.tracks[0].eqSettings.bands[1].gainDb = 30;
+  assert.equal(validateProjectDocument(outOfRange).code, 'invalid-tracks');
+});
+
 test('project validator rejects unsupported formats and malformed or duplicate tracks/clips', () => {
   assert.equal(validateProjectDocument(project({ version: 2 })).code, 'invalid');
   assert.equal(validateProjectDocument(project({ tracks: [{ id: 'same', type: 'audio', clips: [] }, { id: 'same', type: 'audio', clips: [] }] })).code, 'invalid-tracks');
