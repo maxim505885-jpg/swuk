@@ -2874,7 +2874,7 @@ function setupEvents() {
   $('#addAutomationBtn').onclick = () => createAutomationClip('volume');
   $('#addPanAutomationBtn').onclick = () => createAutomationClip('pan');
   $('#trackMenuBtn').onclick = () => { const choice = prompt('Тип дорожки: 1 — аудио, 2 — ритм, 3 — инструмент', '1'); addTrack(choice === '2' ? 'drums' : choice === '3' ? 'instrument' : 'audio'); };
-  $('#zoomInput').oninput = event => { state.zoom = Number(event.target.value); renderTimeline(); };
+  $('#zoomInput').oninput = event => { state.zoom = Number(event.target.value); document.documentElement.style.setProperty('--bar', `${state.zoom}px`); renderTimeline(); };
   $('#followPlayheadBtn').onclick = event => { followPlayhead = !followPlayhead; event.currentTarget.classList.toggle('selected', followPlayhead); event.currentTarget.setAttribute('aria-pressed', String(followPlayhead)); };
   $('#splitTool').onclick = event => { splitMode = !splitMode; event.currentTarget.classList.toggle('selected', splitMode); $('#selectTool').classList.toggle('selected', !splitMode); event.currentTarget.setAttribute('aria-pressed', String(splitMode)); $('#selectTool').setAttribute('aria-pressed', String(!splitMode)); showToast(splitMode ? 'Нажмите на клип, чтобы разделить его у курсора' : 'Режим разделения выключен'); };
   $('#selectTool').onclick = () => { splitMode = false; $('#splitTool').classList.remove('selected'); $('#selectTool').classList.add('selected'); $('#selectTool').setAttribute('aria-pressed', 'true'); $('#splitTool').setAttribute('aria-pressed', 'false'); };
