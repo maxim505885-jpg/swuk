@@ -120,6 +120,20 @@ test('compressor settings are validated and survive project serialization', () =
   assert.equal(validateProjectDocument(invalid).code, 'invalid-tracks');
 });
 
+test('limiter settings are validated and survive project serialization', () => {
+  const value = project({
+    tracks: [{ id: 'track-1', type: 'audio', effects: { limiter: true }, limiterSettings: { ceilingDb: -3.5, releaseMs: 125 }, clips: [] }],
+  });
+  assert.equal(validateProjectDocument(value).ok, true);
+  const serialized = createProjectDocument({
+    name: 'Limiter QA', tempo: 120, key: 'До мажор', masterVolume: .8, loop: false, loopStartBeat: 0,
+    loopEndBeat: 16, selectedTrackId: 'track-1', tracks: value.tracks, markers: [],
+  }, []);
+  assert.deepEqual(serialized.tracks[0].limiterSettings, value.tracks[0].limiterSettings);
+  const invalid = structuredClone(value); invalid.tracks[0].limiterSettings.ceilingDb = 2;
+  assert.equal(validateProjectDocument(invalid).code, 'invalid-tracks');
+});
+
 test('CLAP-rendered audio keeps validated source, render, and parameter metadata', () => {
   const wav = pcmWavBase64({ channels: 2, frames: 64 });
   const value = project({
