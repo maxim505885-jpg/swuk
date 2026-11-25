@@ -504,6 +504,30 @@ void testSpectrumAnalyzerFindsToneAndResets() {
 
 } // namespace
 
+void testMixerBusRoutingAndSolo() {
+    const float sample[]{1.0F};
+    const sonora::audio::PcmSourceView source{sample,1,1,48'000.0};
+    sonora::audio::TrackMixSettings tracks[]{{1.0F,0.0F,false,false},{0.5F,1.0F,false,false}};
+    tracks[0].outputBusIndex=1; tracks[1].isBus=true;
+    const sonora::audio::AudioClipView clips[]{{&source,0,0,0,1,1.0,1.0F,0.0F}};
+    const sonora::audio::ProjectMixView project{tracks,2,clips,1,1.0F};
+    sonora::audio::ProjectMixState state;
+    require(sonora::audio::configureProjectMixState(state,project),"bus graph prepared off callback");
+    float output[2]{},peaks[2]{};
+    require(sonora::audio::renderMixBlock(output,1,48'000.0,0,project,&state,peaks,2),"routed mix renders");
+    require(std::abs(output[0])<1e-6F&&std::abs(output[1]-0.3535534F)<1e-5F,"track feeds bus then bus gain and pan reach master");
+    tracks[1].solo=true;
+    require(sonora::audio::renderMixBlock(output,1,48'000.0,0,project,&state,peaks,2),"solo bus renders");
+    require(std::abs(output[1]-0.3535534F)<1e-5F,"solo bus keeps unmuted inputs");
+    tracks[1].mute=true;
+    require(sonora::audio::renderMixBlock(output,1,48'000.0,0,project,&state,peaks,2),"muted bus renders");
+    require(std::abs(output[0])<1e-6F&&std::abs(output[1])<1e-6F,"bus mute suppresses output");
+    tracks[1].mute=false;tracks[1].solo=false;tracks[0].solo=true;
+    require(sonora::audio::renderMixBlock(output,1,48'000.0,0,project,&state,peaks,2),"solo track routes through bus");
+    require(std::abs(output[1]-0.3535534F)<1e-5F,"solo track keeps its bus audible");
+    tracks[0].outputBusIndex=8;
+    require(!sonora::audio::renderMixBlock(output,1,48'000.0,0,project,&state),"unknown target bus rejected");
+}
 int main() {
     testToneFrequencyAndStereoAlignment();
     testInvalidToneIsRejectedWithoutWriting();
@@ -530,6 +554,7 @@ int main() {
     testCaptureRingReportsBackpressureAndHonorsFrameLimit();
     testCaptureRecorderWritesFinalizedPcmWave();
     testSpectrumAnalyzerFindsToneAndResets();
-    std::cout << "26 native audio core tests passed\n";
+    testMixerBusRoutingAndSolo();
+    std::cout << "27 native audio core tests passed\n";
     return EXIT_SUCCESS;
 }
