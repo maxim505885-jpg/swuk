@@ -21,6 +21,7 @@ public:
         pluginPath_.clear();
         if (!host_.start(pluginPath, error)) return false;
         pluginPath_ = pluginPath;
+        nextSteadyTime_ = 0;
         reset(0);
         return true;
     }
@@ -69,8 +70,9 @@ public:
             if (host_.isReady()) {
                 (void)host_.trySend(sequence,
                     std::span<const float>(input, static_cast<std::size_t>(count) * kPluginAudioChannels),
-                    count, slot.projectFrame);
+                    count, slot.projectFrame, nextSteadyTime_);
             }
+            nextSteadyTime_ += count;
             renderedFrames += count;
         }
 
@@ -147,6 +149,7 @@ private:
     std::array<Slot, kPluginAudioQueueCapacity * 4> slots_{};
     std::uint64_t nextInputSequence_{};
     std::uint64_t nextOutputSequence_{};
+    std::uint64_t nextSteadyTime_{};
     std::uint64_t startupSilenceFrames_{};
     std::uint64_t outputProjectFrame_{};
     std::size_t outputOffset_{};
