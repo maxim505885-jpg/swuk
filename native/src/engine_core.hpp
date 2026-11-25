@@ -72,6 +72,12 @@ struct TrackMixSettings {
     bool solo{};
     bool reverb{};
     bool delay{};
+    bool compressor{};
+    float compressorThresholdDb{-18.0F};
+    float compressorRatio{4.0F};
+    float compressorAttackMs{10.0F};
+    float compressorReleaseMs{120.0F};
+    float compressorMakeupDb{};
     std::vector<AutomationPoint> gainAutomation;
     bool equalizer{};
     float equalizerFrequencyHz{1000.0F};
@@ -117,6 +123,8 @@ struct ProjectMixState {
         bool equalizer{};
         bool reverb{};
         bool delay{};
+        bool compressor{};
+        float compressorEnvelope{1.0F};
     };
 
     std::vector<TrackState> tracks;

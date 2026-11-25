@@ -74,6 +74,12 @@ export function validateProjectDocument(data, limits = PROJECT_LIMITS) {
         (track.pan !== undefined && !finiteBetween(track.pan, -1, 1)) ||
         (track.mute !== undefined && typeof track.mute !== 'boolean') || (track.solo !== undefined && typeof track.solo !== 'boolean') ||
         (track.effects !== undefined && (!plainObject(track.effects) || Object.values(track.effects).some(value => typeof value !== 'boolean'))) ||
+        (track.compressorSettings !== undefined && (!plainObject(track.compressorSettings) ||
+          (track.compressorSettings.thresholdDb !== undefined && !finiteBetween(track.compressorSettings.thresholdDb, -60, 0)) ||
+          (track.compressorSettings.ratio !== undefined && !finiteBetween(track.compressorSettings.ratio, 1, 20)) ||
+          (track.compressorSettings.attackMs !== undefined && !finiteBetween(track.compressorSettings.attackMs, 0.1, 100)) ||
+          (track.compressorSettings.releaseMs !== undefined && !finiteBetween(track.compressorSettings.releaseMs, 10, 1000)) ||
+          (track.compressorSettings.makeupDb !== undefined && !finiteBetween(track.compressorSettings.makeupDb, 0, 24)))) ||
         (track.eqSettings !== undefined && (!plainObject(track.eqSettings) || !finiteBetween(track.eqSettings.frequencyHz, 20, 20_000) ||
           !finiteBetween(track.eqSettings.gainDb, -24, 24) || !finiteBetween(track.eqSettings.q, 0.1, 18) ||
           (track.eqSettings.bands !== undefined && (!Array.isArray(track.eqSettings.bands) || track.eqSettings.bands.length !== 7 ||

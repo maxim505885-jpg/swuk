@@ -104,6 +104,22 @@ test('audio clip fade durations are validated and serialized as project state', 
   assert.equal(validateProjectDocument(invalid).code, 'invalid-clips');
 });
 
+test('compressor settings are validated and survive project serialization', () => {
+  const value = project({
+    tracks: [{ id: 'track-1', type: 'audio', effects: { compressor: true }, compressorSettings: {
+      thresholdDb: -24, ratio: 6, attackMs: 5, releaseMs: 240, makeupDb: 2,
+    }, clips: [] }],
+  });
+  assert.equal(validateProjectDocument(value).ok, true);
+  const serialized = createProjectDocument({
+    name: 'Compressor QA', tempo: 120, key: 'До мажор', masterVolume: .8, loop: false, loopStartBeat: 0,
+    loopEndBeat: 16, selectedTrackId: 'track-1', tracks: value.tracks, markers: [],
+  }, []);
+  assert.deepEqual(serialized.tracks[0].compressorSettings, value.tracks[0].compressorSettings);
+  const invalid = structuredClone(value); invalid.tracks[0].compressorSettings.ratio = 24;
+  assert.equal(validateProjectDocument(invalid).code, 'invalid-tracks');
+});
+
 test('CLAP-rendered audio keeps validated source, render, and parameter metadata', () => {
   const wav = pcmWavBase64({ channels: 2, frames: 64 });
   const value = project({
