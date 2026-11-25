@@ -464,7 +464,30 @@ try {
   const stepControls = await evaluate("(() => { const chance=document.querySelector('.step-probability'),repeat=document.querySelector('.step-ratchets'); chance.value='0.55';chance.dispatchEvent(new Event('input',{bubbles:true}));chance.dispatchEvent(new Event('change',{bubbles:true}));repeat.value='4';repeat.dispatchEvent(new Event('change',{bubbles:true}));return {chance:document.querySelector('.step-probability-value').textContent,repeat:repeat.value+'×'}; })()");
   assert.deepEqual(stepControls, { chance: '55%', repeat: '4×' }, 'step probability and ratchet controls update their displayed values');
   assert.deepEqual(exceptions, [], 'step sequencer rendering and controls must not throw renderer exceptions');
-  console.log(`Electron UI smoke passed: sampler editor, probability/ratchet controls, 128-clip Arrangement, zoom, spectrum analyzer, EQ, compressor, limiter, split/slicing, undo/redo, project round-trip, WAV export and loop selection`);
+  const pianoProject = structuredClone(largeProject);
+  pianoProject.tracks.forEach(track => { track.clips = []; });
+  const instrumentTrack = pianoProject.tracks.find(track => track.type === 'instrument');
+  assert.ok(instrumentTrack, 'Piano Roll smoke fixture includes an instrument track');
+  instrumentTrack.clips.push({
+    id: 'qa-piano-midi', name: 'QA melody', kind: 'midi', startBeat: 0, lengthBeats: 4,
+    notes: [{ beat: 0, length: 1, note: 60, velocity: .75 }],
+  });
+  pianoProject.selectedTrackId = instrumentTrack.id;
+  const pianoProjectText = JSON.stringify(pianoProject);
+  await evaluate("(() => { const previous=window.confirm; window.confirm=()=>true; document.querySelector('#newProjectBtn').click(); window.confirm=previous; })()");
+  await waitUntil(() => evaluate("document.querySelectorAll('.track-lane .clip').length"), count => count === 0, 'empty Arrangement before loading Piano Roll session');
+  await evaluate(`(() => { const file=new File([${JSON.stringify(pianoProjectText)}],'qa-piano-roll.sonora',{type:'application/json'}),transfer=new DataTransfer();transfer.items.add(file);const input=document.querySelector('#projectFile');input.files=transfer.files;input.dispatchEvent(new Event('change',{bubbles:true}));return true; })()`);
+  await waitUntil(() => evaluate("Boolean(document.querySelector('[data-clip=\\\"qa-piano-midi\\\"]'))"), Boolean, 'loaded QA MIDI clip');
+  await evaluate("document.querySelector('[data-clip=\\\"qa-piano-midi\\\"]').click()");
+  await evaluate("document.querySelector('#inspectorOpenEditorBtn').click()");
+  await waitUntil(() => evaluate("Boolean(document.querySelector('.piano-wrap'))"), Boolean, 'Piano Roll editor');
+  await evaluate("document.querySelector('.piano-cell:not(:disabled)').click()");
+  await waitUntil(() => evaluate("Boolean(document.querySelector('#generatePianoChord'))"), Boolean, 'Piano Roll chord control');
+  await evaluate("document.querySelector('#generatePianoChord').click()");
+  const pianoNoteCount = await waitUntil(() => evaluate("document.querySelectorAll('.piano-note').length"), count => count === 4, 'generated major triad in Piano Roll');
+  assert.equal(pianoNoteCount, 4, 'major chord adds the two missing pitches alongside its selected root');
+  assert.deepEqual(exceptions, [], 'Piano Roll chord generation must not throw renderer exceptions');
+  console.log(`Electron UI smoke passed: Piano Roll chord generator, sampler editor, probability/ratchet controls, 128-clip Arrangement, zoom, spectrum analyzer, EQ, compressor, limiter, split/slicing, undo/redo, project round-trip, WAV export and loop selection`);
 } finally {
   if (socket && socket.readyState < WebSocket.CLOSING) socket.close();
   if (child.exitCode === null) {
