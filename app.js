@@ -2256,7 +2256,7 @@ function startMidiOutputScheduler() {
       if (currentBeat >= midiOutputLastBeat) crossed = midiEventsCrossed(midiOutputEvents, midiOutputLastBeat, currentBeat);
       else if (state.loop && state.loopEndBeat > state.loopStartBeat) {
         crossed = midiEventsCrossed(midiOutputEvents, midiOutputLastBeat, state.loopEndBeat);
-        stopExternalMidiNotes();
+        await stopExternalMidiNotes();
         crossed.push(...midiEventsCrossed(midiOutputEvents, state.loopStartBeat - 1e-6, currentBeat));
       }
     }
@@ -2284,17 +2284,19 @@ function startMidiOutputScheduler() {
   midiOutputPollTimer = window.setTimeout(tick, 0);
 }
 function stopExternalMidiNotes() {
+  const pending = [];
   for (const [key, count] of midiOutputActiveNotes) {
     if (!count) continue;
     const pitch = Number(key.split(':')[1]);
-    window.sonoraNative?.sendMidiNote(0, pitch, 0, false).catch(() => {});
+    pending.push(window.sonoraNative?.sendMidiNote(0, pitch, 0, false).catch(() => {}));
   }
   midiOutputActiveNotes.clear();
+  return Promise.all(pending);
 }
-function stopMidiOutputScheduler() {
+async function stopMidiOutputScheduler() {
   if (midiOutputPollTimer) { clearTimeout(midiOutputPollTimer); midiOutputPollTimer = 0; }
   midiOutputLastBeat = null;
-  stopExternalMidiNotes();
+  await stopExternalMidiNotes();
 }
 function scheduleProject(context, fromBeat = 0, destination = context.destination, includeMuted = false) {
   const now = context.currentTime, secondsPerBeat = beatSeconds();
@@ -3293,7 +3295,7 @@ async function nativeMidiSettings() {
   outputButton.onclick = async () => {
     outputButton.disabled = true;
     if (midiOutputConnected) {
-      stopMidiOutputScheduler();
+      await stopMidiOutputScheduler();
       if (midiTestOffTimer) { clearTimeout(midiTestOffTimer); midiTestOffTimer = 0; await window.sonoraNative.sendMidiNote(0, 60, 0, false).catch(() => {}); }
       const response = await window.sonoraNative.closeMidiOutput().catch(error => ({ ok: false, error: error.message }));
       midiOutputConnected = false;
@@ -3304,9 +3306,8 @@ async function nativeMidiSettings() {
       else updateStatus(response?.error || 'Не удалось подключить MIDI-выход.');
     }
     outputButton.textContent = midiOutputConnected ? 'Отключить MIDI-выход' : 'Подключить MIDI-выход';
-    testButton.disabled = !midiOutputConnected;
+    testButton.disabled = !midiOutputConnected || (midiOutputPlaybackEnabled && state.playing);
     outputPlaybackInput.disabled = !midiOutputConnected;
-    if (!midiOutputConnected) outputPlaybackInput.checked = false;
     syncMidiOutputPlayback();
     outputButton.disabled = !outputs.length;
   };
