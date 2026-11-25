@@ -2237,13 +2237,15 @@ function renderMixer() {
       unload.setAttribute('aria-label', `Снять эффект с дорожки «${channel.name}»`);
       unload.title = `Снять эффект с дорожки «${channel.name}»`;
       unload.onclick = () => unloadTrackRealtimePlugin(channel.id);
-      actions.append(unload);
       const status = document.createElement('span');
       status.className = 'track-plugin-status';
       status.setAttribute('role', 'status');
       status.setAttribute('aria-live', 'polite');
       status.textContent = 'Нет вставки';
-      pluginControl.append(actions, status);
+      const statusRow = document.createElement('div');
+      statusRow.className = 'track-plugin-status-row';
+      statusRow.append(status, unload);
+      pluginControl.append(actions, statusRow);
       strip.append(pluginControl);
     }
     const gain = $('.volume-control', strip), pan = $('.pan-control', strip); gain.setAttribute('aria-label', `Громкость: ${channel.name}`); pan.setAttribute('aria-label', `Панорама: ${channel.name}`);
