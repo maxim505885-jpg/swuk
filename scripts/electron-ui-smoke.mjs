@@ -89,6 +89,8 @@ try {
   assert.deepEqual(midiSettings, { heading: true, input: 'SELECT', output: 'SELECT' }, 'MIDI settings expose input and output device selectors');
   const midiRecordControl = await evaluate("(() => { const button=document.querySelector('#midiRecordArmButton'); return button?{label:button.textContent,disabled:button.disabled}:null; })()");
   assert.deepEqual(midiRecordControl, { label: 'Включить запись MIDI', disabled: true }, 'MIDI recording is visible and cannot be armed without an input and instrument track');
+  const midiOutputControl = await evaluate("(() => { const input=document.querySelector('#midiOutputPlaybackEnabled'); return input?{checked:input.checked,disabled:input.disabled}:null; })()");
+  assert.deepEqual(midiOutputControl, { checked: false, disabled: true }, 'external MIDI playback is explicit and disabled until an output is connected');
   await evaluate("document.querySelector('#modalClose').click()");
   assert.deepEqual(await evaluate("(()=>({canvas:document.querySelector('#spectrumCanvas')?.getAttribute('role'),label:document.querySelector('#spectrumCanvas')?.getAttribute('aria-label'),summary:document.querySelector('#spectrumSummary')?.textContent}))()"),{canvas:'img',label:'Спектральный анализатор мастер-выхода',summary:'Нет сигнала'},'accessible spectrum analyzer widget');
   assert.equal(await evaluate("Boolean(document.querySelector('[data-inspector-effect=equalizer]'))"), true);
