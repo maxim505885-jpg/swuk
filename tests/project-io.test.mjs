@@ -241,3 +241,21 @@ test('project validator persists pan automation and rejects values outside the p
   invalid.tracks[0].clips[0].points[0].value = -1.1;
   assert.equal(validateProjectDocument(invalid).code, 'invalid-automation');
 });
+
+
+test('audio clip gain envelope is persisted and rejects invalid point curves', () => {
+  const wav = pcmWavBase64({ frames: 64 });
+  const envelope = [{ position: 0, gain: 1 }, { position: .5, gain: .2 }, { position: 1, gain: 0 }];
+  const value = project({ assets: [{ id: 'asset-1', wav }], tracks: [{ id: 'track-1', type: 'audio', clips: [
+    { id: 'clip-1', startBeat: 0, lengthBeats: 4, assetId: 'asset-1', gainEnvelope: envelope },
+  ] }] });
+  assert.equal(validateProjectDocument(value).ok, true);
+  const document = createProjectDocument({ name: 'Envelope QA', tracks: value.tracks, markers: [] }, value.assets);
+  assert.deepEqual(document.tracks[0].clips[0].gainEnvelope, envelope);
+  const invalid = structuredClone(value); invalid.tracks[0].clips[0].gainEnvelope[1].gain = 2;
+  assert.equal(validateProjectDocument(invalid).code, 'invalid-clip-envelope');
+  const midi = project({ tracks: [{ id: 'track-1', type: 'instrument', clips: [
+    { id: 'clip-1', kind: 'midi', startBeat: 0, lengthBeats: 4, notes: [], gainEnvelope: envelope },
+  ] }] });
+  assert.equal(validateProjectDocument(midi).code, 'invalid-clip-envelope');
+});
