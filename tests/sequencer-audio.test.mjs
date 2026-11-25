@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { drumHitOccurs, instrumentWaveAt, normalizeDrumRowSettings, normalizeSynthSettings, renderSequencedClip } from '../sequencer-audio.mjs';
+import { drumHitOccurs, instrumentWaveAt, normalizeDrumRowSettings, normalizeDrumStepSettings, normalizeSynthSettings, renderSequencedClip } from '../sequencer-audio.mjs';
 
 test('instrument waveforms are distinct and match the built-in timbre definitions', () => {
   assert.ok(Math.abs(instrumentWaveAt('soft-keys', .25) - .88) < 1e-6);
@@ -69,6 +69,17 @@ test('sequencer renderer rejects malformed or unbounded patterns', () => {
   const denseNotes = Array.from({ length: 50 }, () => ({ beat: 0, length: 20, note: 60, velocity: .5 }));
   assert.equal(renderSequencedClip({ kind: 'midi', lengthBeats: 240, notes: denseNotes }, { bpm: 120 }), null);
 });
+test('per-step drum probability and ratchets override row defaults in deterministic renders', () => {
+  const row = { kind: 'hat', hits: [0, 1], probability: 0, ratchets: 1, stepOverrides: { '0': { probability: 1, ratchets: 3 }, '1': { probability: 1 } } };
+  assert.deepEqual(normalizeDrumStepSettings(row, 0), { probability: 1, ratchets: 3 });
+  assert.deepEqual(normalizeDrumStepSettings(row, 1), { probability: 1, ratchets: 1 });
+  const clip = { id: 'step-overrides', kind: 'drums', lengthBeats: 1, steps: [row] };
+  const options = { bpm: 120, sampleRate: 8000, createDrumSample: () => new Float32Array([1]) };
+  assert.deepEqual(renderSequencedClip(clip, options), renderSequencedClip(clip, options));
+  const rendered = renderSequencedClip(clip, options);
+  assert.equal(rendered.reduce((count, frame) => count + Number(frame > 0), 0), 4, 'step zero retriggers three times and step one once');
+});
+
 test('drum probability is deterministic and ratchets retrigger within one step', () => {
   assert.deepEqual(normalizeDrumRowSettings({ probability: 1.5, ratchets: 3.2 }), { probability: 1, ratchets: 3 });
   assert.equal(drumHitOccurs('pattern-a', 1, 4, 0), false);

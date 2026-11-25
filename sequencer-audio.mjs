@@ -8,6 +8,15 @@ export function normalizeDrumRowSettings(row = {}) {
   };
 }
 
+export function normalizeDrumStepSettings(row = {}, step) {
+  const defaults = normalizeDrumRowSettings(row);
+  const override = row.stepOverrides && typeof row.stepOverrides === 'object' ? row.stepOverrides[String(step)] || {} : {};
+  return {
+    probability: Number.isFinite(override.probability) ? clamp(override.probability, 0, 1) : defaults.probability,
+    ratchets: Number.isFinite(override.ratchets) ? clamp(Math.round(override.ratchets), 1, 8) : defaults.ratchets,
+  };
+}
+
 export function drumHitOccurs(clipId, rowIndex, hit, probability = 1) {
   if (!Number.isFinite(probability) || probability <= 0) return false;
   if (probability >= 1) return true;
@@ -65,19 +74,27 @@ export function renderSequencedClip(clip, { instrument = 'soft-keys', synthSetti
       const { probability, ratchets } = normalizeDrumRowSettings(row);
       if (!Number.isFinite(velocity) || velocity < 0 || velocity > 1 ||
           (row.probability !== undefined && (!Number.isFinite(row.probability) || row.probability < 0 || row.probability > 1)) ||
-          (row.ratchets !== undefined && (!Number.isInteger(row.ratchets) || row.ratchets < 1 || row.ratchets > 8))) return null;
+          (row.ratchets !== undefined && (!Number.isInteger(row.ratchets) || row.ratchets < 1 || row.ratchets > 8)) ||
+          (row.stepOverrides !== undefined && (!row.stepOverrides || typeof row.stepOverrides !== 'object' || Array.isArray(row.stepOverrides) || Object.keys(row.stepOverrides).length > 4096))) return null;
       const acceptedHits = [];
       for (const hit of row.hits) {
-        if (!Number.isFinite(hit) || hit < 0 || hit > 4095) return null;
-        if (drumHitOccurs(clip.id, rowIndex, hit, probability)) acceptedHits.push(hit);
+        if (!Number.isInteger(hit) || hit < 0 || hit > 4095) return null;
+        const settings = normalizeDrumStepSettings(row, hit);
+        if (drumHitOccurs(clip.id, rowIndex, hit, settings.probability)) acceptedHits.push({ hit, ratchets: settings.ratchets });
       }
+      if (row.stepOverrides && Object.entries(row.stepOverrides).some(([step, settings]) =>
+        !/^\\d+$/.test(step) || String(Number(step)) !== step || Number(step) > 4095 || !settings || typeof settings !== 'object' || Array.isArray(settings) ||
+        Object.keys(settings).some(key => key !== 'probability' && key !== 'ratchets') ||
+        (settings.probability !== undefined && (!Number.isFinite(settings.probability) || settings.probability < 0 || settings.probability > 1)) ||
+        (settings.ratchets !== undefined && (!Number.isInteger(settings.ratchets) || settings.ratchets < 1 || settings.ratchets > 8)) ||
+        (!Object.hasOwn(settings, 'probability') && !Object.hasOwn(settings, 'ratchets')))) return null;
       if (!acceptedHits.length) continue;
       const sample = createDrumSample(row.kind);
       if (!(sample instanceof Float32Array) || sample.length === 0) return null;
-      for (const hit of acceptedHits) {
+      for (const { hit, ratchets: hitRatchets } of acceptedHits) {
         const stepSeconds = secondsPerBeat / 4;
-        for (let ratchet = 0; ratchet < ratchets; ratchet++) {
-          const start = hit / 4 * secondsPerBeat + ratchet * stepSeconds / ratchets;
+        for (let ratchet = 0; ratchet < hitRatchets; ratchet++) {
+          const start = hit / 4 * secondsPerBeat + ratchet * stepSeconds / hitRatchets;
           events.push({ kind: 'drum', start, sample, velocity });
           duration = Math.max(duration, start + sample.length / sampleRate);
         }

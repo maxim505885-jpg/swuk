@@ -157,8 +157,14 @@ export function validateProjectDocument(data, limits = PROJECT_LIMITS) {
               (row.velocity !== undefined && !finiteBetween(row.velocity, 0, 1)) ||
               (row.probability !== undefined && !finiteBetween(row.probability, 0, 1)) ||
               (row.ratchets !== undefined && (!Number.isInteger(row.ratchets) || row.ratchets < 1 || row.ratchets > 8)) ||
-              row.hits.some(hit => !finiteBetween(hit, 0, 4095))) return { ok: false, code: 'invalid-drums' };
-          eventCount += row.hits.length;
+              row.hits.some(hit => !finiteBetween(hit, 0, 4095)) ||
+              (row.stepOverrides !== undefined && (!plainObject(row.stepOverrides) || Object.keys(row.stepOverrides).length > limits.events - eventCount - row.hits.length ||
+                Object.entries(row.stepOverrides).some(([step, settings]) => !/^\\d+$/.test(step) || String(Number(step)) !== step || Number(step) > 4095 || !plainObject(settings) ||
+                  Object.keys(settings).some(key => key !== 'probability' && key !== 'ratchets') ||
+                  (settings.probability !== undefined && !finiteBetween(settings.probability, 0, 1)) ||
+                  (settings.ratchets !== undefined && (!Number.isInteger(settings.ratchets) || settings.ratchets < 1 || settings.ratchets > 8)) ||
+                  (settings.probability === undefined && settings.ratchets === undefined))))) return { ok: false, code: 'invalid-drums' };
+          eventCount += row.hits.length + Object.keys(row.stepOverrides || {}).length;
         }
       } else if (clip.kind === 'automation') {
         const valueRange = clip.target === 'volume' ? [0, 1.2] : clip.target === 'pan' ? [-1, 1] : null;

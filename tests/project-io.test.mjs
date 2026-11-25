@@ -37,6 +37,12 @@ test('project validator bounds step sequencer probability and ratchets', () => {
   assert.equal(validateProjectDocument(project({ tracks: [invalidProbability] })).code, 'invalid-drums');
   const invalidRatchets = structuredClone(valid); invalidRatchets.clips[0].steps[0].ratchets = 0;
   assert.equal(validateProjectDocument(project({ tracks: [invalidRatchets] })).code, 'invalid-drums');
+  const perStep = structuredClone(valid); perStep.clips[0].steps[0].stepOverrides = { '0': { probability: .25, ratchets: 3 } };
+  assert.equal(validateProjectDocument(project({ tracks: [perStep] })).ok, true);
+  const invalidStep = structuredClone(perStep); invalidStep.clips[0].steps[0].stepOverrides = { '4096': { ratchets: 2 } };
+  assert.equal(validateProjectDocument(project({ tracks: [invalidStep] })).code, 'invalid-drums');
+  const invalidOverride = structuredClone(perStep); invalidOverride.clips[0].steps[0].stepOverrides = { '0': { probability: 2 } };
+  assert.equal(validateProjectDocument(project({ tracks: [invalidOverride] })).code, 'invalid-drums');
 });
 
 test('project validator requires sampler references to point at a bundled audio asset', () => {
