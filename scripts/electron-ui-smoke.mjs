@@ -163,13 +163,13 @@ try {
     await send('Input.dispatchMouseEvent',{type:'mouseReleased',x:p.x,y:p.y,button:'left'});
   };
   await clickClip(2);
-  assert.equal(await waitUntil(()=>evaluate("Boolean(document.querySelector('#sliceTransientsBtn')&&!document.querySelector('#sliceTransientsBtn').disabled"),Boolean,'transient slicer'),true);
+  assert.equal(await waitUntil(()=>evaluate("Boolean(document.querySelector('#sliceTransientsBtn') && !document.querySelector('#sliceTransientsBtn').disabled)"),Boolean,'transient slicer'),true);
   await evaluate("document.querySelector('#sliceTransientsBtn').click()");
   await waitUntil(()=>evaluate("document.querySelectorAll('.track-lane .clip').length"),n=>n===5,'two detected cuts');
   await clickClip(3);
-  const offset2=await waitUntil(()=>evaluate("Number(document.querySelector('#clipOffset')?.value"),v=>Math.abs(v-.3)<.02,'second slice offset');
+  const offset2=await waitUntil(()=>evaluate("Number(document.querySelector('#clipOffset')?.value)"),v=>Math.abs(v-.3)<.02,'second slice offset');
   await clickClip(4);
-  const offset3=await waitUntil(()=>evaluate("Number(document.querySelector('#clipOffset')?.value"),v=>Math.abs(v-1)<.02,'third slice offset');
+  const offset3=await waitUntil(()=>evaluate("Number(document.querySelector('#clipOffset')?.value)"),v=>Math.abs(v-1)<.02,'third slice offset');
   assert.ok(Math.abs(offset2-.3)<.02&&Math.abs(offset3-1)<.02);
   await evaluate("document.querySelector('#undoBtn').click()");
   await waitUntil(()=>evaluate("document.querySelectorAll('.track-lane .clip').length"),n=>n===3,'undo of transient slicing');
