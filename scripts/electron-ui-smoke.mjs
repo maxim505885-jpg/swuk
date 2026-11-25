@@ -488,6 +488,9 @@ try {
   console.log('Piano Roll chord smoke:', JSON.stringify(chordSnapshot));
   assert.equal(chordSnapshot.notes.length, 3, 'major chord displays its root, third, and fifth together in one octave');
   for (const pitch of [60, 64, 67]) assert.ok(chordSnapshot.notes.some(label => label.includes(`MIDI ${pitch}`)), `Piano Roll displays generated MIDI pitch ${pitch}`);
+  await evaluate("document.querySelector('#quantizePianoNotes').click()");
+  const quantizeToast = await evaluate("document.querySelector('#toast')?.textContent");
+  assert.ok(quantizeToast?.includes('квантизированы'), 'Piano Roll quantizes MIDI notes to its selected grid');
   assert.deepEqual(exceptions, [], 'Piano Roll chord generation must not throw renderer exceptions');
   console.log(`Electron UI smoke passed: Piano Roll chord generator, sampler editor, probability/ratchet controls, 128-clip Arrangement, zoom, spectrum analyzer, EQ, compressor, limiter, split/slicing, undo/redo, project round-trip, WAV export and loop selection`);
 } finally {
