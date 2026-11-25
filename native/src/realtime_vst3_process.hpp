@@ -31,7 +31,7 @@ public:
         std::error_code filesystemError;
         if (!pluginPath.is_absolute() || !std::filesystem::is_directory(pluginPath, filesystemError) ||
             filesystemError || lowerExtension(pluginPath.extension().wstring()) != L".vst3") {
-            error = "Select an existing local .vst3 effect file";
+            error = "Select an existing local .vst3 bundle directory";
             return false;
         }
 
