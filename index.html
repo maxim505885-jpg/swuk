@@ -100,6 +100,11 @@
           </section>
             <footer class="mixer-panel" id="mixerPanel" role="region" aria-label="Микшер">
               <div class="mixer-title"><span class="eyebrow">КАНАЛЫ</span><strong>Микшер</strong><button id="mixerCollapseBtn" title="Свернуть микшер" aria-label="Свернуть микшер" aria-expanded="true">⌄</button></div>
+              <section class="spectrum-widget" aria-label="Спектральный анализатор">
+                <div class="spectrum-heading"><span>СПЕКТР</span><output id="spectrumSummary">Нет сигнала</output></div>
+                <canvas id="spectrumCanvas" role="img" aria-label="Спектральный анализатор мастер-выхода"></canvas>
+                <div class="spectrum-scale" aria-hidden="true"><span>30 Гц</span><span>1 кГц</span><span>18 кГц</span></div>
+              </section>
               <div class="mixer-strips" id="mixerStrips"></div>
               <div class="mixer-note"><span class="status-dot"></span><span id="mixerEngineNote">Звук обрабатывается в браузере</span></div>
             </footer>
@@ -118,6 +123,6 @@
       <div class="toast" id="toast" role="status"></div>
       <div class="modal-backdrop" id="modalBackdrop" hidden><section class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle" tabindex="-1"><div class="modal-header"><div><span class="eyebrow">SONORA STUDIO</span><h2 id="modalTitle">Аудиоустройства</h2></div><button class="icon-button" id="modalClose" aria-label="Закрыть окно">×</button></div><div id="modalContent"></div></section></div>
     </div>
-    <script type="module" src="/app.js?v=65"></script>
+    <script type="module" src="/app.js?v=66"></script>
   </body>
 </html>
