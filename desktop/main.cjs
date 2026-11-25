@@ -353,7 +353,7 @@ function registerAudioHandlers() {
   ipcMain.handle('native-track-plugin:load', (event, format, trackIndex, selectionToken) => {
     if (!trustedRenderer(event)) return { ok: false, error: 'Запрос отклонён' };
     if (!['clap', 'vst3'].includes(format) || !validTrackIndex(trackIndex) ||
-        typeof selectionToken !== 'string' || !/^[\\da-f-]{36}$/i.test(selectionToken)) {
+        typeof selectionToken !== 'string' || !/^[a-f0-9-]{36}$/i.test(selectionToken)) {
       return { ok: false, error: 'Параметры вставки дорожки некорректны' };
     }
     const selection = (format === 'clap' ? clapSelections : vst3Selections).get(selectionToken);
