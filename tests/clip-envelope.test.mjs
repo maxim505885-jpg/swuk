@@ -23,7 +23,6 @@ test('clip gain envelope schema requires bounded sorted points at both clip edge
 test('clip gain envelope interpolates linearly and clamps positions to the clip', () => {
   assert.equal(sampleClipGainEnvelope(envelope, 0), 1);
   assert.ok(Math.abs(sampleClipGainEnvelope(envelope, .25) - .6) < 1e-12);
-  assert.equal(sampleClipGainEnvelope(envelope, .5), .2);
   assert.equal(sampleClipGainEnvelope(envelope, 2), 0);
   assert.ok(Math.abs(sampleClipGainEnvelope(envelope, .5) - .2) < 1e-12);
 });
@@ -31,8 +30,8 @@ test('clip gain envelope interpolates linearly and clamps positions to the clip'
 test('split partitions the envelope at its interpolated gain without discontinuity', () => {
   const split = splitClipGainEnvelope(envelope, .25);
   assert.ok(split);
-  assert.equal(split.left.at(-1).gain, .6);
-  assert.equal(split.right[0].gain, .6);
+  assert.ok(Math.abs(split.left.at(-1).gain - .6) < 1e-12);
+  assert.ok(Math.abs(split.right[0].gain - .6) < 1e-12);
   assert.deepEqual(split.left.map(point => point.position), [0, 1]);
   assert.deepEqual(split.right.map(point => point.position), [0, 1 / 3, 1]);
   assert.equal(splitClipGainEnvelope(envelope, 0), null);
