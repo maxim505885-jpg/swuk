@@ -171,7 +171,11 @@ try {
   await clickClip(4);
   const offset3=await waitUntil(()=>evaluate("Number(document.querySelector('#clipOffset')?.value"),v=>Math.abs(v-1)<.02,'third slice offset');
   assert.ok(Math.abs(offset2-.3)<.02&&Math.abs(offset3-1)<.02);
-  assert.deepEqual(exceptions,[], 'transient slicing must not throw renderer exceptions');
+  await evaluate("document.querySelector('#undoBtn').click()");
+  await waitUntil(()=>evaluate("document.querySelectorAll('.track-lane .clip').length"),n=>n===3,'undo of transient slicing');
+  await evaluate("document.querySelector('#redoBtn').click()");
+  await waitUntil(()=>evaluate("document.querySelectorAll('.track-lane .clip').length"),n=>n===5,'redo of transient slicing');
+  assert.deepEqual(exceptions,[], 'transient slicing and history must not throw renderer exceptions');
   console.log('Electron UI smoke passed: EQ, retimed split and two transient cuts preserve PCM offsets');
 } finally {
   if (socket && socket.readyState < WebSocket.CLOSING) socket.close();
