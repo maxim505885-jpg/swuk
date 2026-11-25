@@ -105,6 +105,27 @@ void testProjectClipFades() {
     require(std::abs(output[6] - center * 0.5F) < 1.0e-5F, "clip fade-out ramps linearly");
 }
 
+void testProjectClipGainEnvelopeRendersAndValidates() {
+    const float samples[]{1.0F, 1.0F, 1.0F, 1.0F};
+    const sonora::audio::PcmSourceView source{samples, 4, 1, 4.0};
+    const sonora::audio::TrackMixSettings tracks[]{{1.0F, 0.0F, false, false}};
+    sonora::audio::AudioClipView clips[]{{&source, 0, 0, 0, 4, 1.0, 1.0F, 0.0F}};
+    clips[0].gainEnvelope = {{0, 1.0F}, {2, 0.0F}, {4, 1.0F}};
+    const sonora::audio::ProjectMixView project{tracks, 1, clips, 1, 1.0F};
+    float output[8]{};
+    require(sonora::audio::renderMixBlock(output, 4, 4.0, 0, project), "clip gain envelope renders");
+    const float center = 0.7071067F;
+    require(std::abs(output[0] - center) < 1.0e-5F, "clip envelope starts at its first gain");
+    require(std::abs(output[2] - center * 0.5F) < 1.0e-5F, "clip envelope interpolates linearly");
+    require(std::abs(output[4]) < 1.0e-6F, "clip envelope reaches a zero-gain point");
+    require(std::abs(output[6] - center * 0.5F) < 1.0e-5F, "clip envelope continues through a block");
+
+    clips[0].gainEnvelope = {{1, 1.0F}, {4, 1.0F}};
+    std::fill(std::begin(output), std::end(output), 7.0F);
+    require(!sonora::audio::renderMixBlock(output, 4, 4.0, 0, project), "envelope missing its zero-frame endpoint is rejected");
+    require(output[0] == 7.0F && output[7] == 7.0F, "invalid clip envelope leaves output untouched");
+}
+
 void testProjectSampleRateAndPlaybackRate() {
     const float samples[]{0.0F, 0.25F, 0.5F, 0.75F, 1.0F};
     const sonora::audio::PcmSourceView source{samples, 5, 1, 4.0};
@@ -558,6 +579,7 @@ int main() {
     testBeatConversionValidation();
     testProjectClipOffsetGainAndMonoPan();
     testProjectClipFades();
+    testProjectClipGainEnvelopeRendersAndValidates();
     testProjectSampleRateAndPlaybackRate();
     testProjectSoloAndMute();
     testTrackGainAutomationInterpolatesAcrossBlocksAndSeeks();
