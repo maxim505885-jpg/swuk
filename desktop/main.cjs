@@ -24,6 +24,7 @@ let audioEngineProcess;
 let quitting = false;
 let activeNativeCapturePath = null;
 const clapSelections = new Map();
+const vst3Selections = new Map();
 const audioEngineClient = createSerializedJsonClient({
   onDisconnect: child => { if (audioEngineProcess === child) audioEngineProcess = null; },
   onTimeout: child => child.kill(),
@@ -312,6 +313,40 @@ function registerAudioHandlers() {
     : { ok: false, error: 'Запрос отклонён' });
   ipcMain.handle('native-clap:realtime-status', event => trustedRenderer(event)
     ? requestAudioEngine('clap_status')
+    : { ok: false, error: 'Запрос отклонён' });
+  ipcMain.handle('native-vst3:inspect', async event => {
+    if (!trustedRenderer(event)) return { ok: false, error: 'Запрос отклонён' };
+    const selection = await dialog.showOpenDialog(windowInstance, {
+      title: 'Выберите VST3 эффект',
+      properties: ['openDirectory'],
+    });
+    if (selection.canceled || selection.filePaths.length !== 1) return { ok: false, cancelled: true };
+
+    const pluginPath = selection.filePaths[0];
+    try {
+      if (extname(pluginPath).toLowerCase() !== '.vst3' || !statSync(pluginPath).isDirectory()) {
+        return { ok: false, error: 'Выберите папку VST3 с расширением .vst3' };
+      }
+    } catch { return { ok: false, error: 'Папка VST3 недоступна' }; }
+
+    if (vst3Selections.size >= 16) vst3Selections.delete(vst3Selections.keys().next().value);
+    const selectionToken = randomUUID();
+    const pluginName = pluginPath.split(/[\\/]/).pop().replace(/\.vst3$/i, '');
+    vst3Selections.set(selectionToken, { pluginPath, pluginName });
+    return { ok: true, selectionToken, pluginName };
+  });
+
+  ipcMain.handle('native-vst3:load-realtime', (event, selectionToken) => {
+    if (!trustedRenderer(event)) return { ok: false, error: 'Запрос отклонён' };
+    const vst3Selection = typeof selectionToken === 'string' ? vst3Selections.get(selectionToken) : null;
+    if (!vst3Selection) return { ok: false, error: 'Сначала выберите локальный VST3-эффект' };
+    return requestAudioEngine('load_vst3', { path: vst3Selection.pluginPath });
+  });
+  ipcMain.handle('native-vst3:unload-realtime', event => trustedRenderer(event)
+    ? requestAudioEngine('unload_vst3')
+    : { ok: false, error: 'Запрос отклонён' });
+  ipcMain.handle('native-vst3:realtime-status', event => trustedRenderer(event)
+    ? requestAudioEngine('vst3_status')
     : { ok: false, error: 'Запрос отклонён' });
 
   ipcMain.handle('native-clap:render', async (event, selectionToken, wavValue, values) => {
