@@ -325,8 +325,8 @@ void testSevenParametricEqualizerBandsShapeTheirOwnFrequencies() {
 
 void testTrackCompressorReducesSignalAboveThreshold() {
     constexpr std::size_t frameCount = 48'000;
-    std::vector<float> samples(frameCount, 0.8F);
-    const sonora::audio::PcmSourceView source{samples.data(), frameCount, 1, 48'000.0};
+    std::vector<float> samples(frameCount * 2, 0.8F);
+    const sonora::audio::PcmSourceView source{samples.data(), frameCount, 2, 48'000.0};
     sonora::audio::TrackMixSettings track{1.0F, 0.0F, false, false};
     track.compressor = true; track.compressorThresholdDb = -12.0F; track.compressorRatio = 4.0F;
     track.compressorAttackMs = 10.0F; track.compressorReleaseMs = 120.0F; track.compressorMakeupDb = 3.0F;
@@ -339,7 +339,7 @@ void testTrackCompressorReducesSignalAboveThreshold() {
     std::vector<float> settled(4096 * 2);
     require(sonora::audio::renderMixBlock(settled.data(), 4096, 48'000.0, 4096, project, &state), "compressor reduction persists across blocks");
     const float gain = std::pow(10.0F, (-12.0F + (-1.9382F + 12.0F) / 4.0F) / 20.0F);
-    const float expected = 0.8F * 0.70710678F * gain * std::pow(10.0F, 3.0F / 20.0F);
+    const float expected = 0.8F * gain * std::pow(10.0F, 3.0F / 20.0F);
     require(settled[2048 * 2] < 0.8F && std::abs(settled[2048 * 2] - expected) < 0.015F,
         "threshold and ratio produce the expected settled gain reduction");
     track.compressorRatio = 0.0F;
