@@ -609,10 +609,11 @@ void testRealtimePluginAudioBlockQueue() {
 
     const std::array<float, 6> first{0.1F, -0.1F, 0.2F, -0.2F, 0.3F, -0.3F};
     require(!queue.tryPush(1, first, 4), "realtime plugin queue rejects mismatched frame length");
-    require(queue.tryPush(42, first, 3), "realtime plugin queue accepts a valid bounded block");
+    require(queue.tryPush(42, first, 3, 1'200, 900), "realtime plugin queue accepts a valid bounded block");
     require(queue.sizeApprox() == 1, "realtime plugin queue reports its bounded depth");
     require(queue.tryPop(block), "realtime plugin queue returns a queued block");
     require(block.sequence == 42 && block.frameCount == 3, "realtime plugin block preserves sequence and frames");
+    require(block.projectFrame == 1'200 && block.steadyTime == 900, "realtime plugin block preserves project position and monotonic stream time");
     require(block.samples[0] == first[0] && block.samples[5] == first[5], "realtime plugin block preserves stereo samples");
     require(!queue.tryPop(block), "realtime plugin queue becomes empty after read");
 }
