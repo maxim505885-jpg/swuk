@@ -17,7 +17,7 @@ export function createProjectDocument(state, assets, savedAt = new Date().toISOS
 const plainObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const validMixerChannel = channel =>
   (channel.name === undefined || (typeof channel.name === 'string' && channel.name.length <= 256)) &&
-  (channel.color === undefined || (typeof channel.color === 'string' && /^#[\\da-f]{6}$/i.test(channel.color))) &&
+  (channel.color === undefined || (typeof channel.color === 'string' && /^#[\da-f]{6}$/i.test(channel.color))) &&
   (channel.volume === undefined || finiteBetween(channel.volume, 0, 1.5)) &&
   (channel.pan === undefined || finiteBetween(channel.pan, -1, 1)) &&
   (channel.mute === undefined || typeof channel.mute === 'boolean') &&
