@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { clampMidiPitch, midiOctaveStart, shiftMidiOctave } from '../midi-edit-core.mjs';
+import { clampMidiPitch, generateChordPitches, midiOctaveStart, shiftMidiOctave } from '../midi-edit-core.mjs';
 
 test('MIDI pitch stays in the complete 0–127 range', () => {
   assert.equal(clampMidiPitch(-1), 0);
@@ -20,4 +20,17 @@ test('octave windows include every MIDI pitch and stop at the full-range edges',
   assert.equal(shiftMidiOctave(120, 1), 120);
   assert.equal(shiftMidiOctave(0, -1), 0);
   assert.equal(shiftMidiOctave(61, 1), null);
+});
+
+test('chord generator returns supported triads and sevenths from the selected MIDI root', () => {
+  assert.deepEqual(generateChordPitches(60, 'major'), [60, 64, 67]);
+  assert.deepEqual(generateChordPitches(60, 'minor'), [60, 63, 67]);
+  assert.deepEqual(generateChordPitches(60, 'dominant7'), [60, 64, 67, 70]);
+  assert.deepEqual(generateChordPitches(60, 'major9'), [60, 64, 67, 71, 74]);
+});
+
+test('chord generator rejects unknown qualities and omits pitches above MIDI 127', () => {
+  assert.deepEqual(generateChordPitches(125, 'major'), [125]);
+  assert.equal(generateChordPitches(-1, 'major'), null);
+  assert.equal(generateChordPitches(60, 'unknown'), null);
 });
