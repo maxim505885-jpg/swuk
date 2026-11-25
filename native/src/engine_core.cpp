@@ -156,6 +156,15 @@ bool renderMixBlock(
             clip.fadeInFrames > clip.durationFrames - clip.fadeOutFrames) {
             return false;
         }
+        if (!clip.gainEnvelope.empty()) {
+            if (clip.gainEnvelope.size() < 2 || clip.gainEnvelope.size() > 1024 ||
+                clip.gainEnvelope.front().frame != 0 || clip.gainEnvelope.back().frame != clip.durationFrames) return false;
+            for (std::size_t pointIndex = 0; pointIndex < clip.gainEnvelope.size(); ++pointIndex) {
+                const auto& point = clip.gainEnvelope[pointIndex];
+                if (point.frame > clip.durationFrames || !std::isfinite(point.value) || point.value < 0.0F || point.value > 1.5F ||
+                    (pointIndex > 0 && point.frame <= clip.gainEnvelope[pointIndex - 1].frame)) return false;
+            }
+        }
     }
 
     if (hasAutomation) {
@@ -213,6 +222,7 @@ bool renderMixBlock(
         const auto clipEndFrame = clip.startFrame + clip.durationFrames;
         if (firstProjectFrame >= clipEndFrame || firstProjectFrame + frameCount <= clip.startFrame) continue;
 
+        std::size_t clipEnvelopeIndex = 0;
         for (std::size_t frame = 0; frame < frameCount; ++frame) {
             const auto projectFrame = firstProjectFrame + frame;
             if (projectFrame < clip.startFrame) continue;
@@ -242,7 +252,17 @@ bool renderMixBlock(
             if (clip.fadeOutFrames > 0 && remainingFrames <= clip.fadeOutFrames) {
                 fadeGain = std::min(fadeGain, static_cast<float>(remainingFrames) / static_cast<float>(clip.fadeOutFrames));
             }
-            const float frameGain = gain * trackGain * fadeGain;
+            float clipEnvelopeGain = 1.0F;
+            if (!clip.gainEnvelope.empty()) {
+                while (clipEnvelopeIndex + 1 < clip.gainEnvelope.size() && clip.gainEnvelope[clipEnvelopeIndex + 1].frame < relativeFrame) ++clipEnvelopeIndex;
+                const auto& left = clip.gainEnvelope[clipEnvelopeIndex];
+                if (clipEnvelopeIndex + 1 < clip.gainEnvelope.size()) {
+                    const auto& right = clip.gainEnvelope[clipEnvelopeIndex + 1];
+                    const float amount = static_cast<float>(relativeFrame - left.frame) / static_cast<float>(right.frame - left.frame);
+                    clipEnvelopeGain = left.value + (right.value - left.value) * amount;
+                } else clipEnvelopeGain = left.value;
+            }
+            const float frameGain = gain * trackGain * fadeGain * clipEnvelopeGain;
             if (source->channels == 1) {
                 const float mono = sampleAt(sourceFrame, 0) * frameGain;
                 const float combinedPan = std::clamp(clip.pan + trackPan, -1.0F, 1.0F);

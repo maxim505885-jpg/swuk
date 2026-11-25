@@ -1,3 +1,5 @@
+import { isValidClipGainEnvelope } from './clip-envelope.mjs';
+
 export const PROJECT_LIMITS = Object.freeze({
   tracks: 128,
   assets: 512,
@@ -136,6 +138,11 @@ export function validateProjectDocument(data, limits = PROJECT_LIMITS) {
             !finiteBetween(clip.stretchOriginalOffsetSec, 0, 86_400) || !finiteBetween(clip.stretchOriginalTrimEndSec, 0, 86_400) ||
             !idValue(clip.renderedAssetId) || !assetIds.has(clip.renderedAssetId)))) return { ok: false, code: 'invalid-clips' };
       clipIds.add(clip.id);
+      if (clip.gainEnvelope !== undefined) {
+        if (clip.kind !== undefined || !isValidClipGainEnvelope(clip.gainEnvelope)) return { ok: false, code: 'invalid-clip-envelope' };
+        if (clip.gainEnvelope.length > limits.events - eventCount) return { ok: false, code: 'too-many-events' };
+        eventCount += clip.gainEnvelope.length;
+      }
 
       if (clip.kind === 'midi') {
         if (!Array.isArray(clip.notes) || clip.notes.length > 8192 || clip.notes.length > limits.events - eventCount) return { ok: false, code: 'too-many-events' };

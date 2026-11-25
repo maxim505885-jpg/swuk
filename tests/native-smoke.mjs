@@ -100,7 +100,9 @@ test('native engine decodes a project clip and advances WASAPI transport with di
   assert.equal(track.ok, true);
   const invalidFades = await request({ version: 1, op: 'add_clip', assetId: 'smoke-tone', trackIndex: 0, startFrame: 0, sourceOffsetFrame: 0, durationFrames: 48_000, playbackRate: 1, gain: 1, pan: 0, fadeInFrames: 30_000, fadeOutFrames: 20_000 });
   assert.equal(invalidFades.ok, false, 'the native protocol rejects fades whose combined duration exceeds the clip');
-  const clip = await request({ version: 1, op: 'add_clip', assetId: 'smoke-tone', trackIndex: 0, startFrame: 0, sourceOffsetFrame: 0, durationFrames: 48_000, playbackRate: 1, gain: 1, pan: 0, fadeInFrames: 12_000, fadeOutFrames: 12_000 });
+  const invalidGainEnvelope = await request({ version: 1, op: 'add_clip', assetId: 'smoke-tone', trackIndex: 0, startFrame: 0, sourceOffsetFrame: 0, durationFrames: 48_000, playbackRate: 1, gain: 1, pan: 0, gainAutomation: [0, 1, 24_000, 0.5, 24_000, 0.25, 48_000, 1] });
+  assert.equal(invalidGainEnvelope.ok, false, 'the native protocol rejects duplicate clip envelope frames');
+  const clip = await request({ version: 1, op: 'add_clip', assetId: 'smoke-tone', trackIndex: 0, startFrame: 0, sourceOffsetFrame: 0, durationFrames: 48_000, playbackRate: 1, gain: 1, pan: 0, fadeInFrames: 12_000, fadeOutFrames: 12_000, gainAutomation: [0, 1, 24_000, 0.25, 48_000, 0.5] });
   assert.equal(clip.ok, true);
   const committed = await request({ version: 1, op: 'commit_project' });
   assert.equal(committed.ok, true);

@@ -1,3 +1,5 @@
+import { splitClipGainEnvelope } from './clip-envelope.mjs';
+
 export function normalizeLoopRange(firstBeat, secondBeat, quantum = 0.25) {
   if (!Number.isFinite(firstBeat) || !Number.isFinite(secondBeat) || !Number.isFinite(quantum) || quantum <= 0) return null;
   const low = Math.max(0, Math.min(firstBeat, secondBeat));
@@ -85,11 +87,13 @@ export function splitAudioClip(clip, splitBeat, bpm) {
   const leftLength = splitBeat - clip.startBeat;
   const rightOffset = (clip.offsetSec || 0) + leftLength * 60 / bpm * rate;
   if (!Number.isFinite(rightOffset)) return null;
+  const envelope = clip.gainEnvelope === undefined ? null : splitClipGainEnvelope(clip.gainEnvelope, leftLength / clip.lengthBeats);
+  if (clip.gainEnvelope !== undefined && !envelope) return null;
   return {
-    left: { ...clip, lengthBeats: leftLength, trimEndSec: 0, fadeOutSec: 0 },
+    left: { ...clip, lengthBeats: leftLength, trimEndSec: 0, fadeOutSec: 0, ...(envelope ? { gainEnvelope: envelope.left } : {}) },
     right: {
       ...clip, startBeat: splitBeat, lengthBeats: clip.lengthBeats - leftLength,
-      offsetSec: rightOffset, fadeInSec: 0,
+      offsetSec: rightOffset, fadeInSec: 0, ...(envelope ? { gainEnvelope: envelope.right } : {}),
     },
   };
 }

@@ -117,6 +117,21 @@ async function stageNativeAsset(assetId, value) {
   }
 }
 
+function validClipGainAutomation(points, durationFrames) {
+  if (points === undefined) return true;
+  if (!Array.isArray(points) || points.length > 2048 || points.length % 2 !== 0) return false;
+  if (points.length === 0) return true;
+  if (points.length < 4 || points[0] !== 0 || points.at(-2) !== durationFrames) return false;
+  let previousFrame = -1;
+  for (let index = 0; index < points.length; index += 2) {
+    const frame = points[index], gain = points[index + 1];
+    if (!Number.isSafeInteger(frame) || frame < 0 || frame > durationFrames || frame <= previousFrame ||
+        !isFiniteRange(gain, 0, 1.5)) return false;
+    previousFrame = frame;
+  }
+  return true;
+}
+
 async function loadNativeProject(project) {
   if (!project || typeof project !== 'object' || !Array.isArray(project.tracks) || !Array.isArray(project.clips) ||
       project.tracks.length < 1 || project.tracks.length > MAX_NATIVE_PROJECT_TRACKS || project.clips.length > MAX_NATIVE_PROJECT_CLIPS ||
@@ -127,7 +142,7 @@ async function loadNativeProject(project) {
     if (!validNativeAssetId(clip?.assetId) || !Number.isInteger(clip.trackIndex) || clip.trackIndex < 0 || clip.trackIndex >= project.tracks.length || project.tracks[clip.trackIndex]?.isBus === true ||
         !Number.isSafeInteger(clip.startFrame) || clip.startFrame < 0 || !Number.isSafeInteger(clip.sourceOffsetFrame) || clip.sourceOffsetFrame < 0 ||
         !Number.isSafeInteger(clip.durationFrames) || clip.durationFrames < 1 || !isFiniteRange(clip.playbackRate, 0.01, 8) ||
-        !isFiniteRange(clip.gain, 0, 4) || !isFiniteRange(clip.pan, -1, 1) ||
+        !isFiniteRange(clip.gain, 0, 4) || !isFiniteRange(clip.pan, -1, 1) || !validClipGainAutomation(clip.gainAutomation, clip.durationFrames) ||
         !Number.isSafeInteger(clip.fadeInFrames ?? 0) || (clip.fadeInFrames ?? 0) < 0 || (clip.fadeInFrames ?? 0) > clip.durationFrames ||
         !Number.isSafeInteger(clip.fadeOutFrames ?? 0) || (clip.fadeOutFrames ?? 0) < 0 || (clip.fadeOutFrames ?? 0) > clip.durationFrames ||
         (clip.fadeInFrames ?? 0) > clip.durationFrames - (clip.fadeOutFrames ?? 0)) {
