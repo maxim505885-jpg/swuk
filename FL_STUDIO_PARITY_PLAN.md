@@ -32,4 +32,4 @@
 
 ## GitHub-кандидаты
 
-Кандидаты и лицензии описаны в [обзоре GitHub-аудиокомпонентов](docs/GITHUB_AUDIO_COMPONENTS_REVIEW.md); точные версии добавленных upstream submodules указаны в [реестре аудиокомпонентов](docs/UPSTREAM_COMPONENTS.md). В проекте реализован локальный WSOLA time-stretch в DSP worker. Signalsmith Stretch закреплён для сравнительного прототипа; его исходник ещё не подключён к DSP pipeline и требует отдельной оценки latency/качества на вокале и транзиентах.
+Кандидаты и лицензии описаны в [обзоре GitHub-аудиокомпонентов](docs/GITHUB_AUDIO_COMPONENTS_REVIEW.md); точные версии добавленных upstream submodules указаны в [реестре аудиокомпонентов](docs/UPSTREAM_COMPONENTS.md). В проекте Signalsmith Stretch используется как основной offline time-stretch через WASM/AudioWorklet; локальный WSOLA остаётся fallback. CI проверяет длину и частоту сигнала на реальном Signalsmith runtime. Субъективная оценка на вокале и транзиентах, длительные рендеры и сравнение WASM с native playback ещё требуются.

@@ -1228,6 +1228,7 @@ async function applyClipTimeStretch(clip, sourceTempo) {
   if (!Number.isFinite(sourceTempo) || sourceTempo < 40 || sourceTempo > 240) { showToast('Темп исходника должен быть от 40 до 240 BPM'); return; }
   if (pitchPendingClips.has(clip.id)) return;
   const ratio = sourceTempo / state.tempo;
+  if (Math.abs(ratio - 1) < 1e-9) { showToast('Темп исходника уже совпадает с темпом проекта'); return; }
   if (!Number.isFinite(ratio) || ratio < .5 || ratio > 2) { showToast('Слишком большая разница темпов: допустимо от 50% до 200%'); return; }
   const button = $('#applyTimeStretchBtn');
   const source = clip.clapPluginName && clip.renderedAssetId
@@ -1245,7 +1246,7 @@ async function applyClipTimeStretch(clip, sourceTempo) {
     }
     const incrementalRatio = clip.clapPluginName && clip.timeStretchRatio ? ratio / clip.timeStretchRatio : ratio;
     if (incrementalRatio < .5 || incrementalRatio > 2) { showToast('Измените темп проекта или исходника ближе к текущему растяжению и повторите'); return; }
-    buffer = await createTimeStretch(buffer, incrementalRatio);
+    const stretchResult = await createTempoStretch(buffer, incrementalRatio); buffer = stretchResult.buffer;
     if (getClip(clip.id).clip !== clip) return;
     const id = uid('stretch');
     if (!canStoreAudioAsset(buffer, id)) return;
@@ -1260,7 +1261,7 @@ async function applyClipTimeStretch(clip, sourceTempo) {
     clip.renderedAssetId = id; clip.bypassProcessing = false;
     clip.lengthBeats = Math.max(.25, (buffer.duration - clip.offsetSec - clip.trimEndSec) / (clip.rate || 1) * state.tempo / 60);
     clip.timeStretchRatio = ratio;
-    restartPlaybackIfActive(); renderAll(); showToast(`Аудио подогнано к ${Math.round(state.tempo)} BPM`);
+    restartPlaybackIfActive(); renderAll(); showToast(`Аудио подогнано к ${Math.round(state.tempo)} BPM · ${stretchResult.engine}`);
   } catch (error) {
     console.error(error); showToast('Не удалось растянуть аудио');
   } finally {
@@ -1432,6 +1433,15 @@ function runDspWorker(buffer, options) {
 function createPitchShift(buffer, semitones) { return runDspWorker(buffer, { mode: 'pitch', semitones }); }
 function createAutoTune(buffer, settings) { return runDspWorker(buffer, { mode: 'autotune', key: settings.key, strength: settings.strength, speed: settings.speed }); }
 function createTimeStretch(buffer, factor) { return runDspWorker(buffer, { mode: 'stretch', factor }); }
+async function createTempoStretch(buffer, factor) {
+  try {
+    const { renderTempoStretch } = await import('./signalsmith-render.mjs');
+    return { buffer: await renderTempoStretch(buffer, factor), engine: 'Signalsmith' };
+  } catch (error) {
+    console.warn('Signalsmith unavailable; using local WSOLA fallback', error);
+    return { buffer: await createTimeStretch(buffer, factor), engine: 'WSOLA fallback' };
+  }
+}
 
 function restartPlaybackIfActive() {
   if (!state.playing) return;

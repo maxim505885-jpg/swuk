@@ -4,7 +4,7 @@
 
 | Компонент | Каталог | Зафиксированный commit | Лицензия / назначение |
 |---|---|---|---|
-| [Signalsmith Stretch](https://github.com/Signalsmith-Audio/signalsmith-stretch) | `native/vendor/signalsmith-stretch` | `88061fd4eda56a2353c5d65c74aa3f4ccf76f9da` | MIT; прототип растяжения времени и независимого pitch shift. Проверить включённые FFT/подмодули и latency до использования. |
+| [Signalsmith Stretch](https://github.com/Signalsmith-Audio/signalsmith-stretch) | `native/vendor/signalsmith-stretch` | `88061fd4eda56a2353c5d65c74aa3f4ccf76f9da` | MIT; основной offline time-stretch через официальный самодостаточный WASM/AudioWorklet release. Зафиксирован исходник upstream; native C++ header пока не подключён. |
 | [RtMidi](https://github.com/thestk/rtmidi) | `native/vendor/rtmidi` | `00d855f31fbaeb196da2c0a3507d92f0d6051efb` | MIT-like; сохранить copyright/permission notices. Кандидат для MIDI устройств и hot-plug. |
 | [FluidSynth](https://github.com/FluidSynth/fluidsynth) | `native/vendor/fluidsynth` | `5500b60788287ceb7297f628f75c488d2720f61a` | LGPL-2.1; использовать отдельной динамической библиотекой и включить notices/способ получить изменения библиотеки. SF2/SFZ контент проверяется отдельно и в репозиторий не добавлен. |
 | [CLAP Host](https://github.com/free-audio/clap-host) | `native/references/clap-host` | `c8ce3ee3800fc605d31ffb077991004f26e8cb03` | MIT; только reference для host lifecycle. Это Qt приложение с дополнительными submodules, не готовый Electron/native модуль. |

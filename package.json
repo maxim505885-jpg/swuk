@@ -8,8 +8,8 @@
   "scripts": {
     "start": "node server.mjs",
     "desktop": "electron .",
-    "build:win": "npm run native:test && npm run native:build && npm run native:clap:test && npm test && npm run native:smoke && electron-builder --win nsis --publish never --config.electronDist=node_modules/electron/dist",
-    "build:win:dir": "npm run native:test && npm run native:build && npm run native:clap:test && npm test && npm run native:smoke && electron-builder --win --dir --publish never --config.electronDist=node_modules/electron/dist",
+    "build:win": "npm run native:test && npm run native:build && npm run native:clap:test && npm test && npm run native:smoke && npm run qa:signalsmith && electron-builder --win nsis --publish never --config.electronDist=node_modules/electron/dist",
+    "build:win:dir": "npm run native:test && npm run native:build && npm run native:clap:test && npm test && npm run native:smoke && npm run qa:signalsmith && electron-builder --win --dir --publish never --config.electronDist=node_modules/electron/dist",
     "native:build": "powershell -ExecutionPolicy Bypass -File native/build.ps1 -Mode Build",
     "native:clap:test": "powershell -ExecutionPolicy Bypass -File native/build-clap.ps1 -Test",
     "native:test": "powershell -ExecutionPolicy Bypass -File native/build.ps1 -Mode Test",
@@ -22,7 +22,8 @@
     "qa:hardware-output": "node scripts/native-output-check.mjs",
     "qa:load": "npm run native:bench",
     "qa:final": "npm run build:win",
-    "test": "node --test --test-isolation=none"
+    "test": "node --test --test-isolation=none",
+    "qa:signalsmith": "electron scripts/signalsmith-stretch-smoke.cjs"
   },
   "devDependencies": {
     "electron": "^45.4.1",
@@ -62,7 +63,9 @@
       "desktop/preload.cjs",
       "desktop/serialized-json-client.cjs",
       "package.json",
-      "LICENSE"
+      "LICENSE",
+      "signalsmith-render.mjs",
+      "native/vendor/signalsmith-stretch/web/release/SignalsmithStretch.mjs"
     ],
     "extraResources": [
       {
@@ -80,6 +83,10 @@
       {
         "from": "native/vendor/clap/LICENSE",
         "to": "licenses/clap/LICENSE"
+      },
+      {
+        "from": "native/vendor/signalsmith-stretch/LICENSE.txt",
+        "to": "licenses/signalsmith-stretch/LICENSE.txt"
       }
     ],
     "win": {
@@ -97,4 +104,3 @@
     }
   }
 }
-

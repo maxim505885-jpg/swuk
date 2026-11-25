@@ -12,6 +12,8 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+      - name: Initialize Signalsmith Stretch
+        run: git submodule update --init --depth=1 native/vendor/signalsmith-stretch
       - uses: actions/setup-node@v4
         with:
           node-version: 24
