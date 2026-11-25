@@ -324,6 +324,7 @@ public:
         const bool reverb,
         const bool delay,
         std::vector<sonora::audio::AutomationPoint> gainAutomation = {},
+        std::vector<sonora::audio::AutomationPoint> panAutomation = {},
         const bool equalizer = false,
         const float equalizerFrequencyHz = 1000.0F,
         const float equalizerGainDb = 0.0F,
@@ -338,6 +339,7 @@ public:
         }
         if (builderTracks_.size() <= index) builderTracks_.resize(static_cast<std::size_t>(index) + 1);
         builderTracks_[index] = {gain, pan, mute, solo, reverb, delay, std::move(gainAutomation), equalizer, equalizerFrequencyHz, equalizerGainDb, equalizerQ};
+        builderTracks_[index].panAutomation = std::move(panAutomation);
         builderTracks_[index].equalizerBands = equalizerBands;
         builderTracks_[index].compressor = compressor;
         builderTracks_[index].compressorThresholdDb = compressorThresholdDb;
@@ -845,8 +847,22 @@ private:
             if (!parsed) return errorJson("set_track gainAutomation points are invalid");
             gainAutomation = *parsed;
         }
+        std::vector<sonora::audio::AutomationPoint> panAutomation;
+        if (line.find("\"panAutomation\"") != std::string_view::npos) {
+            const auto values = numberArrayField(line, "panAutomation", 16'384);
+            if (!values || values->size() % 2 != 0 || values->size() > 16'384) return errorJson("set_track panAutomation must be a bounded numeric array");
+            panAutomation.reserve(values->size() / 2);
+            for (std::size_t point = 0; point < values->size(); point += 2) {
+                const double frame = (*values)[point], value = (*values)[point + 1];
+                if (frame < 0.0 || frame > 9'007'199'254'740'991.0 || std::trunc(frame) != frame ||
+                    value < -1.0 || value > 1.0 || (!panAutomation.empty() && frame <= static_cast<double>(panAutomation.back().frame))) {
+                    return errorJson("set_track panAutomation points are invalid");
+                }
+                panAutomation.push_back({static_cast<std::uint64_t>(frame), static_cast<float>(value)});
+            }
+        }
         if (!index || !gain || !pan || !mute || !solo) return errorJson("set_track requires index, gain, pan, mute and solo");
-        return host.setTrackMix(*index, *gain, *pan, *mute, *solo, reverb.value_or(false), delay.value_or(false), std::move(gainAutomation),
+        return host.setTrackMix(*index, *gain, *pan, *mute, *solo, reverb.value_or(false), delay.value_or(false), std::move(gainAutomation), std::move(panAutomation),
             equalizer.value_or(false), equalizerFrequencyHz, equalizerGainDb, equalizerQ, equalizerBands,
             compressor.value_or(false), compressorThresholdDb, compressorRatio, compressorAttackMs, compressorReleaseMs, compressorMakeupDb,
             limiter.value_or(false), limiterCeilingDb, limiterReleaseMs);
