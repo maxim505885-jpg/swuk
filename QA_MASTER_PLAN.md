@@ -6,7 +6,7 @@
 
 **Частичная готовность, не 100%.** Автоматический Windows release gate проходит; ручная установка/приёмка Windows 11 и аппаратный звук не подтверждены. Неизвестные проверки остаются `NOT TESTED`, а не `PASS`.
 
-Последнее доказательство: [Windows CI #45625694716](https://github.com/maxim505885-jpg/swuk/actions/runs/45625694716), commit `e4af2373ca647fb69d11e513b6719ab4411cbdd9`. Сводка и границы — в [матрице покрытия](TEST_COVERAGE_MATRIX.md).
+Последний main gate: [Windows CI #45625694716](https://github.com/maxim505885-jpg/swuk/actions/runs/45625694716), commit `e4af2373ca647fb69d11e513b6719ab4411cbdd9`. Кандидат PR #29 прошёл [run #45629167866](https://github.com/maxim505885-jpg/swuk/actions/runs/45629167866) с добавленным native mixer benchmark. Сводка и границы — в [матрице покрытия](TEST_COVERAGE_MATRIX.md).
 
 ## Приоритеты перед выпуском
 
@@ -23,6 +23,7 @@
 | Windows CI build, tests and x64 package | PASS, exact main commit/run above |
 | Deterministic project validation, DSP and renderer tests | PASS in automated suite |
 | Electron smoke for representative user flows | PASS; scope listed in `TEST_COVERAGE_MATRIX.md` |
+| Native mixer synthetic load benchmark | PASS candidate run #45629167866; does not measure full app or device underruns |
 | Physical Windows 11 install and audible WASAPI output | NOT TESTED |
 | Physical microphone/input recording | NOT TESTED |
 | Full visual/accessibility audit at every target viewport/theme | NOT TESTED |
