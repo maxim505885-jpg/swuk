@@ -1718,27 +1718,41 @@ function renderPianoRoll(body, clip, track) {
   } else controls.textContent = 'Выберите ноту, чтобы настроить её силу.';
 }
 
+function createMixerBus() {
+  if (state.tracks.length + state.buses.length >= PROJECT_LIMITS.tracks) { showToast(`Достигнут общий лимит каналов (${PROJECT_LIMITS.tracks})`); return; }
+  const index = state.buses.length + 1, palette = themePalette();
+  const bus = { id: uid('bus'), name: `Шина ${index}`, color: palette[(state.tracks.length + index - 1) % palette.length], volume: .8, pan: 0, mute: false, solo: false, effects: { reverb: false, delay: false, equalizer: false }, compressor: false, limiter: false };
+  recordUndo(); state.buses.push(bus); renderAll(); restartProjectPlaybackIfActive(); showToast(`${bus.name} создана`);
+}
 function renderMixer() {
   const host = $('#mixerStrips'); host.innerHTML = '';
-  for (const track of state.tracks) {
-    const strip = document.createElement('div'); strip.className = 'mixer-strip';
-    strip.dataset.track = track.id;
-    strip.innerHTML = `<strong></strong><span class="meter" role="meter" aria-label="Уровень дорожки" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="Пик −∞ dBFS"><i data-level="normal"></i></span><input class="volume-control" type="range" min="0" max="1.2" step="0.01" value="${track.volume}" aria-label="Громкость дорожки"/><input class="pan-control" type="range" min="-1" max="1" step="0.01" value="${track.pan}" aria-label="Панорама дорожки"/><div class="strip-controls"><button data-mode="mute" title="Заглушить">M</button><button data-mode="solo" title="Соло">S</button><button data-effect="reverb" title="Реверберация" aria-label="Реверберация">RV</button><button data-effect="delay" title="Задержка" aria-label="Задержка">DL</button><button data-effect="equalizer" title="Параметрический EQ" aria-label="Параметрический EQ">EQ</button></div>`;
-    $('strong', strip).textContent = track.name;
-    $('.meter', strip).setAttribute('aria-label', `Уровень дорожки: ${track.name}`);
-    for (const mode of ['mute', 'solo']) { const button = $(`[data-mode=${mode}]`, strip); const stateName = mode === 'mute' ? 'Заглушить' : 'Соло'; button.classList.toggle('active', track[mode]); button.setAttribute('aria-label', `${stateName}: ${track.name}`); button.setAttribute('aria-pressed', String(Boolean(track[mode]))); button.onclick = () => { recordUndo(); track[mode] = !track[mode]; renderAll(); updateLiveTrackMix(); restartProjectPlaybackIfActive(); }; }
-    for (const effect of ['reverb', 'delay', 'equalizer']) { const button = $(`[data-effect=${effect}]`, strip); button.classList.toggle('active', Boolean(track.effects?.[effect])); button.setAttribute('aria-pressed', String(Boolean(track.effects?.[effect]))); button.onclick = () => toggleTrackEffect(track.id, effect); }
-  $('.volume-control', strip).oninput = event => { track.volume = Number(event.target.value); markProjectDirty(); const gain = liveTrackGains.get(track.id); if (gain) gain.gain.setTargetAtTime(track.volume, getAudioContext().currentTime, .015); };
-  $('.pan-control', strip).oninput = event => { track.pan = Number(event.target.value); markProjectDirty(); const panner = liveTrackPans.get(track.id); if (panner) panner.pan.setTargetAtTime(track.pan, getAudioContext().currentTime, .015); };
-  $('.volume-control', strip).addEventListener('change', () => { restartProjectPlaybackIfActive(); if (track.id === state.selectedTrackId) renderInspector(); });
-  $('.pan-control', strip).addEventListener('change', () => { restartProjectPlaybackIfActive(); if (track.id === state.selectedTrackId) renderInspector(); });
-    $('.volume-control', strip).addEventListener('focus', recordUndo, { once: true }); $('.pan-control', strip).addEventListener('focus', recordUndo, { once: true });
-    host.append(strip);
+  const channels = [...state.tracks.map(channel => ({ channel, isBus: false })), ...state.buses.map(channel => ({ channel, isBus: true }))];
+  for (const { channel, isBus } of channels) {
+    const strip = document.createElement('div'); strip.className = `mixer-strip${isBus ? ' mixer-bus-strip' : ''}`; strip.dataset.track = channel.id;
+    strip.innerHTML = `<strong></strong><span class="meter" role="meter" aria-label="Уровень канала" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="Пик −∞ dBFS"><i data-level="normal"></i></span><input class="volume-control" type="range" min="0" max="1.2" step="0.01" value="${channel.volume}" aria-label="Громкость канала"/><input class="pan-control" type="range" min="-1" max="1" step="0.01" value="${channel.pan}" aria-label="Панорама канала"/><div class="strip-controls"><button data-mode="mute" title="Заглушить">M</button><button data-mode="solo" title="Соло">S</button><button data-effect="reverb" title="Реверберация" aria-label="Реверберация">RV</button><button data-effect="delay" title="Задержка" aria-label="Задержка">DL</button><button data-effect="equalizer" title="Параметрический EQ" aria-label="Параметрический EQ">EQ</button></div>`;
+    $('strong', strip).textContent = channel.name; $('.meter', strip).setAttribute('aria-label', `Уровень канала: ${channel.name}`);
+    for (const mode of ['mute', 'solo']) { const control = $(`[data-mode=${mode}]`, strip), label = mode === 'mute' ? 'Заглушить' : 'Соло'; control.classList.toggle('active', Boolean(channel[mode])); control.setAttribute('aria-label', `${label}: ${channel.name}`); control.setAttribute('aria-pressed', String(Boolean(channel[mode]))); control.onclick = () => { recordUndo(); channel[mode] = !channel[mode]; renderAll(); updateLiveTrackMix(); restartProjectPlaybackIfActive(); }; }
+    for (const effect of ['reverb', 'delay', 'equalizer']) { const control = $(`[data-effect=${effect}]`, strip); control.classList.toggle('active', Boolean(channel.effects?.[effect])); control.setAttribute('aria-pressed', String(Boolean(channel.effects?.[effect]))); control.onclick = () => { if (!isBus) { toggleTrackEffect(channel.id, effect); return; } recordUndo(); channel.effects ||= {}; channel.effects[effect] = !channel.effects[effect]; renderAll(); restartProjectPlaybackIfActive(); }; }
+    if (isBus) {
+      const remove = document.createElement('button'); remove.className = 'bus-remove'; remove.type = 'button'; remove.textContent = 'Удалить шину'; remove.setAttribute('aria-label', `Удалить шину: ${channel.name}`);
+      remove.onclick = () => { recordUndo(); state.tracks.forEach(track => { if (track.outputBusId === channel.id) track.outputBusId = null; }); state.buses = state.buses.filter(bus => bus.id !== channel.id); renderAll(); restartProjectPlaybackIfActive(); showToast(`Шина «${channel.name}» удалена`); };
+      strip.append(remove);
+    } else {
+      const route = document.createElement('select'); route.className = 'route-control'; route.setAttribute('aria-label', `Выход: ${channel.name}`); route.title = `Выход: ${channel.name}`;
+      const master = document.createElement('option'); master.value = ''; master.textContent = 'Мастер'; route.append(master);
+      for (const bus of state.buses) { const option = document.createElement('option'); option.value = bus.id; option.textContent = bus.name; route.append(option); }
+      route.value = channel.outputBusId || ''; route.onchange = () => { recordUndo(); channel.outputBusId = route.value || null; markProjectDirty(); restartProjectPlaybackIfActive(); showToast(`Выход канала «${channel.name}» обновлён`); }; strip.append(route);
+    }
+    const gain = $('.volume-control', strip), pan = $('.pan-control', strip); gain.setAttribute('aria-label', `Громкость: ${channel.name}`); pan.setAttribute('aria-label', `Панорама: ${channel.name}`);
+    gain.oninput = event => { channel.volume = Number(event.target.value); markProjectDirty(); const node = liveTrackGains.get(channel.id); if (node) node.gain.setTargetAtTime(channel.volume, getAudioContext().currentTime, .015); };
+    pan.oninput = event => { channel.pan = Number(event.target.value); markProjectDirty(); const node = liveTrackPans.get(channel.id); if (node) node.pan.setTargetAtTime(channel.pan, getAudioContext().currentTime, .015); };
+    gain.addEventListener('change', () => { restartProjectPlaybackIfActive(); if (!isBus && channel.id === state.selectedTrackId) renderInspector(); }); pan.addEventListener('change', () => { restartProjectPlaybackIfActive(); if (!isBus && channel.id === state.selectedTrackId) renderInspector(); });
+    gain.addEventListener('focus', recordUndo, { once: true }); pan.addEventListener('focus', recordUndo, { once: true }); host.append(strip);
   }
   const master = document.createElement('div'); master.className = 'mixer-strip'; master.innerHTML = `<strong>Мастер</strong><span class="meter" role="meter" aria-label="Уровень мастера" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="Пик −∞ dBFS"><i id="masterStripMeter" data-level="normal"></i></span><input id="masterStripVolume" type="range" min="0" max="1" step="0.01" value="${state.masterVolume}" aria-label="Громкость главного выхода"/><div class="strip-controls"><button title="Стерео" aria-label="Стерео выход">ST</button><span style="margin-left:auto;color:#89929f;font:8px ui-monospace,Consolas,monospace">BUS</span></div>`;
-  $('input', master).oninput = event => { state.masterVolume = Number(event.target.value); markProjectDirty(); $('#masterVolume').value = state.masterVolume; if (liveMasterGain) liveMasterGain.gain.setTargetAtTime(state.masterVolume, getAudioContext().currentTime, .015); if (nativePlaybackActive) restartPlaybackIfActive(); }; $('input', master).addEventListener('focus', recordUndo, { once: true }); host.append(master);
+  $('input', master).oninput = event => { state.masterVolume = Number(event.target.value); markProjectDirty(); $('#masterVolume').value = state.masterVolume; if (liveMasterGain) liveMasterGain.gain.setTargetAtTime(state.masterVolume, getAudioContext().currentTime, .015); if (nativePlaybackActive) restartPlaybackIfActive(); };
+  $('input', master).addEventListener('focus', recordUndo, { once: true }); host.append(master);
 }
-
 function toggleTrackEffect(trackId, effect) {
   const track = getTrack(trackId); if (!track) return;
   const restart = state.playing, beat = state.playheadBeat;
@@ -1772,9 +1786,22 @@ function updateTransport() { $('#playBtn').classList.toggle('is-playing', state.
 
 function scheduleProject(context, fromBeat = 0, destination = context.destination, includeMuted = false) {
   const now = context.currentTime, secondsPerBeat = beatSeconds();
-  const hasSolo = state.tracks.some(track => track.solo);
+  const hasSolo = state.tracks.some(track => track.solo) || state.buses.some(bus => bus.solo);
+  const busInputs = new Map();
+  for (const bus of state.buses) {
+    const input = context.createGain(), nodes = [];
+    const audibleSoloTrack = state.tracks.some(track => track.solo && !track.mute && track.outputBusId === bus.id);
+    let busNode = applyTrackEffects(context, bus, input, nodes);
+    const busGain = context.createGain(); busGain.gain.setValueAtTime((bus.mute && !audibleSoloTrack) || (hasSolo && !bus.solo && !audibleSoloTrack) ? 0 : bus.volume, now);
+    busNode.connect(busGain); busNode = busGain; nodes.push(busGain);
+    if (context.createStereoPanner) { const panner = context.createStereoPanner(); panner.pan.setValueAtTime(bus.pan, now); busNode.connect(panner); busNode = panner; nodes.push(panner); if (context === audioContext) liveTrackPans.set(bus.id, panner); }
+    busNode.connect(destination); busInputs.set(bus.id, input);
+    if (context === audioContext) liveTrackGains.set(bus.id, busGain);
+    scheduledNodes.push({ stop: () => { nodes.forEach(node => { try { node.disconnect(); } catch {} }); liveTrackGains.delete(bus.id); liveTrackPans.delete(bus.id); } });
+  }
   for (const track of state.tracks) {
-    if (!includeMuted && (track.mute || (hasSolo && !track.solo))) continue;
+    const routedBus = state.buses.find(bus => bus.id === track.outputBusId);
+    if (!includeMuted && (track.mute || (hasSolo && !track.solo && !routedBus?.solo))) continue;
     const trackNodes = [], trackGain = context.createGain(); trackGain.gain.setValueAtTime(trackVolumeAtBeat(track, fromBeat), now); trackNodes.push(trackGain); let node = trackGain;
     const automationClips = track.clips.filter(clip => clip.kind === 'automation' && clip.target === 'volume');
     if (automationClips.length) {
@@ -1803,8 +1830,9 @@ function scheduleProject(context, fromBeat = 0, destination = context.destinatio
       node.connect(pan); node = pan; trackNodes.push(pan); if (context === audioContext) liveTrackPans.set(track.id, pan);
     }
     node = applyTrackEffects(context, track, node, trackNodes);
-    if (context === audioContext) { const analyser = context.createAnalyser(); analyser.fftSize = 256; node.connect(analyser); analyser.connect(destination); trackNodes.push(analyser); liveTrackGains.set(track.id, trackGain); liveTrackMeters.set(track.id, analyser); liveTrackMeterBuffers.set(track.id, new Float32Array(analyser.fftSize)); }
-    else node.connect(destination);
+    const trackDestination = busInputs.get(track.outputBusId) || destination;
+    if (context === audioContext) { const analyser = context.createAnalyser(); analyser.fftSize = 256; node.connect(analyser); analyser.connect(trackDestination); trackNodes.push(analyser); liveTrackGains.set(track.id, trackGain); liveTrackMeters.set(track.id, analyser); liveTrackMeterBuffers.set(track.id, new Float32Array(analyser.fftSize)); }
+    else node.connect(trackDestination);
     for (const clip of track.clips) {
       const clipStart = clip.startBeat, clipEnd = clip.startBeat + clip.lengthBeats;
       if (clipEnd <= fromBeat) continue;
@@ -2063,7 +2091,7 @@ function clickMetronome(accent = false) {
 
 function buildNativeProjectPlan() {
   const native = window.sonoraNative;
-  if (forceBrowserPlayback || !native?.stageAudioAsset || !native?.loadProject || !native?.playProject || state.metronome || !state.tracks.length) return null;
+  if (forceBrowserPlayback || !native?.stageAudioAsset || !native?.loadProject || !native?.playProject || state.metronome || !state.tracks.length || state.buses.length || state.tracks.some(track => track.outputBusId)) return null;
   if (nativeSynthCacheRevision !== nativeGraphRevision) { nativeSynthCache.clear(); nativeSynthCacheRevision = nativeGraphRevision; }
   const tracks = state.tracks.map(track => {
     const gainAutomation = flattenGainAutomation(track.clips.filter(clip => clip.kind === 'automation' && clip.target === 'volume'), track.volume ?? .8, state.tempo);
@@ -2743,6 +2771,22 @@ function setupEvents() {
   $('#selectTool').onclick = () => { splitMode = false; $('#splitTool').classList.remove('selected'); $('#selectTool').classList.add('selected'); $('#selectTool').setAttribute('aria-pressed', 'true'); $('#splitTool').setAttribute('aria-pressed', 'false'); };
   $('#createPatternBtn').onclick = createDrumPattern; $('#createNotesBtn').onclick = createMidiPattern;
   $('#mixerCollapseBtn').onclick = () => { const panel = $('#mixerPanel'), collapsed = panel.classList.toggle('collapsed'); $('#mixerCollapseBtn').textContent = collapsed ? '⌃' : '⌄'; $('#mixerCollapseBtn').setAttribute('aria-label', collapsed ? 'Развернуть микшер' : 'Свернуть микшер'); $('#mixerCollapseBtn').setAttribute('aria-expanded', String(!collapsed)); };
+  $('#addBusBtn').onclick = createMixerBus;
+  $('#routingBtn').onclick = () => {
+    $('#modalTitle').textContent = 'Маршрутизация микшера'; openModal(); const host = $('#modalContent');
+    host.innerHTML = '<p class="modal-description">Канал направляется на мастер или одну шину. Шина суммирует сигнал, применяет обработку и выводит его на мастер.</p><div class="routing-list"></div>';
+    const list = $('.routing-list', host);
+    for (const track of state.tracks) {
+      const row = document.createElement('label'); row.className = 'routing-row'; const name = document.createElement('span'); name.textContent = track.name;
+      const select = document.createElement('select'); select.setAttribute('aria-label', `Выход: ${track.name}`);
+      const master = document.createElement('option'); master.value = ''; master.textContent = 'Мастер'; select.append(master);
+      for (const bus of state.buses) { const option = document.createElement('option'); option.value = bus.id; option.textContent = bus.name; select.append(option); }
+      select.value = track.outputBusId || '';
+      select.onchange = () => { recordUndo(); track.outputBusId = select.value || null; markProjectDirty(); renderMixer(); restartProjectPlaybackIfActive(); };
+      row.append(name, select); list.append(row);
+    }
+    if (!state.buses.length) { const empty = document.createElement('p'); empty.className = 'modal-footnote'; empty.textContent = 'Пока нет шин. Создайте шину кнопкой «＋ Шина» в микшере.'; host.append(empty); }
+  };
   $('#addMarkerBtn').onclick = () => {
     if (state.markers.length >= 1024) { showToast('В проекте достигнут лимит маркеров (1024)'); return; }
     const name = prompt('Название маркера', `Часть ${state.markers.length + 1}`)?.trim();
