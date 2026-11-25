@@ -90,6 +90,7 @@
       }
     ],
     "win": {
+      "icon": "icon.svg",
       "target": [
         "nsis"
       ],
