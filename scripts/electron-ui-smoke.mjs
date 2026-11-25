@@ -69,7 +69,7 @@ try {
   await send('Runtime.enable');
   const evaluate = async expression => {
     const response = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true, userGesture: true });
-    if (response.exceptionDetails) throw new Error(response.exceptionDetails.text || 'Renderer evaluation failed');
+    if (response.exceptionDetails) throw new Error(response.exceptionDetails.exception?.description || response.exceptionDetails.text || 'Renderer evaluation failed');
     return response.result?.value;
   };
   const ready = await waitUntil(
