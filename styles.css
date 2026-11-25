@@ -223,3 +223,12 @@
 .waveform-editor-footer{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:10px;padding-top:4px}
 .waveform-editor-dialog button:disabled{opacity:.48;cursor:not-allowed}
 @media(max-width:680px){.waveform-editor-dialog{width:calc(100vw - 20px);max-width:calc(100vw - 20px);max-height:calc(100vh - 20px)}.waveform-editor-shell{padding:14px;gap:14px}.waveform-editor-canvas{height:160px}}
+
+
+.master-strip{min-width:118px!important}
+.master-clap-control{grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:4px 5px;padding-top:4px;border-top:1px solid var(--line)}
+.master-clap-control .button{height:24px;min-width:0;padding:0 6px;font-size:9px;white-space:nowrap}
+.master-clap-control span{grid-column:1/-1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-size:8px;line-height:1.3}
+.master-clap-control [hidden]{display:none}
+.master-clap-control button:disabled{opacity:.55;cursor:not-allowed}
+.master-clap-control #masterClapLoadBtn[aria-busy=true]{cursor:wait}

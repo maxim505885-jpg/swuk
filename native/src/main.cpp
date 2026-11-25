@@ -7,6 +7,7 @@
 #include "capture_wav_recorder.hpp"
 #include "spectrum_analyzer.hpp"
 #include "midi_host.hpp"
+#include "realtime_clap_insert.hpp"
 
 #include <algorithm>
 #include <array>
@@ -275,6 +276,40 @@ public:
         return midiDevicesJson();
     }
 
+    [[nodiscard]] std::string loadClapEffect(const std::string& utf8Path) {
+        if (projectPlaying_.load(std::memory_order_acquire)) return errorJson("Stop playback before changing the master plug-in");
+        if (deviceInitialized_ && deviceStarted_) {
+            const ma_result stopResult = ma_device_stop(&device_);
+            if (stopResult != MA_SUCCESS) return errorJson("Could not pause WASAPI before loading the CLAP effect");
+            deviceStarted_ = false;
+        }
+        std::string error;
+        if (!clapInsert_.start(std::filesystem::u8path(utf8Path), error)) return errorJson(error);
+        return clapStatusJson();
+    }
+
+    [[nodiscard]] std::string unloadClapEffect() {
+        if (projectPlaying_.load(std::memory_order_acquire)) return errorJson("Stop playback before unloading the master plug-in");
+        if (deviceInitialized_ && deviceStarted_) {
+            const ma_result stopResult = ma_device_stop(&device_);
+            if (stopResult != MA_SUCCESS) return errorJson("Could not pause WASAPI before unloading the CLAP effect");
+            deviceStarted_ = false;
+        }
+        clapInsert_.stop();
+        return clapStatusJson();
+    }
+
+    [[nodiscard]] std::string clapStatusJson() const {
+        const auto* const transport = clapInsert_.transport();
+        const bool active = clapInsert_.isActive();
+        return std::string("{\"version\":1,\"ok\":true,\"plugin\":{\"format\":\"CLAP\",\"active\":") +
+            (active ? "true" : "false") + ",\"ready\":" +
+            (clapInsert_.isReady() ? "true" : "false") +
+            ",\"inputOverruns\":" + std::to_string(transport == nullptr ? 0 : transport->inputOverruns.load(std::memory_order_relaxed)) +
+            ",\"outputUnderruns\":" + std::to_string(clapInsert_.outputUnderruns()) +
+            ",\"outputOverruns\":" + std::to_string(transport == nullptr ? 0 : transport->outputOverruns.load(std::memory_order_relaxed)) + "}}";
+    }
+
     [[nodiscard]] std::string midiReadEventsJson() {
         const auto events = midiHost_.readEvents();
         std::string response = "{\"version\":1,\"ok\":true,\"events\":[";
@@ -338,6 +373,7 @@ public:
     [[nodiscard]] std::string clearProject() {
         projectPlaying_.store(false, std::memory_order_relaxed);
         projectFrame_.store(0, std::memory_order_relaxed);
+        projectRenderFrame_.store(0, std::memory_order_relaxed);
         activeProject_.store(nullptr, std::memory_order_release);
         builderTracks_.clear();
         builderClips_.clear();
@@ -525,7 +561,15 @@ public:
             const auto opened = openPlaybackDevice(deviceIndex);
             if (!opened.empty()) return errorJson(opened);
         }
-        projectFrame_.store(startFrame == project->durationFrames ? 0 : startFrame, std::memory_order_relaxed);
+        if (deviceInitialized_ && deviceStarted_) {
+            const ma_result stopResult = ma_device_stop(&device_);
+            if (stopResult != MA_SUCCESS) return errorJson(std::string("Could not prepare WASAPI playback: ") + ma_result_description(stopResult));
+            deviceStarted_ = false;
+        }
+        const auto safeStartFrame = startFrame == project->durationFrames ? 0 : startFrame;
+        projectFrame_.store(safeStartFrame, std::memory_order_relaxed);
+        projectRenderFrame_.store(safeStartFrame, std::memory_order_relaxed);
+        if (clapInsert_.isActive()) clapInsert_.reset(safeStartFrame);
         if (projectMixState_) sonora::audio::resetProjectMixState(*projectMixState_);
         remainingToneFrames_.store(0, std::memory_order_relaxed);
         projectPeak_.store(0.0F, std::memory_order_relaxed);
@@ -546,6 +590,7 @@ public:
     [[nodiscard]] std::string stopProject() {
         projectPlaying_.store(false, std::memory_order_release);
         projectFrame_.store(0, std::memory_order_relaxed);
+        projectRenderFrame_.store(0, std::memory_order_relaxed);
         return statusJson();
     }
 
@@ -719,8 +764,11 @@ private:
             ma_silence_pcm_frames(output, frameCount, ma_format_f32, device->playback.channels);
             return;
         }
-        const auto firstFrame = host->projectFrame_.load(std::memory_order_relaxed);
-        if (firstFrame >= project->durationFrames) {
+        const bool hasClapInsert = host->clapInsert_.isActive();
+        const auto firstFrame = host->projectRenderFrame_.load(std::memory_order_relaxed);
+        const auto renderLimit = project->durationFrames + (hasClapInsert
+            ? sonora::plugin::RealtimeClapInsert::kPipelineLatencyFrames : 0);
+        if (firstFrame >= renderLimit) {
             host->projectPlaying_.store(false, std::memory_order_release);
             host->projectPeak_.store(0.0F, std::memory_order_relaxed);
             host->clearTrackPeaks();
@@ -728,7 +776,7 @@ private:
             ma_silence_pcm_frames(output, frameCount, ma_format_f32, device->playback.channels);
             return;
         }
-        const auto remainingProjectFrames = project->durationFrames - firstFrame;
+        const auto remainingProjectFrames = renderLimit - firstFrame;
         const auto framesToRender = static_cast<std::size_t>(std::min<std::uint64_t>(frameCount, remainingProjectFrames));
         std::array<float, kMaxProjectTracks> trackPeaks{};
         const bool rendered = sonora::audio::renderMixBlock(
@@ -740,6 +788,9 @@ private:
             host->clearTrackPeaks();
             ma_silence_pcm_frames(output, frameCount, ma_format_f32, device->playback.channels);
             return;
+        }
+        if (hasClapInsert) {
+            host->clapInsert_.process(static_cast<float*>(output), framesToRender, firstFrame);
         }
         if (framesToRender < frameCount) {
             auto* const remainder = static_cast<float*>(output) + framesToRender * device->playback.channels;
@@ -762,8 +813,10 @@ private:
                 trackIndex < project->view.trackCount ? trackPeaks[trackIndex] : 0.0F,
                 std::memory_order_relaxed);
         }
-        host->projectFrame_.store(nextFrame, std::memory_order_relaxed);
-        if (nextFrame >= project->durationFrames) host->projectPlaying_.store(false, std::memory_order_release);
+        host->projectRenderFrame_.store(nextFrame, std::memory_order_relaxed);
+        const auto audibleFrame = hasClapInsert ? host->clapInsert_.outputProjectFrame() : nextFrame;
+        host->projectFrame_.store(audibleFrame, std::memory_order_relaxed);
+        if (audibleFrame >= project->durationFrames) host->projectPlaying_.store(false, std::memory_order_release);
     }
 
     void stop() noexcept {
@@ -833,6 +886,7 @@ private:
     std::unique_ptr<ProjectSnapshot> projectSnapshot_;
     std::unique_ptr<sonora::audio::ProjectMixState> projectMixState_;
     std::unique_ptr<sonora::audio::CaptureWavRecorder> captureRecorder_;
+    sonora::plugin::RealtimeClapInsert clapInsert_;
     std::vector<sonora::audio::TrackMixSettings> builderTracks_;
     std::vector<sonora::audio::AudioClipView> builderClips_;
     std::atomic<const ProjectSnapshot*> activeProject_{nullptr};
@@ -841,6 +895,7 @@ private:
     std::atomic<ma_uint32> remainingToneFrames_{0};
     std::atomic<bool> projectPlaying_{false};
     std::atomic<std::uint64_t> projectFrame_{0};
+    std::atomic<std::uint64_t> projectRenderFrame_{0};
     std::atomic<float> projectPeak_{0.0F};
     std::array<std::atomic<float>, kMaxProjectTracks> trackPeaks_{};
     sonora::audio::SpectrumAnalyzer spectrumAnalyzer_{static_cast<double>(kSampleRate)};
@@ -885,6 +940,13 @@ private:
         return host.midiOpenOutput(*index);
     }
     if (*operation == "midi_close_output") return host.midiCloseOutput();
+    if (*operation == "load_clap") {
+        const auto path = stringField(line, "path");
+        if (!path || path->empty()) return errorJson("load_clap requires a local .clap path");
+        return host.loadClapEffect(*path);
+    }
+    if (*operation == "unload_clap") return host.unloadClapEffect();
+    if (*operation == "clap_status") return host.clapStatusJson();
     if (*operation == "midi_read") return host.midiReadEventsJson();
     if (*operation == "midi_send_note") {
         const auto channel = numberField<std::uint32_t>(line, "channel");

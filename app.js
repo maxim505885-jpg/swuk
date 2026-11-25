@@ -93,6 +93,11 @@ let playStartTime = 0;
 let playStartBeat = 0;
 let nativePlaybackActive = false;
 let nativePlaybackPending = false;
+let masterClapSelectionToken = null;
+let masterClapPluginName = '';
+let masterClapLoading = false;
+let masterClapReady = false;
+let masterClapStatusTimer = 0;
 let forceBrowserPlayback = false;
 let nativeGraphDirty = true;
 let nativeGraphRevision = 0;
@@ -2199,9 +2204,82 @@ function renderMixer() {
     gain.addEventListener('change', () => { restartProjectPlaybackIfActive(); if (!isBus && channel.id === state.selectedTrackId) renderInspector(); }); pan.addEventListener('change', () => { restartProjectPlaybackIfActive(); if (!isBus && channel.id === state.selectedTrackId) renderInspector(); });
     gain.addEventListener('focus', recordUndo, { once: true }); pan.addEventListener('focus', recordUndo, { once: true }); host.append(strip);
   }
-  const master = document.createElement('div'); master.className = 'mixer-strip'; master.innerHTML = `<strong>Мастер</strong><span class="meter" role="meter" aria-label="Уровень мастера" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="Пик −∞ dBFS"><i id="masterStripMeter" data-level="normal"></i></span><input id="masterStripVolume" type="range" min="0" max="1" step="0.01" value="${state.masterVolume}" aria-label="Громкость главного выхода"/><div class="strip-controls"><button title="Стерео" aria-label="Стерео выход">ST</button><span style="margin-left:auto;color:#89929f;font:8px ui-monospace,Consolas,monospace">BUS</span></div>`;
+  const master = document.createElement('div'); master.className = 'mixer-strip master-strip'; master.innerHTML = `<strong>Мастер</strong><span class="meter" role="meter" aria-label="Уровень мастера" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="Пик −∞ dBFS"><i id="masterStripMeter" data-level="normal"></i></span><input id="masterStripVolume" type="range" min="0" max="1" step="0.01" value="${state.masterVolume}" aria-label="Громкость главного выхода"/><div class="strip-controls"><button title="Стерео" aria-label="Стерео выход">ST</button><span style="margin-left:auto;color:#89929f;font:8px ui-monospace,Consolas,monospace">BUS</span></div><div class="master-clap-control"><button class="button quiet compact" id="masterClapLoadBtn" type="button">＋ CLAP</button><span id="masterClapStatus" aria-live="polite"></span><button class="button quiet compact" id="masterClapUnloadBtn" type="button" hidden>Снять</button></div>`;
   $('input', master).oninput = event => { state.masterVolume = Number(event.target.value); markProjectDirty(); $('#masterVolume').value = state.masterVolume; if (liveMasterGain) liveMasterGain.gain.setTargetAtTime(state.masterVolume, getAudioContext().currentTime, .015); if (nativePlaybackActive) restartPlaybackIfActive(); };
   $('input', master).addEventListener('focus', recordUndo, { once: true }); host.append(master);
+  $('#masterClapLoadBtn').onclick = loadMasterClapEffect;
+  $('#masterClapUnloadBtn').onclick = unloadMasterClapEffect;
+  refreshMasterClapControls();
+}
+
+function refreshMasterClapControls() {
+  const load = $('#masterClapLoadBtn'), unload = $('#masterClapUnloadBtn'), status = $('#masterClapStatus');
+  if (!load || !status) return;
+  const blocked = state.playing || nativePlaybackActive || masterClapLoading;
+  load.disabled = blocked;
+  load.setAttribute('aria-busy', String(masterClapLoading));
+  load.title = blocked && !masterClapLoading ? 'Остановите воспроизведение перед сменой эффекта' : 'Загрузить CLAP-эффект на мастер';
+  load.textContent = masterClapLoading ? 'Загрузка…' : masterClapSelectionToken ? '＋ Заменить' : '＋ CLAP';
+  unload.hidden = !masterClapSelectionToken;
+  unload.disabled = blocked;
+  status.textContent = masterClapPluginName
+    ? masterClapReady ? `${masterClapPluginName} · 10,7 мс` : `${masterClapPluginName} · сбой, dry bypass`
+    : 'Нет эффекта';
+  status.title = masterClapPluginName && !masterClapReady
+    ? 'Плагин завершился с ошибкой; звук временно проходит без обработки'
+    : 'Master CLAP действует только в текущем запуске приложения';
+}
+
+async function loadMasterClapEffect() {
+  if (state.playing || nativePlaybackActive) { showToast('Остановите воспроизведение, чтобы изменить master-эффект'); return; }
+  if (!window.sonoraNative?.inspectClapEffect || !window.sonoraNative?.loadRealtimeClapEffect) {
+    showToast('Realtime CLAP доступен в настольной версии SONORA'); return;
+  }
+  masterClapLoading = true; refreshMasterClapControls();
+  try {
+    const selection = await window.sonoraNative.inspectClapEffect();
+    if (!selection.ok) {
+      if (!selection.cancelled) showToast(selection.error || 'Не удалось открыть CLAP-эффект');
+      return;
+    }
+    masterClapSelectionToken = null; masterClapPluginName = ''; masterClapReady = false;
+    if (masterClapStatusTimer) clearInterval(masterClapStatusTimer); masterClapStatusTimer = 0;
+    refreshMasterClapControls();
+    const result = await window.sonoraNative.loadRealtimeClapEffect(selection.selectionToken);
+    if (!result.ok) throw new Error(result.error || 'Не удалось запустить CLAP-эффект');
+    masterClapSelectionToken = selection.selectionToken;
+    masterClapPluginName = selection.pluginName;
+    masterClapReady = Boolean(result.plugin?.ready);
+    if (masterClapStatusTimer) clearInterval(masterClapStatusTimer);
+    masterClapStatusTimer = setInterval(pollMasterClapStatus, 1000);
+    showToast(`Master CLAP загружен: ${selection.pluginName}`);
+  } catch (error) {
+    showToast(error.message || 'Не удалось загрузить CLAP-эффект');
+  } finally {
+    masterClapLoading = false; refreshMasterClapControls();
+  }
+}
+
+async function pollMasterClapStatus() {
+  if (!masterClapSelectionToken || !window.sonoraNative?.realtimeClapStatus) return;
+  try {
+    const result = await window.sonoraNative.realtimeClapStatus();
+    if (!result.ok || !result.plugin) return;
+    masterClapReady = Boolean(result.plugin.ready);
+    refreshMasterClapControls();
+  } catch {}
+}
+
+async function unloadMasterClapEffect() {
+  if (!masterClapSelectionToken || !window.sonoraNative?.unloadRealtimeClapEffect) return;
+  const button = $('#masterClapUnloadBtn');
+  if (button) button.disabled = true;
+  const result = await window.sonoraNative.unloadRealtimeClapEffect();
+  if (!result.ok) { showToast(result.error || 'Не удалось снять master-эффект'); refreshMasterClapControls(); return; }
+  masterClapSelectionToken = null; masterClapPluginName = '';
+  masterClapReady = false;
+  clearInterval(masterClapStatusTimer); masterClapStatusTimer = 0;
+  refreshMasterClapControls(); showToast('Master CLAP снят');
 }
 function toggleTrackEffect(trackId, effect) {
   const track = getTrack(trackId); if (!track) return;
@@ -2232,7 +2310,7 @@ function updatePosition() {
   if (followPlayhead && state.playing) { const scroll = $('#timelineScroll'); const x = beatsToPx(state.playheadBeat); if (x > scroll.scrollLeft + scroll.clientWidth - 100) scroll.scrollLeft = x - 100; }
 }
 
-function updateTransport() { $('#playBtn').classList.toggle('is-playing', state.playing); $('#playBtn').innerHTML = state.playing ? '<span>Ⅱ</span>' : '<span>▶</span>'; $('#playBtn').setAttribute('aria-label', state.playing ? 'Приостановить воспроизведение' : 'Воспроизвести'); $('#playBtn').setAttribute('aria-pressed', String(state.playing)); $('#recordBtn').classList.toggle('recording', state.recording); $('#recordBtn').setAttribute('aria-label', state.recording ? 'Остановить запись' : 'Запись с микрофона'); $('#recordBtn').setAttribute('aria-pressed', String(state.recording)); const engineNote = $('#mixerEngineNote'); if (engineNote) engineNote.textContent = nativePlaybackPending ? 'Подготовка native-аудиодвижка…' : nativePlaybackActive ? 'WASAPI · нативный аудиомикшер' : state.playing && state.tracks.some(track => track.clips.some(clip => clip.kind === 'automation')) ? 'Web Audio · автоматизация громкости' : 'Звук обрабатывается в браузере'; syncMidiOutputPlayback(); }
+function updateTransport() { $('#playBtn').classList.toggle('is-playing', state.playing); $('#playBtn').innerHTML = state.playing ? '<span>Ⅱ</span>' : '<span>▶</span>'; $('#playBtn').setAttribute('aria-label', state.playing ? 'Приостановить воспроизведение' : 'Воспроизвести'); $('#playBtn').setAttribute('aria-pressed', String(state.playing)); $('#recordBtn').classList.toggle('recording', state.recording); $('#recordBtn').setAttribute('aria-label', state.recording ? 'Остановить запись' : 'Запись с микрофона'); $('#recordBtn').setAttribute('aria-pressed', String(state.recording)); const engineNote = $('#mixerEngineNote'); if (engineNote) engineNote.textContent = nativePlaybackPending ? 'Подготовка native-аудиодвижка…' : nativePlaybackActive ? 'WASAPI · нативный аудиомикшер' : state.playing && state.tracks.some(track => track.clips.some(clip => clip.kind === 'automation')) ? 'Web Audio · автоматизация громкости' : 'Звук обрабатывается в браузере'; refreshMasterClapControls(); syncMidiOutputPlayback(); }
 
 function syncMidiOutputPlayback() {
   if (midiOutputConnected && midiOutputPlaybackEnabled && state.playing) {

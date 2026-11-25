@@ -14,6 +14,8 @@ $testSource = Join-Path $PSScriptRoot 'tests/engine_core_tests.cpp'
 $benchSource = Join-Path $PSScriptRoot 'benchmarks/core_bench.cpp'
 $clapRendererSource = Join-Path $PSScriptRoot 'src/clap_offline_renderer.cpp'
 $clapRendererOutput = Join-Path $outputDirectory 'sonora-clap-offline.exe'
+$clapBridgeTestSource = Join-Path $PSScriptRoot 'tests/realtime_clap_bridge_tests.cpp'
+$clapBridgeTestOutput = Join-Path $outputDirectory 'sonora-realtime-clap-bridge-tests.exe'
 $includeDirectory = Join-Path $PSScriptRoot 'src'
 $miniaudioDirectory = Join-Path $PSScriptRoot 'vendor/miniaudio'
 $clapIncludeDirectory = Join-Path $PSScriptRoot 'vendor/clap/include'
@@ -58,6 +60,10 @@ if ($Mode -in @('Build', 'All')) {
         '-lole32', '-loleaut32', '-lwinmm', '-luuid', '-lavrt', '-lksuser', '-lshell32'
     ))
     Write-Output "Built $clapRendererOutput"
+    Invoke-ZigCompiler ($commonArguments + @(
+        "-I$clapIncludeDirectory", $clapBridgeTestSource, '-o', $clapBridgeTestOutput
+    ))
+    Write-Output "Built $clapBridgeTestOutput"
 }
 
 if ($Mode -in @('Test', 'All')) {
@@ -76,3 +82,4 @@ if ($Mode -eq 'Bench') {
         throw "Native audio benchmark exited with code $LASTEXITCODE"
     }
 }
+

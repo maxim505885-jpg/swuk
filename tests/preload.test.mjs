@@ -59,6 +59,19 @@ test('preload routes CLAP rendering through validated WAV bytes only', async () 
   assert.deepEqual(calls[1][3], { '1': 0.75 });
 });
 
+test('preload exposes real-time CLAP controls only for validated selection tokens', async () => {
+  const { calls, api } = loadPreload();
+
+  assert.equal((await api.loadRealtimeClapEffect('bad-token')).ok, false);
+  assert.equal(calls.length, 0);
+  await api.loadRealtimeClapEffect('12345678-1234-1234-1234-123456789abc');
+  await api.unloadRealtimeClapEffect();
+  await api.realtimeClapStatus();
+  assert.deepEqual(calls.map(call => call[0]), [
+    'native-clap:load-realtime', 'native-clap:unload-realtime', 'native-clap:realtime-status',
+  ]);
+});
+
 test('preload rejects unsafe WAV assets and playback arguments before IPC', async () => {
   const { calls, api } = loadPreload();
 
@@ -115,3 +128,4 @@ test('preload rejects invalid MIDI ports and notes before IPC', async () => {
   assert.equal((await api.sendMidiNote(0, 60, 100, 1)).ok, false);
   assert.equal(calls.length, 0);
 });
+

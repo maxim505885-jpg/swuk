@@ -8,6 +8,7 @@ import test from 'node:test';
 
 const renderer = resolve('native/build/sonora-clap-offline.exe');
 const plugin = resolve('native/build/sonora-clap-test-gain.clap');
+const realtimeBridge = resolve('native/build/sonora-realtime-clap-bridge-tests.exe');
 
 function makeToneWav(frameCount = 4_800) {
   const channels = 2, rate = 48_000, bytes = Buffer.alloc(44 + frameCount * channels * 2);
@@ -31,6 +32,24 @@ function runRenderer(args) {
     child.on('close', code => resolveRun({ code, stdout: Buffer.concat(stdout).toString('utf8'), stderr: Buffer.concat(stderr).toString('utf8') }));
   });
 }
+
+function runRealtimeBridge(args) {
+  return new Promise(resolveRun => {
+    const child = spawn(realtimeBridge, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    const stdout = [], stderr = [];
+    child.stdout.on('data', chunk => stdout.push(chunk)); child.stderr.on('data', chunk => stderr.push(chunk));
+    child.on('error', error => resolveRun({ code: null, error, stdout: '', stderr: '' }));
+    child.on('close', code => resolveRun({ code, stdout: Buffer.concat(stdout).toString('utf8'), stderr: Buffer.concat(stderr).toString('utf8') }));
+  });
+}
+
+test('native master insert keeps a fixed latency and processes CLAP blocks out of process', { skip: !existsSync(realtimeBridge) || !existsSync(plugin) }, async () => {
+  const result = await runRealtimeBridge([plugin]);
+  assert.equal(result.code, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout), {
+    ok: true, isolatedProcess: true, masterInsert: true, pipelineLatencyFrames: 512,
+  });
+});
 
 test('CLAP realtime helper processes shared audio blocks in a separate process', { skip: !existsSync(renderer) || !existsSync(plugin) }, async () => {
   const result = await runRenderer(['selftest', plugin]);
@@ -91,3 +110,4 @@ test('CLAP helper rejects a non-plugin module without crashing its caller', { sk
   assert.notEqual(result.code, 0);
   assert.match(result.stderr, /load this CLAP module|clap_entry/);
 });
+
