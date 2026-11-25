@@ -3,7 +3,7 @@
   "capturedAt": "2026-11-25",
   "product": "SONORA Studio",
   "applicationSurface": "Local browser UI backed by the same frontend used by Electron",
-  "inventoryScope": "Rendered controls and dynamic control families identified from index.html, app.js and a live Playwright session. Dynamic instances are represented by one template with an explicit per-instance test rule. New 120-second render-limit recovery control is recorded with evidence from the exact main release run; WARNING remains on broad scenarios that are only partially covered.",
+  "inventoryScope": "Rendered controls and dynamic control families identified from index.html, app.js and a live Playwright session. Dynamic instances are represented by one template with an explicit per-instance test rule. New 120-second render-limit recovery control is recorded with evidence from the exact main release run; WARNING remains on broad scenarios that are only partially covered. The waveform editor crop dialog is added to the inventory with manual visual and accessibility review still open.",
   "items": [
     {
       "id": "top.undo",
@@ -390,6 +390,21 @@
         "No audible hardware verification.",
         "No screenshot artifact was stored.",
         "The smoke uses generated disposable project data."
+      ]
+    },
+    {
+      "id": "clip.waveform-editor",
+      "surface": "Audio clip inspector",
+      "control": "#openWaveformEditorBtn, dialog #waveformEditorDialog, #waveEditorStart, #waveEditorEnd, #waveEditorSave",
+      "purpose": "View the source waveform and set a non-destructive audio clip crop window.",
+      "preconditions": "An unprocessed audio clip is selected in Arrangement.",
+      "scenario": "Open the editor; move start and end markers with pointer and keyboard range controls; apply the crop; verify clip timing, project save/open, undo and redo. Confirm processed clips show a safe read-only explanation.",
+      "expectedState": "Waveform overview stays responsive for long sources, markers cannot cross or leave source bounds, the saved crop updates offset/trim and timeline length, and undo/redo restores each state.",
+      "observedResult": "Automated Electron UI smoke is added for opening, selecting, applying and undoing/redoing a 2-second disposable WAV. Full visual, screen-reader and DPI acceptance remains pending.",
+      "status": "WARNING",
+      "limitations": [
+        "UI smoke result depends on Windows release gate for this PR.",
+        "Manual visual, screen-reader, high-DPI and real-source listening acceptance remains open."
       ]
     }
   ],
