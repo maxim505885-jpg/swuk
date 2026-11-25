@@ -1100,7 +1100,7 @@ function renderEditor() {
     const clip = selected.clip?.kind === 'drums' && selected.track?.id === track?.id ? selected.clip : patterns[0];
     if (!clip) { body.innerHTML = '<div class="empty-editor"><div class="empty-editor-copy"><strong>Соберите ритм по шагам</strong><p>Каждая ячейка — шестнадцатая доля. Готовый ритм можно услышать и изменить на шкале.</p></div><button class="quick-chip" id="emptyPatternBtn">Создать ритм-партию</button></div>'; $('#emptyPatternBtn')?.addEventListener('click', createDrumPattern); return; }
     const patternPicker = patterns.length > 1 ? '<label>ПАТТЕРН<select id="rackPatternSelect" aria-label="Выбранный ритм-паттерн"></select></label>' : '';
-    body.innerHTML = '<div class="step-editor-controls">' + patternPicker + '<label>ТАКТЫ<select id="stepLengthSelect" aria-label="Длина паттерна в тактах"></select></label><label>ТАКТ<select id="stepBarSelect" aria-label="Редактируемый такт"></select></label><label>ШАГ<select id="stepEditStep" aria-label="Выбранный шаг"></select></label><label>ДОРОЖКА<select id="stepEditRow" aria-label="Дорожка шага"></select></label><label>ШАНС<select id="stepEditProbability" aria-label="Вероятность выбранного шага"><option value="">Как в дорожке</option></select></label><label>ПОВТОРЫ<select id="stepEditRatchets" aria-label="Повторы выбранного шага"><option value="">Как в дорожке</option></select></label></div><div class="step-grid" id="stepGrid"></div>'; const grid = $('#stepGrid');
+    body.innerHTML = '<div class="step-editor-controls">' + patternPicker + '<label>ТАКТЫ<select id="stepLengthSelect" aria-label="Длина паттерна в тактах"></select></label><label>ТАКТ<select id="stepBarSelect" aria-label="Редактируемый такт"></select></label><label>ШАГ<select id="stepEditStep" aria-label="Выбранный шаг"></select></label><label>ДОРОЖКА<select id="stepEditRow" aria-label="Дорожка шага"></select></label><label>ШАНС<select id="stepEditProbability" aria-label="Вероятность выбранного шага"><option value="">Как в дорожке</option></select></label><label>ПОВТОРЫ<select id="stepEditRatchets" aria-label="Повторы выбранного шага"><option value="">Как в дорожке</option></select></label></div><p id="stepLengthNotice" class="field-help" role="status" hidden></p><div class="step-grid" id="stepGrid"></div>'; const grid = $('#stepGrid');
     const patternSelect = $('#rackPatternSelect');
     if (patternSelect) {
       for (const [index, pattern] of patterns.entries()) patternSelect.append(new Option((index + 1) + '. ' + pattern.name + ' · такт ' + (Math.floor(pattern.startBeat / 4) + 1), pattern.id));
@@ -1116,15 +1116,25 @@ function renderEditor() {
     const pageStart = () => barIndex * 16;
     const requiredBars = () => Math.max(1, ...clip.steps.map(row => Math.ceil(((row.hits.length ? Math.max(...row.hits) : -1) + 1) / 16)));
     const updatePageControls = () => {
-      const lengthBars = Math.max(1, Math.ceil(clip.lengthBeats / 4)), maxBars = Math.min(128, Math.max(8, Math.floor(state.tempo / 2), lengthBars));
+      const lengthBars = Math.max(1, Math.ceil(clip.lengthBeats / 4));
+      const maxBars = Math.min(128, Math.max(8, Math.floor(state.tempo / 2)));
+      const pageBars = Math.min(256, Math.max(lengthBars, requiredBars()));
       stepLength.innerHTML = ''; stepBar.innerHTML = '';
       for (let index = 1; index <= maxBars; index++) {
         const lengthOption = new Option(String(index), String(index)); lengthOption.disabled = index < requiredBars(); stepLength.append(lengthOption);
-        if (index <= lengthBars) stepBar.append(new Option(String(index), String(index)));
       }
+      if (lengthBars > maxBars) {
+        const legacyLength = new Option(lengthBars + ' · вне лимита', String(lengthBars));
+        legacyLength.disabled = true; stepLength.append(legacyLength);
+      }
+      for (let index = 1; index <= pageBars; index++) stepBar.append(new Option(String(index), String(index)));
       stepLength.value = String(lengthBars);
-      if (barIndex >= lengthBars) barIndex = lengthBars - 1;
+      if (barIndex >= pageBars) barIndex = pageBars - 1;
       stepBar.value = String(barIndex + 1);
+      const overLimit = clip.lengthBeats * 60 / state.tempo > 120 || requiredBars() > maxBars;
+      const notice = $('#stepLengthNotice');
+      notice.hidden = !overLimit;
+      notice.textContent = overLimit ? 'Паттерн превышает лимит рендера 120 секунд при текущем темпе. Удалите шаги за лимитом или сократите длину перед экспортом.' : '';
     };
     const updateStepControls = () => {
       const row = clip.steps[selectedRowIndex]; if (!row) return;
@@ -1180,7 +1190,7 @@ function renderEditor() {
         cell.className = 'step-cell ' + (active ? 'active ' : '') + (rowIndex === selectedRowIndex && step === selectedStep ? 'selected-step' : '');
         cell.dataset.rowIndex = String(rowIndex); cell.dataset.stepIndex = String(step);
         cell.setAttribute('aria-label', row.name + ', шаг ' + (localStep + 1) + ', такт ' + (barIndex + 1)); cell.setAttribute('aria-pressed', String(active));
-        cell.addEventListener('click', () => { const adding = !row.hits.includes(step); if (adding && !canAddEvents(1)) return; recordUndo(); row.hits = adding ? [...row.hits, step].sort((a, b) => a - b) : row.hits.filter(hit => hit !== step); selectedRowIndex = rowIndex; selectedStep = step; updateStepControls(); grid.querySelectorAll('.selected-step').forEach(selected => selected.classList.remove('selected-step')); cell.classList.add('selected-step'); const enabled = row.hits.includes(step); cell.classList.toggle('active', enabled); cell.setAttribute('aria-pressed', String(enabled)); renderTimeline(); });
+        cell.addEventListener('click', () => { const adding = !row.hits.includes(step); if (adding && !canAddEvents(1)) return; recordUndo(); row.hits = adding ? [...row.hits, step].sort((a, b) => a - b) : row.hits.filter(hit => hit !== step); selectedRowIndex = rowIndex; selectedStep = step; updatePageControls(); updateStepControls(); grid.querySelectorAll('.selected-step').forEach(selected => selected.classList.remove('selected-step')); cell.classList.add('selected-step'); const enabled = row.hits.includes(step); cell.classList.toggle('active', enabled); cell.setAttribute('aria-pressed', String(enabled)); renderTimeline(); });
         grid.append(cell);
       }
       }
@@ -3028,7 +3038,7 @@ function setupEvents() {
   $('#inspectorScrim').onclick = () => { setInspectorOpen(false); $('#inspectorToggleBtn').focus(); };
   $('#playBtn').onclick = play; $('#stopBtn').onclick = () => stopPlayback(true); $('#recordBtn').onclick = startRecording;
   $('#undoBtn').onclick = () => applyHistory(state.redoStack, state.undoStack); $('#redoBtn').onclick = () => applyHistory(state.undoStack, state.redoStack);
-  $('#tempoInput').onchange = event => { recordUndo(); state.tempo = clamp(Number(event.target.value) || 120, 40, 240); event.target.value = state.tempo; markProjectDirty(); renderTimeline(); };
+  $('#tempoInput').onchange = event => { recordUndo(); state.tempo = clamp(Number(event.target.value) || 120, 40, 240); event.target.value = state.tempo; markProjectDirty(); renderTimeline(); if (state.view === 'rack') renderEditor(); };
   $('#keySelect').onchange = event => { recordUndo(); state.key = event.target.value; };
   $('#projectName').oninput = event => { if (event.target.value.length > 256) event.target.value = event.target.value.slice(0, 256); state.name = event.target.value; markProjectDirty(); };
   $('#projectName').addEventListener('focus', recordUndo, { once: true });
