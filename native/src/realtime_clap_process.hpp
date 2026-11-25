@@ -141,9 +141,10 @@ public:
         const std::uint64_t sequence,
         const std::span<const float> samples,
         const std::uint32_t frameCount,
-        const std::uint64_t projectFrame) noexcept {
+        const std::uint64_t projectFrame,
+        const std::uint64_t steadyTime) noexcept {
         if (!isReady()) return false;
-        if (transport_->input.tryPush(sequence, samples, frameCount, projectFrame)) return true;
+        if (transport_->input.tryPush(sequence, samples, frameCount, projectFrame, steadyTime)) return true;
         transport_->inputOverruns.fetch_add(1, std::memory_order_relaxed);
         return false;
     }
