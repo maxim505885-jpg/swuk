@@ -66,11 +66,15 @@ export function renderSequencedClip(clip, { instrument = 'soft-keys', synthSetti
       if (!Number.isFinite(velocity) || velocity < 0 || velocity > 1 ||
           (row.probability !== undefined && (!Number.isFinite(row.probability) || row.probability < 0 || row.probability > 1)) ||
           (row.ratchets !== undefined && (!Number.isInteger(row.ratchets) || row.ratchets < 1 || row.ratchets > 8))) return null;
-      const sample = createDrumSample(row.kind);
-      if (!(sample instanceof Float32Array) || sample.length === 0) return null;
+      const acceptedHits = [];
       for (const hit of row.hits) {
         if (!Number.isFinite(hit) || hit < 0 || hit > 4095) return null;
-        if (!drumHitOccurs(clip.id, rowIndex, hit, probability)) continue;
+        if (drumHitOccurs(clip.id, rowIndex, hit, probability)) acceptedHits.push(hit);
+      }
+      if (!acceptedHits.length) continue;
+      const sample = createDrumSample(row.kind);
+      if (!(sample instanceof Float32Array) || sample.length === 0) return null;
+      for (const hit of acceptedHits) {
         const stepSeconds = secondsPerBeat / 4;
         for (let ratchet = 0; ratchet < ratchets; ratchet++) {
           const start = hit / 4 * secondsPerBeat + ratchet * stepSeconds / ratchets;
