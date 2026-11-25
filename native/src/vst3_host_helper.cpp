@@ -29,18 +29,6 @@ constexpr std::uint32_t kChannels = 2;
 constexpr std::uint32_t kFrames = sonora::plugin::kPluginAudioBlockFrames;
 constexpr std::uint32_t kSamples = kChannels * kFrames;
 
-[[nodiscard]] std::string utf8(const std::wstring_view value) {
-    const int size = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, value.data(),
-        static_cast<int>(value.size()), nullptr, 0, nullptr, nullptr);
-    if (size <= 0) throw std::runtime_error("VST3 host received an invalid UTF-16 argument");
-    std::string result(static_cast<std::size_t>(size), '\0');
-    if (WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, value.data(),
-            static_cast<int>(value.size()), result.data(), size, nullptr, nullptr) != size) {
-        throw std::runtime_error("Could not convert VST3 host argument to UTF-8");
-    }
-    return result;
-}
-
 class Vst3StereoEffect final {
 public:
     [[nodiscard]] bool initialize(const std::filesystem::path& path, std::string& error) {
