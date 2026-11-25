@@ -201,6 +201,6 @@
 
 .sampler-controls{display:grid;grid-template-columns:minmax(220px,2fr) minmax(150px,1fr);gap:12px;padding:14px;background:var(--surface-1);border:1px solid var(--line);border-radius:8px}
 .sampler-controls .field-help{grid-column:1/-1;margin:0}
-.sampler-controls select,.sampler-controls input[type=number]{min-height:34px;width:100%;padding:6px 9px;border:1px solid var(--line);border-radius:5px;background:var(--input-bg);color:var(--input-text);font:12px inherit}
+.sampler-controls select,.sampler-controls input[type=number]{min-height:34px;width:100%;padding:6px 9px;border:1px solid var(--line);border-radius:5px;background:var(--input-bg);color:var(--input-text);font:inherit;font-size:12px}
 .synth-editor[data-instrument=sampler] .synth-controls{display:none}
 @media(max-width:560px){.sampler-controls{grid-template-columns:1fr}}
