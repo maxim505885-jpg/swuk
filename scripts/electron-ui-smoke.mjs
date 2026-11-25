@@ -391,7 +391,41 @@ try {
   await evaluate("document.querySelector('#loopBtn').click()");
   assert.deepEqual(await evaluate("(()=>({pressed:document.querySelector('#loopBtn').getAttribute('aria-pressed'),active:document.querySelector('#loopRegion').classList.contains('is-looping')}))()"),{pressed:'true',active:true},'selected range can be enabled as the playback loop');
   assert.deepEqual(exceptions,[], 'Arrangement range selection must not throw renderer exceptions');
-  console.log('Electron UI smoke passed: spectrum analyzer, EQ, compressor, limiter, split/slicing, undo/redo, project round-trip, WAV export and loop selection');
+  const largeProject = JSON.parse(await evaluate("window.__qaSavedProject.text()"));
+  const audioTrack = largeProject.tracks.find(track => track.clips?.some(clip => !clip.kind));
+  assert.ok(audioTrack, 'saved project contains an audio track for the large-session fixture');
+  const clipTemplate = structuredClone(audioTrack.clips.find(clip => !clip.kind));
+  const previousClipCount = largeProject.tracks.reduce((sum, track) => sum + track.clips.length, 0);
+  const previousAudioClipCount = audioTrack.clips.length;
+  const largeClipCount = 128;
+  const clipSpacing = clipTemplate.lengthBeats + 1;
+  audioTrack.clips = Array.from({ length: largeClipCount }, (_, index) => ({
+    ...structuredClone(clipTemplate),
+    id: `qa-large-${index}`,
+    startBeat: index * clipSpacing,
+    offsetSec: 0,
+    trimEndSec: 0,
+  }));
+  const expectedLargeProjectClipCount = previousClipCount - previousAudioClipCount + largeClipCount;
+  const largeProjectText = JSON.stringify(largeProject);
+  await evaluate("(() => { const previous=window.confirm; window.confirm=()=>true; document.querySelector('#newProjectBtn').click(); window.confirm=previous; })()");
+  await waitUntil(() => evaluate("document.querySelectorAll('.track-lane .clip').length"), count => count === 0, 'empty Arrangement before loading the large session');
+  await evaluate(`(() => { const file=new File([${JSON.stringify(largeProjectText)}],'qa-large-arrangement.sonora',{type:'application/json'}),transfer=new DataTransfer();transfer.items.add(file);const input=document.querySelector('#projectFile');input.files=transfer.files;input.dispatchEvent(new Event('change',{bubbles:true}));return true; })()`);
+  await waitUntil(
+    () => evaluate("document.querySelectorAll('.track-lane .clip').length"),
+    count => count === expectedLargeProjectClipCount,
+    'large Arrangement project load',
+  );
+  const largeDefault = await evaluate("(() => { const clip=document.querySelector('[data-clip=\"qa-large-127\"]'); return {left:parseFloat(clip.style.left),width:parseFloat(clip.style.width)}; })()");
+  await evaluate("(() => { const input=document.querySelector('#zoomInput'); input.value='180'; input.dispatchEvent(new Event('input',{bubbles:true})); })()");
+  const largeZoomed = await evaluate("(() => { const clip=document.querySelector('[data-clip=\"qa-large-127\"]'); return {left:parseFloat(clip.style.left),width:parseFloat(clip.style.width)}; })()");
+  assert.ok(largeZoomed.left > largeDefault.left && largeZoomed.width > largeDefault.width, 'large Arrangement clips retain beat geometry at high zoom');
+  const largeTimelineScroll = await evaluate("(() => { const scroll=document.querySelector('#timelineScroll'),clip=document.querySelector('[data-clip=\\\"qa-large-127\\\"]'); scroll.scrollLeft=Math.max(0,parseFloat(clip.style.left)-80); const rect=clip.getBoundingClientRect(),viewport=scroll.getBoundingClientRect(); return {scrollLeft:scroll.scrollLeft,visible:rect.right>viewport.left&&rect.left<viewport.right}; })()");
+  assert.ok(largeTimelineScroll.scrollLeft > 0 && largeTimelineScroll.visible, 'horizontal scroll brings the final clip into view');
+  await evaluate("document.querySelector('[data-clip=\\\"qa-large-127\\\"]').click()");
+  assert.equal(await waitUntil(() => evaluate("document.querySelector('[data-clip=\\\"qa-large-127\\\"]')?.classList.contains('selected')"), Boolean, 'select a clip at the end of a large Arrangement'), true);
+  assert.deepEqual(exceptions, [], 'large Arrangement rendering, zoom, scroll and selection must not throw renderer exceptions');
+  console.log(`Electron UI smoke passed: 128-clip Arrangement, zoom, spectrum analyzer, EQ, compressor, limiter, split/slicing, undo/redo, project round-trip, WAV export and loop selection`);
 } finally {
   if (socket && socket.readyState < WebSocket.CLOSING) socket.close();
   if (child.exitCode === null) {
