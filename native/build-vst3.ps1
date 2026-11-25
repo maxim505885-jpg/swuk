@@ -39,9 +39,22 @@ if ($LASTEXITCODE -ne 0) {
     throw "VST3 helper CMake configure failed with exit code $LASTEXITCODE"
 }
 
-& $cmake.Source --build $buildDirectory --config Release --target sonora-vst3-host
+& $cmake.Source --build $buildDirectory --config Release --target sonora-vst3-host sonora-vst3-bridge-tests mda-vst3
 if ($LASTEXITCODE -ne 0) {
     throw "VST3 helper build failed with exit code $LASTEXITCODE"
 }
 
-Write-Output "Built the isolated VST3 host helper at $buildDirectory"
+$mdaBundle = Get-ChildItem -LiteralPath $buildDirectory -Directory -Filter 'mda-vst3.vst3' -Recurse | Select-Object -First 1
+if ($null -eq $mdaBundle) {
+    throw 'The pinned Steinberg MDA VST3 fixture was not produced by the SDK build.'
+}
+$bridgeTest = Join-Path $buildDirectory 'Release/sonora-vst3-bridge-tests.exe'
+if (-not (Test-Path -LiteralPath $bridgeTest -PathType Leaf)) {
+    throw "The VST3 bridge test executable was not produced: $bridgeTest"
+}
+& $bridgeTest $mdaBundle.FullName
+if ($LASTEXITCODE -ne 0) {
+    throw "The isolated VST3 bridge test failed with exit code $LASTEXITCODE"
+}
+
+Write-Output "Built the isolated VST3 host and processed the SDK effect fixture at $buildDirectory"
