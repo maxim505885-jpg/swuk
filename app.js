@@ -95,6 +95,9 @@ let nativeSynthCacheRevision = -1;
 const nativeSynthCache = new Map();
 let selectedMidiNote = null;
 let pianoRangeStart = 60;
+let pianoPageStartBeat = 0;
+let pianoPageClipId = null;
+let pianoZoomPercent = 100;
 let inspectorOpen = true;
 let nativeOutputDeviceIndex = 0;
 let nativeCaptureDevices = [];
@@ -1751,6 +1754,10 @@ function focusPianoNote(index) {
 }
 
 function renderPianoRoll(body, clip, track) {
+  if (pianoPageClipId !== clip.id) { pianoPageClipId = clip.id; pianoPageStartBeat = 0; }
+  const pageCount = Math.max(1, Math.ceil(clip.lengthBeats / 4));
+  pianoPageStartBeat = clamp(Math.floor(pianoPageStartBeat / 4) * 4, 0, (pageCount - 1) * 4);
+  const pianoPageIndex = Math.floor(pianoPageStartBeat / 4);
   $('#quantizePianoNotes')?.addEventListener('click', () => {
     const grid = Number($('#pianoQuantizeGrid')?.value ?? .25), strength = Number($('#pianoQuantizeStrength')?.value ?? 1);
     const quantized = quantizeMidiNotes(clip.notes, grid, strength, clip.lengthBeats);
@@ -1766,24 +1773,36 @@ function renderPianoRoll(body, clip, track) {
   const octaves = Array.from({ length: 12 }, (_, row) => pianoRangeStart + 11 - row);
   const noteNames = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
   const noteLabel = note => `${noteNames[note % 12]}${Math.floor(note / 12) - 1}`;
-  body.innerHTML = '<div class="piano-range-controls"><button id="pianoOctaveDown" class="button quiet compact" type="button" aria-label="Показать октаву ниже">− Октава</button><output id="pianoRangeLabel" aria-live="polite"></output><button id="pianoOctaveUp" class="button quiet compact" type="button" aria-label="Показать октаву выше">＋ Октава</button></div><div class="piano-wrap"><div class="piano-keys"></div><div class="piano-grid"></div></div><div id="pianoNoteControls"></div><div class="piano-hint">Клик добавляет ноту; перетаскивание меняет высоту и позицию, а правый край — длительность. Стрелки перемещают выбранную ноту по сетке и по диапазону MIDI.</div>';
+  body.innerHTML = '<div class="piano-range-controls"><button id="pianoOctaveDown" class="button quiet compact" type="button" aria-label="Показать октаву ниже">− Октава</button><output id="pianoRangeLabel" aria-live="polite"></output><button id="pianoOctaveUp" class="button quiet compact" type="button" aria-label="Показать октаву выше">＋ Октава</button><div class="piano-navigation-controls"><button id="pianoPreviousBar" class="button quiet compact" type="button" aria-label="Предыдущий такт">‹</button><output id="pianoBarReadout" aria-live="polite"></output><button id="pianoNextBar" class="button quiet compact" type="button" aria-label="Следующий такт">›</button><label class="piano-zoom-field"><span>МАСШТАБ</span><select id="pianoZoom" aria-label="Масштаб Piano Roll"><option value="75">75%</option><option value="100">100%</option><option value="125">125%</option><option value="150">150%</option><option value="200">200%</option></select></label></div></div><div class="piano-scroll"><div class="piano-wrap"><div class="piano-keys"></div><div class="piano-grid"></div></div></div><div id="pianoNoteControls"></div><div class="piano-hint">Клик добавляет ноту; перетаскивание меняет высоту и позицию, а правый край — длительность. Стрелки перемещают выбранную ноту по сетке и по диапазону MIDI. Используйте ‹ › для перехода между тактами.</div>';
   const rangeLabel = $('#pianoRangeLabel', body);
   rangeLabel.textContent = `${noteLabel(pianoRangeStart)} – ${noteLabel(Math.min(127, pianoRangeStart + 11))}`;
   const octaveDown = $('#pianoOctaveDown', body), octaveUp = $('#pianoOctaveUp', body);
   octaveDown.disabled = pianoRangeStart === 0; octaveUp.disabled = pianoRangeStart === 120;
+  const previousBar = $('#pianoPreviousBar', body), nextBar = $('#pianoNextBar', body), zoomControl = $('#pianoZoom', body);
+  $('#pianoBarReadout', body).textContent = `Такт ${pianoPageIndex + 1} / ${pageCount}`;
+  previousBar.disabled = pianoPageIndex === 0; nextBar.disabled = pianoPageIndex >= pageCount - 1;
+  previousBar.addEventListener('click', () => { pianoPageStartBeat = Math.max(0, pianoPageStartBeat - 4); renderEditor(); });
+  nextBar.addEventListener('click', () => { pianoPageStartBeat = Math.min((pageCount - 1) * 4, pianoPageStartBeat + 4); renderEditor(); });
+  zoomControl.value = String(pianoZoomPercent);
+  zoomControl.addEventListener('change', () => { pianoZoomPercent = Number(zoomControl.value); renderEditor(); });
   octaveDown.addEventListener('click', () => { pianoRangeStart = shiftMidiOctave(pianoRangeStart, -1); selectedMidiNote = null; renderEditor(); requestAnimationFrame(() => $('#pianoOctaveDown')?.focus()); });
   octaveUp.addEventListener('click', () => { pianoRangeStart = shiftMidiOctave(pianoRangeStart, 1); selectedMidiNote = null; renderEditor(); requestAnimationFrame(() => $('#pianoOctaveUp')?.focus()); });
   const keys = $('.piano-keys', body), grid = $('.piano-grid', body);
+  const gridWidth = Math.max(488, Math.round(650 * pianoZoomPercent / 100));
+  grid.style.width = `${gridWidth}px`;
+  $('.piano-wrap', body).style.gridTemplateColumns = `38px ${gridWidth}px`;
   octaves.forEach(note => { const el = document.createElement('div'); el.className = `piano-key ${[1, 3, 6, 8, 10].includes(note % 12) ? 'black' : ''}`; el.textContent = note % 12 === 0 ? `C${Math.floor(note / 12) - 1}` : ''; keys.append(el); });
   for (let row = 0; row < 12; row++) for (let col = 0; col < 16; col++) {
+    const beat = pianoPageStartBeat + col / 4;
+    const bar = Math.floor(beat / 4) + 1, beatInBar = Math.floor(beat % 4) + 1;
     const cell = document.createElement('button'); cell.className = `piano-cell ${octaves[row] % 12 === 0 ? 'c-note' : ''}`;
-    cell.disabled = octaves[row] > 127;
-    cell.setAttribute('aria-label', cell.disabled ? `Высота выше MIDI 127` : `Добавить ноту ${noteLabel(octaves[row])}, такт ${Math.floor(col / 4) + 1}, доля ${col % 4 + 1}`);
+    cell.disabled = octaves[row] > 127 || beat >= clip.lengthBeats;
+    cell.setAttribute('aria-label', cell.disabled ? `Высота выше MIDI 127` : `Добавить ноту ${noteLabel(octaves[row])}, такт ${bar}, доля ${beatInBar}`);
     cell.addEventListener('click', () => {
       if (cell.disabled) return;
       if (clip.notes.length >= 8192) { showToast('В MIDI-партии достигнут лимит нот (8192)'); return; }
       if (!canAddEvents(1)) return;
-      recordUndo(); clip.notes.push({ beat: col / 4, length: .9, note: octaves[row], velocity: .75 });
+      recordUndo(); clip.notes.push({ beat, length: .9, note: octaves[row], velocity: .75 });
       selectedMidiNote = { clipId: clip.id, index: clip.notes.length - 1 };
       previewNote(track?.instrument || 'soft-keys', octaves[row]); renderEditor(); renderTimeline(); focusPianoNote(clip.notes.length - 1);
     });
@@ -1791,10 +1810,11 @@ function renderPianoRoll(body, clip, track) {
   }
 
   for (const [index, note] of clip.notes.entries()) {
-    if (note.note < pianoRangeStart || note.note > pianoRangeStart + 11) continue;
+    if (note.note < pianoRangeStart || note.note > pianoRangeStart + 11 ||
+        note.beat >= pianoPageStartBeat + 4 || note.beat + note.length <= pianoPageStartBeat) continue;
     const noteEl = document.createElement('button'); noteEl.type = 'button'; noteEl.dataset.noteIndex = index;
     noteEl.className = `piano-note ${index === selectedIndex ? 'is-selected' : ''}`;
-    noteEl.style.left = `${note.beat / 4 * 100}%`;
+    noteEl.style.left = `${(note.beat - pianoPageStartBeat) / 4 * 100}%`;
     noteEl.style.width = `${Math.max(5.5, note.length / 4 * 100 - .7)}%`;
     noteEl.style.top = `${((pianoRangeStart + 11 - note.note) / 12) * 100}%`;
     noteEl.setAttribute('aria-label', `Нота ${noteLabel(note.note)}, MIDI ${note.note}, позиция ${note.beat} долей, длительность ${note.length}, сила ${Math.round((note.velocity ?? .75) * 100)} процентов. Стрелки перемещают ноту; Delete удаляет.`);
@@ -1817,12 +1837,15 @@ function renderPianoRoll(body, clip, track) {
         }
         noteEl.style.left = `${note.beat / 4 * 100}%`;
         noteEl.style.width = `${Math.max(5.5, note.length / 4 * 100 - .7)}%`;
-        noteEl.style.top = `${((71 - note.note) / 12) * 100}%`;
+        noteEl.style.top = `${((pianoRangeStart + 11 - note.note) / 12) * 100}%`;
       };
       const finish = () => {
         noteEl.removeEventListener('pointermove', move); noteEl.removeEventListener('pointerup', finish); noteEl.removeEventListener('pointercancel', finish);
         selectedMidiNote = { clipId: clip.id, index };
-        if (changed) { markProjectDirty(); renderEditor(); renderTimeline(); }
+        if (changed) {
+          if (note.beat < pianoPageStartBeat || note.beat >= pianoPageStartBeat + 4) pianoPageStartBeat = Math.floor(note.beat / 4) * 4;
+          markProjectDirty(); renderEditor(); renderTimeline();
+        }
         else { previewNote(track?.instrument || 'soft-keys', note.note); renderEditor(); }
         focusPianoNote(index);
       };
@@ -1836,6 +1859,7 @@ function renderPianoRoll(body, clip, track) {
       if (!changes) return;
       event.preventDefault(); event.stopPropagation(); recordUndo();
       note.beat = clamp(snapBeat(note.beat + changes[0]), 0, Math.max(0, clip.lengthBeats - .25));
+      pianoPageStartBeat = Math.floor(note.beat / 4) * 4;
       note.note = clampMidiPitch(note.note + changes[1]);
       if (note.note < pianoRangeStart || note.note > pianoRangeStart + 11) pianoRangeStart = midiOctaveStart(note.note);
       selectedMidiNote = { clipId: clip.id, index };

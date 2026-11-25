@@ -469,7 +469,7 @@ try {
   const instrumentTrack = pianoProject.tracks.find(track => track.type === 'instrument');
   assert.ok(instrumentTrack, 'Piano Roll smoke fixture includes an instrument track');
   instrumentTrack.clips.push({
-    id: 'qa-piano-midi', name: 'QA melody', kind: 'midi', startBeat: 0, lengthBeats: 4,
+    id: 'qa-piano-midi', name: 'QA melody', kind: 'midi', startBeat: 0, lengthBeats: 8,
     notes: [{ beat: 0, length: 1, note: 48, velocity: .75 }],
   });
   pianoProject.selectedTrackId = instrumentTrack.id;
@@ -481,6 +481,12 @@ try {
   await evaluate("document.querySelector('[data-clip=\\\"qa-piano-midi\\\"]').click()");
   await evaluate("document.querySelector('#inspectorOpenEditorBtn').click()");
   await waitUntil(() => evaluate("Boolean(document.querySelector('.piano-wrap'))"), Boolean, 'Piano Roll editor');
+  const pianoGridWidth = await evaluate("document.querySelector('.piano-grid').getBoundingClientRect().width");
+  await evaluate("(() => { const zoom=document.querySelector('#pianoZoom');zoom.value='150';zoom.dispatchEvent(new Event('change',{bubbles:true})); })()");
+  const zoomedPianoWidth = await waitUntil(() => evaluate("document.querySelector('.piano-grid')?.getBoundingClientRect().width"), width => width > pianoGridWidth, 'Piano Roll zoom-in');
+  assert.equal(Math.round(zoomedPianoWidth / pianoGridWidth * 100), 150, 'Piano Roll zoom scales its beat grid');
+  await evaluate("(() => { const zoom=document.querySelector('#pianoZoom');zoom.value='100';zoom.dispatchEvent(new Event('change',{bubbles:true})); })()");
+  await waitUntil(() => evaluate("document.querySelector('#pianoZoom')?.value"), value => value === '100', 'restore default Piano Roll zoom');
   await evaluate("document.querySelector('.piano-cell[aria-label^=\\\"Добавить ноту C4\\\"]')?.click()");
   await waitUntil(() => evaluate("Boolean(document.querySelector('#generatePianoChord'))"), Boolean, 'Piano Roll chord control');
   await evaluate("document.querySelector('#generatePianoChord').click()");
@@ -495,8 +501,14 @@ try {
   const quantizeResult = await evaluate("(() => ({toast:document.querySelector('#toast')?.textContent, notes:[...document.querySelectorAll('.piano-note')].map(note=>note.getAttribute('aria-label'))}))()");
   assert.ok(quantizeResult.toast?.includes('квантизированы'), 'Piano Roll reports successful MIDI quantization');
   assert.ok(quantizeResult.notes.some(label => label.includes('позиция 0.5 долей')), 'Piano Roll moves the off-grid note to the selected grid');
+  await evaluate("document.querySelector('#pianoNextBar').click()");
+  const secondBarLabel = await evaluate("document.querySelector('#pianoBarReadout')?.textContent");
+  assert.equal(secondBarLabel, 'Такт 2 / 2', 'Piano Roll navigates to the second bar');
+  await evaluate("document.querySelector('.piano-cell[aria-label^=\\\"Добавить ноту C4\\\"][aria-label*=\\\"такт 2, доля 1\\\"]')?.click()");
+  const secondBarNote = await evaluate("[...document.querySelectorAll('.piano-note')].map(note=>note.getAttribute('aria-label')).find(label=>label.includes('позиция 4 долей'))");
+  assert.ok(secondBarNote, 'Piano Roll adds notes at the correct beat on a later bar');
   assert.deepEqual(exceptions, [], 'Piano Roll chord generation must not throw renderer exceptions');
-  console.log(`Electron UI smoke passed: Piano Roll chord generator, sampler editor, probability/ratchet controls, 128-clip Arrangement, zoom, spectrum analyzer, EQ, compressor, limiter, split/slicing, undo/redo, project round-trip, WAV export and loop selection`);
+  console.log(`Electron UI smoke passed: Piano Roll zoom and bar navigation, chord generator, sampler editor, probability/ratchet controls, 128-clip Arrangement, zoom, spectrum analyzer, EQ, compressor, limiter, split/slicing, undo/redo, project round-trip, WAV export and loop selection`);
 } finally {
   if (socket && socket.readyState < WebSocket.CLOSING) socket.close();
   if (child.exitCode === null) {
