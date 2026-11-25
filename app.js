@@ -518,7 +518,10 @@ function playBuffer(buffer, at, options = {}) {
   const context = options.context || getAudioContext(), source = context.createBufferSource(), gain = context.createGain();
   source.buffer = buffer; source.playbackRate.value = 2 ** ((options.pitch || 0) / 12);
   gain.gain.value = options.gain ?? 0.8; source.connect(gain); gain.connect(options.destination || context.destination);
-  source.start(Math.max(at, context.currentTime), options.offset || 0);
+  const startAt = Math.max(at, context.currentTime), offset = Math.max(0, Number(options.offset) || 0);
+  const duration = Number(options.duration);
+  if (Number.isFinite(duration) && duration > 0) source.start(startAt, offset, duration);
+  else source.start(startAt, offset);
   return source;
 }
 
@@ -899,7 +902,7 @@ function openWaveformEditor(clip) {
         '<label for="waveEditorEnd">Конец <output id="waveEditorEndValue"></output></label><input id="waveEditorEnd" type="range" min="0" max="' + buffer.duration.toFixed(3) + '" step="0.001" aria-label="Конец фрагмента в секундах" />' +
       '</div>' +
       '<p class="waveform-editor-status" id="waveEditorStatus" role="status" aria-live="polite"></p>' +
-      '<footer class="waveform-editor-footer"><button class="button quiet" id="waveEditorCancel" type="button">Отмена</button><button class="button primary" id="waveEditorSave" type="button">Применить обрезку</button></footer>' +
+      '<footer class="waveform-editor-footer"><button class="button quiet" id="waveEditorCancel" type="button">Отмена</button><button class="button quiet" id="waveEditorPreview" type="button" aria-pressed="false">Прослушать фрагмент</button><button class="button primary" id="waveEditorSave" type="button">Применить обрезку</button></footer>' +
     '</div>';
   document.body.append(dialog);
 
@@ -907,6 +910,42 @@ function openWaveformEditor(clip) {
   const startInput = $('#waveEditorStart', dialog), endInput = $('#waveEditorEnd', dialog);
   const startValue = $('#waveEditorStartValue', dialog), endValue = $('#waveEditorEndValue', dialog);
   const status = $('#waveEditorStatus', dialog), saveButton = $('#waveEditorSave', dialog);
+  const previewButton = $('#waveEditorPreview', dialog);
+  let previewSource = null;
+
+  function stopWaveformPreview() {
+    const source = previewSource;
+    previewSource = null;
+    previewButton.setAttribute('aria-pressed', 'false');
+    previewButton.textContent = 'Прослушать фрагмент';
+    if (source) { try { source.stop(); } catch {} }
+  }
+
+  async function toggleWaveformPreview() {
+    if (previewSource) { stopWaveformPreview(); status.textContent = 'Прослушивание остановлено.'; return; }
+    try {
+      stopBrowserPreview();
+      const context = getAudioContext();
+      if (context.state === 'suspended') await context.resume();
+      if (!dialog.isConnected || !dialog.open) return;
+      const source = playBuffer(buffer, context.currentTime + 0.02, { offset: window.start, duration: window.end - window.start });
+      previewSource = source;
+      previewButton.setAttribute('aria-pressed', 'true');
+      previewButton.textContent = 'Остановить';
+      status.textContent = 'Прослушивается выбранный фрагмент.';
+      source.addEventListener('ended', () => {
+        if (previewSource !== source) return;
+        previewSource = null;
+        previewButton.setAttribute('aria-pressed', 'false');
+        previewButton.textContent = 'Прослушать фрагмент';
+        status.textContent = 'Прослушивание завершено.';
+      }, { once: true });
+    } catch (error) {
+      console.error('Waveform audition failed', error);
+      stopWaveformPreview();
+      status.textContent = 'Не удалось запустить прослушивание. Проверьте аудиоустройство.';
+    }
+  }
   const minBeatSeconds = Math.max(0.02, 0.25 * beatSeconds() * getClipPlaybackRate(clip, false));
   const canEdit = !clip.renderedAssetId && !clip.timeStretchRatio && !clip.clapPluginName && !clip.autoTune && !clip.bypassProcessing;
   const sourceStart = Math.max(0, Number(clip.offsetSec) || 0);
@@ -961,6 +1000,7 @@ function openWaveformEditor(clip) {
 
   function setEdge(edge, seconds) {
     if (!canEdit) return;
+    if (previewSource) stopWaveformPreview();
     window = moveWaveWindowEdge(buffer.duration, window, edge, seconds, minBeatSeconds);
     drawSelection();
   }
@@ -990,6 +1030,7 @@ function openWaveformEditor(clip) {
   canvas.addEventListener('pointerup', () => { draggingEdge = null; });
   canvas.addEventListener('pointercancel', () => { draggingEdge = null; });
 
+  previewButton.addEventListener('click', toggleWaveformPreview);
   $('#waveEditorClose', dialog).addEventListener('click', () => dialog.close());
   $('#waveEditorCancel', dialog).addEventListener('click', () => dialog.close());
   saveButton.addEventListener('click', () => {
@@ -1007,7 +1048,7 @@ function openWaveformEditor(clip) {
     restartPlaybackIfActive();
     dialog.close();
   });
-  dialog.addEventListener('close', () => dialog.remove(), { once: true });
+  dialog.addEventListener('close', () => { stopWaveformPreview(); dialog.remove(); }, { once: true });
   dialog.showModal();
   $('#waveEditorClose', dialog).focus();
 }
