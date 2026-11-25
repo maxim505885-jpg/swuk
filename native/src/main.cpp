@@ -8,6 +8,7 @@
 #include "spectrum_analyzer.hpp"
 #include "midi_host.hpp"
 #include "realtime_clap_insert.hpp"
+#include "realtime_vst3_insert.hpp"
 
 #include <algorithm>
 #include <array>
@@ -284,8 +285,44 @@ public:
             deviceStarted_ = false;
         }
         std::string error;
+        vst3Insert_.stop();
         if (!clapInsert_.start(std::filesystem::u8path(utf8Path), error)) return errorJson(error);
         return clapStatusJson();
+    }
+
+    [[nodiscard]] std::string loadVst3Effect(const std::string& utf8Path) {
+        if (projectPlaying_.load(std::memory_order_acquire)) return errorJson("Stop playback before changing the master plug-in");
+        if (deviceInitialized_ && deviceStarted_) {
+            const ma_result stopResult = ma_device_stop(&device_);
+            if (stopResult != MA_SUCCESS) return errorJson("Could not pause WASAPI before loading the VST3 effect");
+            deviceStarted_ = false;
+        }
+        clapInsert_.stop();
+        std::string error;
+        if (!vst3Insert_.start(std::filesystem::u8path(utf8Path), error)) return errorJson(error);
+        return vst3StatusJson();
+    }
+
+    [[nodiscard]] std::string unloadVst3Effect() {
+        if (projectPlaying_.load(std::memory_order_acquire)) return errorJson("Stop playback before unloading the master plug-in");
+        if (deviceInitialized_ && deviceStarted_) {
+            const ma_result stopResult = ma_device_stop(&device_);
+            if (stopResult != MA_SUCCESS) return errorJson("Could not pause WASAPI before unloading the VST3 effect");
+            deviceStarted_ = false;
+        }
+        vst3Insert_.stop();
+        return vst3StatusJson();
+    }
+
+    [[nodiscard]] std::string vst3StatusJson() const {
+        const auto* const transport = vst3Insert_.transport();
+        const bool active = vst3Insert_.isActive();
+        return std::string("{\"version\":1,\"ok\":true,\"plugin\":{\"format\":\"VST3\",\"active\":") +
+            (active ? "true" : "false") + ",\"ready\":" +
+            (vst3Insert_.isReady() ? "true" : "false") +
+            ",\"inputOverruns\":" + std::to_string(transport == nullptr ? 0 : transport->inputOverruns.load(std::memory_order_relaxed)) +
+            ",\"outputUnderruns\":" + std::to_string(vst3Insert_.outputUnderruns()) +
+            ",\"outputOverruns\":" + std::to_string(transport == nullptr ? 0 : transport->outputOverruns.load(std::memory_order_relaxed)) + "}}";
     }
 
     [[nodiscard]] std::string unloadClapEffect() {
@@ -570,6 +607,7 @@ public:
         projectFrame_.store(safeStartFrame, std::memory_order_relaxed);
         projectRenderFrame_.store(safeStartFrame, std::memory_order_relaxed);
         if (clapInsert_.isActive()) clapInsert_.reset(safeStartFrame);
+        if (vst3Insert_.isActive()) vst3Insert_.reset(safeStartFrame);
         if (projectMixState_) sonora::audio::resetProjectMixState(*projectMixState_);
         remainingToneFrames_.store(0, std::memory_order_relaxed);
         projectPeak_.store(0.0F, std::memory_order_relaxed);
@@ -765,8 +803,10 @@ private:
             return;
         }
         const bool hasClapInsert = host->clapInsert_.isActive();
+        const bool hasVst3Insert = host->vst3Insert_.isActive();
+        const bool hasPluginInsert = hasClapInsert || hasVst3Insert;
         const auto firstFrame = host->projectRenderFrame_.load(std::memory_order_relaxed);
-        const auto renderLimit = project->durationFrames + (hasClapInsert
+        const auto renderLimit = project->durationFrames + (hasPluginInsert
             ? sonora::plugin::RealtimeClapInsert::kPipelineLatencyFrames : 0);
         if (firstFrame >= renderLimit) {
             host->projectPlaying_.store(false, std::memory_order_release);
@@ -789,9 +829,8 @@ private:
             ma_silence_pcm_frames(output, frameCount, ma_format_f32, device->playback.channels);
             return;
         }
-        if (hasClapInsert) {
-            host->clapInsert_.process(static_cast<float*>(output), framesToRender, firstFrame);
-        }
+        if (hasClapInsert) host->clapInsert_.process(static_cast<float*>(output), framesToRender, firstFrame);
+        else if (hasVst3Insert) host->vst3Insert_.process(static_cast<float*>(output), framesToRender, firstFrame);
         if (framesToRender < frameCount) {
             auto* const remainder = static_cast<float*>(output) + framesToRender * device->playback.channels;
             ma_silence_pcm_frames(remainder, frameCount - framesToRender, ma_format_f32, device->playback.channels);
@@ -814,7 +853,8 @@ private:
                 std::memory_order_relaxed);
         }
         host->projectRenderFrame_.store(nextFrame, std::memory_order_relaxed);
-        const auto audibleFrame = hasClapInsert ? host->clapInsert_.outputProjectFrame() : nextFrame;
+        const auto audibleFrame = hasClapInsert ? host->clapInsert_.outputProjectFrame() :
+            (hasVst3Insert ? host->vst3Insert_.outputProjectFrame() : nextFrame);
         host->projectFrame_.store(audibleFrame, std::memory_order_relaxed);
         if (audibleFrame >= project->durationFrames) host->projectPlaying_.store(false, std::memory_order_release);
     }
@@ -887,6 +927,7 @@ private:
     std::unique_ptr<sonora::audio::ProjectMixState> projectMixState_;
     std::unique_ptr<sonora::audio::CaptureWavRecorder> captureRecorder_;
     sonora::plugin::RealtimeClapInsert clapInsert_;
+    sonora::plugin::RealtimeVst3Insert vst3Insert_;
     std::vector<sonora::audio::TrackMixSettings> builderTracks_;
     std::vector<sonora::audio::AudioClipView> builderClips_;
     std::atomic<const ProjectSnapshot*> activeProject_{nullptr};
@@ -945,6 +986,13 @@ private:
         if (!path || path->empty()) return errorJson("load_clap requires a local .clap path");
         return host.loadClapEffect(*path);
     }
+    if (*operation == "load_vst3") {
+        const auto path = stringField(line, "path");
+        if (!path || path->empty()) return errorJson("load_vst3 requires a local .vst3 bundle path");
+        return host.loadVst3Effect(*path);
+    }
+    if (*operation == "unload_vst3") return host.unloadVst3Effect();
+    if (*operation == "vst3_status") return host.vst3StatusJson();
     if (*operation == "unload_clap") return host.unloadClapEffect();
     if (*operation == "clap_status") return host.clapStatusJson();
     if (*operation == "midi_read") return host.midiReadEventsJson();

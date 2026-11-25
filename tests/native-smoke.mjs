@@ -45,6 +45,12 @@ test('native engine decodes a project clip and advances WASAPI transport with di
   assert.equal(ping.ok, true);
   assert.equal(ping.engine, 'SONORA Native Audio');
 
+  const vst3Status = await request({ version: 1, op: 'vst3_status' });
+  assert.equal(vst3Status.ok, true);
+  assert.equal(vst3Status.plugin.format, 'VST3');
+  assert.equal(vst3Status.plugin.active, false);
+  assert.equal(vst3Status.plugin.ready, false);
+
   const incompatible = await request({ version: 2, op: 'status' });
   assert.equal(incompatible.ok, false);
 

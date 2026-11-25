@@ -51,6 +51,12 @@ contextBridge.exposeInMainWorld('sonoraNative', Object.freeze({
     values && typeof values === 'object' && !Array.isArray(values) && Object.keys(values).length <= 128
     ? ipcRenderer.invoke('native-clap:render', selectionToken, wavBytes, values)
     : Promise.resolve({ ok: false, error: 'Некорректный WAV для обработки CLAP' }),
+  inspectVst3Effect: () => ipcRenderer.invoke('native-vst3:inspect'),
+  loadRealtimeVst3Effect: selectionToken => typeof selectionToken === 'string' && /^[\da-f-]{36}$/i.test(selectionToken)
+    ? ipcRenderer.invoke('native-vst3:load-realtime', selectionToken)
+    : Promise.resolve({ ok: false, error: 'Некорректный идентификатор VST3' }),
+  unloadRealtimeVst3Effect: () => ipcRenderer.invoke('native-vst3:unload-realtime'),
+  realtimeVst3Status: () => ipcRenderer.invoke('native-vst3:realtime-status'),
   loadProject: project => ipcRenderer.invoke('native-audio:load-project', project),
   playProject: (deviceIndex, startFrame) => validDeviceIndex(deviceIndex) && Number.isSafeInteger(startFrame) && startFrame >= 0
     ? ipcRenderer.invoke('native-audio:play-project', deviceIndex, startFrame)

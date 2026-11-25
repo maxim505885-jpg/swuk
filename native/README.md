@@ -57,12 +57,12 @@ The current local build uses Zig 0.17.1 targeting `x86_64-windows-gnu` and CMake
 `vendor/clap/include` contains the official CLAP 1.2.3 headers at commit `309d1dae3ef7f24052f81874668d1de78ed224ae`. The `sonora-clap-offline.exe` helper loads one locally selected `.clap` binary, reports up to 128 writable parameters and renders a stereo WAV in blocks outside the WASAPI process. Host parameter changes are sent as CLAP events at frame zero of the first block; plugin GUI/state serialization and automation are not implemented. It accepts plugins with exactly one stereo main input and output and does not pass note or other events. A reported finite tail is capped at 30 seconds; infinite tails are limited to 3 seconds. Input and output files are limited to 256 MiB, and the Electron caller stops work after 120 seconds. A subprocess crash or timeout returns an error to the UI without taking down Electron or the WASAPI engine. The CLAP SDK's MIT license is copied into the installer; third-party plugin files are not included.
 
 
-The helper also serves one real-time stereo master insert over the versioned shared-memory transport. `RealtimeClapInsert` adds a fixed 512-frame delay (10.67 ms at 48 kHz) so the WASAPI callback can poll processed blocks without waiting; it retains dry blocks for fallback when processing is late or the child exits. Activation, child monitoring and shutdown run outside the callback. The desktop mixer selects a local `.clap` file, reports helper health, and can replace or remove the effect while playback is stopped. This first insert is master-only and session-only. Saved plug-in state, per-track slots, plug-in windows, parameter automation and VST3 are not implemented. `npm run native:clap:test` now includes a bridge test that verifies the helper gain result through the fixed-latency insert.
+The engine supports one real-time stereo master insert at a time, in CLAP or VST3 format. Both use the versioned shared-memory transport and a fixed 512-frame pipeline (10.67 ms at 48 kHz), so the WASAPI callback never waits for plug-in code. The insert retains dry blocks and uses dry fallback when processing is late or the child exits. Activation, child monitoring and shutdown run outside the callback. The desktop mixer selects and removes local plug-ins while playback is stopped and reports helper readiness. These insert selections are session-only; per-track slots, saved state, parameter automation and plug-in editor windows remain unimplemented. The CLAP bridge test verifies an effect result through the fixed-latency insert.
 
+## VST3 hosting SDK
 
-## VST3 hosting SDK build gate
-
-The pinned Steinberg VST3 SDK is initialized in CI with only its required hosting dependencies
-(`base`, `cmake`, `pluginterfaces`, and `public.sdk`). The Windows release build compiles
-the SDK's `sdk_hosting` target with plugin examples, hosting examples, and VSTGUI disabled.
-The isolated helper now loads a local stereo VST3 effect inside a child process and processes fixed audio blocks through the shared transport. The engine callback and mixer UI are not connected to this helper yet, so this milestone does not make VST3 effects selectable or audible in the application.
+The SDK is pinned as a Git submodule and CI initializes only its required hosting dependencies
+(`base`, `cmake`, `pluginterfaces`, and `public.sdk`). Windows release builds compile
+Steinberg's `sdk_hosting` target with examples and VSTGUI disabled. The helper's Windows module loader
+and plug-provider glue compile as C++17, matching this SDK version; SONORA's transport helper compiles
+as C++20. The Steinberg SDK license is included in the Windows package.
