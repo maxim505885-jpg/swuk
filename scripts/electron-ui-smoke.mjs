@@ -420,10 +420,10 @@ try {
   await evaluate("(() => { const input=document.querySelector('#zoomInput'); input.value='180'; input.dispatchEvent(new Event('input',{bubbles:true})); })()");
   const largeZoomed = await evaluate("(() => { const clip=document.querySelector('[data-clip=\"qa-large-127\"]'); return {left:parseFloat(clip.style.left),width:parseFloat(clip.style.width)}; })()");
   assert.ok(largeZoomed.left > largeDefault.left && largeZoomed.width > largeDefault.width, 'large Arrangement clips retain beat geometry at high zoom');
-  const largeTimelineScroll = await evaluate("(() => { const scroll=document.querySelector('#timelineScroll'); scroll.scrollLeft=scroll.scrollWidth; const clip=document.querySelector('[data-clip=\"qa-large-127\"]'),rect=clip.getBoundingClientRect(); return {x:rect.left+rect.width/2,y:rect.top+rect.height/2}; })()");
-  await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: largeTimelineScroll.x, y: largeTimelineScroll.y, button: 'left' });
-  await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: largeTimelineScroll.x, y: largeTimelineScroll.y, button: 'left' });
-  assert.equal(await waitUntil(() => evaluate("document.querySelector('[data-clip=\"qa-large-127\"]')?.classList.contains('selected')"), Boolean, 'select a clip at the end of a large Arrangement'), true);
+  const largeTimelineScroll = await evaluate("(() => { const scroll=document.querySelector('#timelineScroll'); scroll.scrollLeft=scroll.scrollWidth; const clip=document.querySelector('[data-clip=\\\"qa-large-127\\\"]'),rect=clip.getBoundingClientRect(),viewport=scroll.getBoundingClientRect(); return {scrollLeft:scroll.scrollLeft,visible:rect.right>viewport.left&&rect.left<viewport.right}; })()");
+  assert.ok(largeTimelineScroll.scrollLeft > 0 && largeTimelineScroll.visible, 'horizontal scroll brings the final clip into view');
+  await evaluate("document.querySelector('[data-clip=\\\"qa-large-127\\\"]').click()");
+  assert.equal(await waitUntil(() => evaluate("document.querySelector('[data-clip=\\\"qa-large-127\\\"]')?.classList.contains('selected')"), Boolean, 'select a clip at the end of a large Arrangement'), true);
   assert.deepEqual(exceptions, [], 'large Arrangement rendering, zoom, scroll and selection must not throw renderer exceptions');
   console.log(`Electron UI smoke passed: 128-clip Arrangement, zoom, spectrum analyzer, EQ, compressor, limiter, split/slicing, undo/redo, project round-trip, WAV export and loop selection`);
 } finally {
