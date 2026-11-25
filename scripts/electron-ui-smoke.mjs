@@ -79,6 +79,8 @@ try {
   );
   assert.equal(ready, true);
   assert.equal(await evaluate('document.title'), 'SONORA — музыкальная студия');
+  const trackInsertControls = await evaluate("(() => { const controls=[...document.querySelectorAll('.track-plugin-control')]; return {tracks:controls.length,clap:controls.filter(control=>Boolean(control.querySelector('[data-track-plugin-format=clap][aria-label]'))).length,vst3:controls.filter(control=>Boolean(control.querySelector('[data-track-plugin-format=vst3][aria-label]'))).length,statuses:controls.filter(control=>control.querySelector('.track-plugin-status[role=status][aria-live=polite]')).length,unloadHidden:controls.every(control=>control.querySelector('.track-plugin-unload')?.hidden)}; })()");
+  assert.deepEqual(trackInsertControls, { tracks: 3, clap: 3, vst3: 3, statuses: 3, unloadHidden: true }, 'per-track CLAP/VST3 controls expose labeled, live status and start empty');
   await evaluate("document.querySelector('#settingsBtn').click()");
   await waitUntil(
     () => evaluate("[...document.querySelectorAll('.native-engine-panel h3')].some(title => title.textContent === 'Внешние MIDI-устройства')"),
