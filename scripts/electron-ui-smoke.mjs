@@ -449,10 +449,15 @@ try {
   drumProject.tracks.forEach(track => { track.clips = []; });
   drumProject.tracks.push({
     id: 'qa-drum-track', name: 'QA drums', type: 'drums', volume: .8, pan: 0, mute: false, solo: false,
-    clips: [{ id: 'qa-drum-pattern', name: 'QA pattern', kind: 'drums', startBeat: 0, lengthBeats: 4,
-      steps: [{ name: 'Kick', kind: 'kick', velocity: .8, probability: 1, ratchets: 1, hits: [0, 4, 8, 12] }] }],
+    clips: [
+      { id: 'qa-drum-pattern', name: 'QA pattern A', kind: 'drums', startBeat: 0, lengthBeats: 4,
+        steps: [{ name: 'Kick', kind: 'kick', velocity: .8, probability: 1, ratchets: 1, hits: [0, 4, 8, 12] }] },
+      { id: 'qa-drum-pattern-b', name: 'QA pattern B', kind: 'drums', startBeat: 4, lengthBeats: 4,
+        steps: [{ name: 'Kick', kind: 'kick', velocity: .8, probability: 1, ratchets: 1, hits: [2, 6, 10, 14] }] },
+    ],
   });
   drumProject.selectedTrackId = 'qa-drum-track';
+  drumProject.selectedClipId = 'qa-drum-pattern';
   const drumProjectText = JSON.stringify(drumProject);
   await evaluate("(() => { const previous=window.confirm; window.confirm=()=>true; document.querySelector('#newProjectBtn').click(); window.confirm=previous; })()");
   await waitUntil(() => evaluate("document.querySelectorAll('.track-lane .clip').length"), count => count === 0, 'empty Arrangement before loading step sequencer session');
@@ -465,6 +470,11 @@ try {
   assert.deepEqual(stepControls, { chance: '55%', repeat: '4×' }, 'row defaults remain editable');
   const perStepControls = await evaluate("(() => { const cell=document.querySelector('.step-cell');cell.click();const step=document.querySelector('#stepEditStep'),chance=document.querySelector('#stepEditProbability'),repeat=document.querySelector('#stepEditRatchets');chance.value='0.25';chance.dispatchEvent(new Event('change',{bubbles:true}));repeat.value='3';repeat.dispatchEvent(new Event('change',{bubbles:true}));return {step:step.value,chance:chance.value,repeat:repeat.value}; })()");
   assert.deepEqual(perStepControls, { step: '1', chance: '0.25', repeat: '3' }, 'selected step probability and ratchets can override row defaults');
+  const patternSwitch = await evaluate("(() => { const picker=document.querySelector('#rackPatternSelect');picker.value='qa-drum-pattern-b';picker.dispatchEvent(new Event('change',{bubbles:true}));return {count:picker.options.length,selected:document.querySelector('#rackPatternSelect').value,firstHit:document.querySelector('.step-cell.active')?.getAttribute('aria-label')}; })()");
+  assert.deepEqual(patternSwitch, { count: 2, selected: 'qa-drum-pattern-b', firstHit: 'Kick, шаг 3' }, 'pattern picker loads the selected clip into the step grid');
+  await evaluate("document.querySelector('#createPatternBtn').click()");
+  const createdPattern = await waitUntil(() => evaluate("(() => { const picker=document.querySelector('#rackPatternSelect');return picker?{count:picker.options.length,selected:picker.value,name:picker.options[picker.selectedIndex]?.textContent}:null; })()"), value => value?.count === 3, 'new sequencer pattern added');
+  assert.match(createdPattern.name, /Ритм 3/, 'new pattern receives a distinct name and becomes active');
   assert.deepEqual(exceptions, [], 'step sequencer rendering and controls must not throw renderer exceptions');
   const pianoProject = structuredClone(largeProject);
   pianoProject.tracks.forEach(track => { track.clips = []; });
