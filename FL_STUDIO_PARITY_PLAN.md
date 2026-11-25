@@ -18,7 +18,7 @@
 | MIDI / hardware | Редактирование внутренних MIDI-клипов | Устройства MIDI input, запись, MIDI Out, CC mapping, clock/sync, hot-plug и проверка hardware round-trip |
 | Запись | AudioWorklet и WASAPI recording paths | Проверка с физическим входом, punch/loop take workflow, background audio logger и recovery после сбоя |
 | Творческие инструменты | MIDI chord generator с мажорными/минорными/уменьшёнными/увеличенными/sus и септаккордовыми/нонаккордовыми формами | Loop starter и stem separation; эти функции нужно оценивать как отдельные продуктовые модули |
-| Release readiness | main commit ecbfc15 прошёл Windows CI run #45625694716: 114 Node, 28 native core, 2 CLAP tests, native/WASAPI smoke, Signalsmith audio smoke, Electron UI smoke и x64 installer artifact | Артефакт CI ещё не установлен на пользовательском компьютере; Windows 11, DPI на целевых экранах, физические audio input/output, длинная нагрузка и ручной end-to-end acceptance остаются незавершёнными |
+| Release readiness | main commit e4af237 прошёл Windows CI run #45625694716: 114 Node, 28 native core, 2 CLAP tests, native/WASAPI smoke, Signalsmith audio smoke, Electron UI smoke и x64 installer artifact | Артефакт CI ещё не установлен на пользовательском компьютере; Windows 11, DPI на целевых экранах, физические audio input/output, длинная нагрузка и ручной end-to-end acceptance остаются незавершёнными |
 
 ## Приоритет выполнения
 
