@@ -185,6 +185,12 @@ try {
     value => Math.abs(value - .25) < .001,
     'waveform crop participates in redo',
   );
+  await evaluate("document.querySelector('#undoBtn').click()");
+  await waitUntil(
+    () => evaluate("Number(document.querySelector('#clipOffset')?.value)"),
+    value => Math.abs(value) < .001,
+    'waveform editor fixture restores the source before later split tests',
+  );
   const clipWidthAtDefaultZoom = await evaluate("parseFloat(document.querySelector('.track-lane .clip').style.width)");
   await evaluate("(() => { const input=document.querySelector('#zoomInput'); input.value='150'; input.dispatchEvent(new Event('input',{bubbles:true})); })()");
   const clipWidthZoomedIn = await waitUntil(
