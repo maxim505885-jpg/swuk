@@ -2094,7 +2094,7 @@ function clickMetronome(accent = false) {
 
 function buildNativeProjectPlan() {
   const native = window.sonoraNative;
-  if (forceBrowserPlayback || !native?.stageAudioAsset || !native?.loadProject || !native?.playProject || state.metronome || !state.tracks.length || state.buses.length || state.tracks.some(track => track.outputBusId)) return null;
+  if (forceBrowserPlayback || !native?.stageAudioAsset || !native?.loadProject || !native?.playProject || state.metronome || !state.tracks.length) return null;
   if (nativeSynthCacheRevision !== nativeGraphRevision) { nativeSynthCache.clear(); nativeSynthCacheRevision = nativeGraphRevision; }
   const tracks = state.tracks.map(track => {
     const gainAutomation = flattenGainAutomation(track.clips.filter(clip => clip.kind === 'automation' && clip.target === 'volume'), track.volume ?? .8, state.tempo);
@@ -2114,6 +2114,24 @@ function buildNativeProjectPlan() {
     };
   });
   if (tracks.some(track => track === null)) return null;
+  tracks.forEach((track, index) => {
+    const busIndex = state.buses.findIndex(bus => bus.id === state.tracks[index].outputBusId);
+    track.isBus = false;
+    track.outputBusIndex = busIndex < 0 ? -1 : state.tracks.length + busIndex;
+  });
+  tracks.push(...state.buses.map(bus => ({
+    gain: bus.volume ?? .8, pan: bus.pan || 0, mute: Boolean(bus.mute), solo: Boolean(bus.solo),
+    reverb: Boolean(bus.effects?.reverb), delay: Boolean(bus.effects?.delay), gainAutomation: [], panAutomation: [],
+    equalizer: Boolean(bus.effects?.equalizer), compressor: Boolean(bus.effects?.compressor), limiter: Boolean(bus.effects?.limiter),
+    ...Object.fromEntries(Object.entries(normalizeCompressorSettings(bus.compressorSettings)).map(([key, value]) => [
+      ({ thresholdDb: 'compressorThresholdDb', ratio: 'compressorRatio', attackMs: 'compressorAttackMs', releaseMs: 'compressorReleaseMs', makeupDb: 'compressorMakeupDb' })[key], value,
+    ])),
+    limiterCeilingDb: normalizeLimiterSettings(bus.limiterSettings).ceilingDb,
+    limiterReleaseMs: normalizeLimiterSettings(bus.limiterSettings).releaseMs,
+    equalizerFrequencyHz: Number(bus.eqSettings?.frequencyHz ?? 1000), equalizerGainDb: Number(bus.eqSettings?.gainDb ?? 0), equalizerQ: Number(bus.eqSettings?.q ?? 1),
+    equalizerBands: normalizeEqSettings(bus.eqSettings).bands.flatMap(({ frequencyHz, gainDb, q }) => [frequencyHz, gainDb, q]),
+    isBus: true, outputBusIndex: -1,
+  })));
   const assets = new Map(), clips = [];
   let endBeat = 0, synthesizedFrames = 0;
   for (const [trackIndex, track] of state.tracks.entries()) {
@@ -2173,7 +2191,8 @@ function buildNativeProjectPlan() {
   }
   if (!clips.length) return null;
   if (state.loop && state.loopEndBeat > endBeat) return null;
-  const hasEffectClips = clips.some(clip => tracks[clip.trackIndex].reverb || tracks[clip.trackIndex].delay);
+  const hasEffectClips = clips.some(clip => tracks[clip.trackIndex].reverb || tracks[clip.trackIndex].delay) ||
+    (clips.length > 0 && state.buses.some(bus => bus.effects?.reverb || bus.effects?.delay));
   const playbackEndBeat = endBeat + (hasEffectClips ? 3 / beatSeconds() : 0);
   return { assets, graph: { masterGain: state.masterVolume, tracks, clips }, endBeat: playbackEndBeat };
 }
