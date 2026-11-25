@@ -209,6 +209,21 @@ try {
   await evaluate("document.querySelector('#redoBtn').click()");
   await waitUntil(() => evaluate("Number(document.querySelector('#clipFadeIn')?.value)"), value => Math.abs(value - .12) < .001, 'redo restores fade-in');
   assert.deepEqual(exceptions, [], 'clip move and fade history must not throw renderer exceptions');
+  await evaluate("document.querySelector('#createClipGainEnvelope').click()");
+  await waitUntil(() => evaluate("Boolean(document.querySelector('#addClipGainEnvelopePoint'))"), Boolean, 'clip gain envelope editor');
+  const envelopeRulerPoint = await evaluate("(() => { const ruler=document.querySelector('#barRuler').getBoundingClientRect(); const clip=document.querySelectorAll('.track-lane .clip')[1].getBoundingClientRect(); return {x:clip.left+clip.width/2,y:ruler.top+ruler.height/2}; })()");
+  await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: envelopeRulerPoint.x, y: envelopeRulerPoint.y, button: 'left' });
+  await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: envelopeRulerPoint.x, y: envelopeRulerPoint.y, button: 'left' });
+  await evaluate("document.querySelector('#addClipGainEnvelopePoint').click()");
+  await waitUntil(() => evaluate("document.querySelectorAll('[data-clip-gain-value]').length"), count => count === 3, 'clip gain envelope point creation');
+  await evaluate("(() => { const input=document.querySelector('[data-clip-gain-value=\"1\"]'); input.focus(); input.value='0.3'; input.dispatchEvent(new Event('input',{bubbles:true})); input.dispatchEvent(new Event('change',{bubbles:true})); })()");
+  await waitUntil(() => evaluate("document.querySelector('[data-clip-gain-value=\"1\"]')?.value"), value => Math.abs(Number(value) - .3) < .001, 'clip gain point edit');
+  assert.equal(await evaluate("Boolean(document.querySelector('.clip-gain-envelope-curve path'))"), true, 'Arrangement draws the gain curve over the waveform');
+  await evaluate("document.querySelector('#undoBtn').click()");
+  await waitUntil(() => evaluate("document.querySelector('[data-clip-gain-value=\"1\"]')?.value"), value => Math.abs(Number(value) - 1) < .001, 'undo restores the clip gain point');
+  await evaluate("document.querySelector('#redoBtn').click()");
+  await waitUntil(() => evaluate("document.querySelector('[data-clip-gain-value=\"1\"]')?.value"), value => Math.abs(Number(value) - .3) < .001, 'redo restores the clip gain point');
+  assert.deepEqual(exceptions, [], 'clip gain editing must not throw renderer exceptions');
   const fixtureFrames = await evaluate(`(() => {
     const sr=48000,frames=sr*2,header=new Uint8Array(44),h=new DataView(header.buffer);
     const write=(o,s)=>[...s].forEach((c,i)=>h.setUint8(o+i,c.charCodeAt(0)));
