@@ -9,6 +9,7 @@ import { resolveRecordingStartBeat } from './recording-core.mjs?v=1';
 import { decodeMidiNoteEvent } from './midi-message-core.mjs?v=1';
 import { createMidiTake, finishMidiTake, recordMidiNoteEvent } from './midi-recording-core.mjs?v=1';
 import { buildMidiPlaybackEvents, midiEventsCrossed } from './midi-playback-core.mjs?v=1';
+import { countMidiClockPulses } from './midi-clock-core.mjs?v=1';
 import { detectTransientFrames } from './transient-core.mjs?v=1';
 import { clampMidiPitch, generateChordPitches, midiOctaveStart, quantizeMidiNotes, shiftMidiOctave } from './midi-edit-core.mjs?v=3';
 import { normalizeClipFades } from './clip-fade-core.mjs?v=1';
@@ -113,6 +114,12 @@ let midiInputDeviceIndex = 0;
 let midiOutputDeviceIndex = 0;
 let midiOutputPlaybackEnabled = false;
 try { midiOutputPlaybackEnabled = localStorage.getItem('sonora-midi-output-playback') === 'true'; } catch {}
+let midiClockSyncEnabled = false;
+try { midiClockSyncEnabled = localStorage.getItem('sonora-midi-clock-sync') === 'true'; } catch {}
+let midiClockRunning = false;
+let midiClockLastBeat = null;
+let midiClockLastRawBeat = null;
+let midiClockLoopOffsetBeat = 0;
 let midiInputPollTimer = 0;
 let midiOutputPollTimer = 0;
 let midiOutputLastBeat = null;
@@ -2235,51 +2242,103 @@ function updatePosition() {
 function updateTransport() { $('#playBtn').classList.toggle('is-playing', state.playing); $('#playBtn').innerHTML = state.playing ? '<span>Ⅱ</span>' : '<span>▶</span>'; $('#playBtn').setAttribute('aria-label', state.playing ? 'Приостановить воспроизведение' : 'Воспроизвести'); $('#playBtn').setAttribute('aria-pressed', String(state.playing)); $('#recordBtn').classList.toggle('recording', state.recording); $('#recordBtn').setAttribute('aria-label', state.recording ? 'Остановить запись' : 'Запись с микрофона'); $('#recordBtn').setAttribute('aria-pressed', String(state.recording)); const engineNote = $('#mixerEngineNote'); if (engineNote) engineNote.textContent = nativePlaybackPending ? 'Подготовка native-аудиодвижка…' : nativePlaybackActive ? 'WASAPI · нативный аудиомикшер' : state.playing && state.tracks.some(track => track.clips.some(clip => clip.kind === 'automation')) ? 'Web Audio · автоматизация громкости' : 'Звук обрабатывается в браузере'; syncMidiOutputPlayback(); }
 
 function syncMidiOutputPlayback() {
-  if (midiOutputConnected && midiOutputPlaybackEnabled && state.playing) {
+  const shouldRun = midiOutputConnected && (midiOutputPlaybackEnabled || midiClockSyncEnabled) && state.playing;
+  if (shouldRun) {
     if (!midiOutputPollTimer) startMidiOutputScheduler();
-  } else if (midiOutputPollTimer || midiOutputActiveNotes.size) stopMidiOutputScheduler();
+  } else if (midiOutputPollTimer || midiOutputActiveNotes.size || midiClockRunning) stopMidiOutputScheduler();
+}
+async function startMidiClockTransport(beat = getRecordingStartBeat()) {
+  if (!midiClockSyncEnabled || !midiOutputConnected || !state.playing || midiClockRunning) return false;
+  const status = Number.isFinite(beat) && beat > 1e-6 ? 0xFB : 0xFA;
+  const response = await window.sonoraNative.sendMidiRealtime(status, 1).catch(error => ({ ok: false, error: error.message }));
+  if (!response?.ok) {
+    midiOutputConnected = false;
+    midiClockRunning = false;
+    const statusNode = $('#midiInputStatus');
+    if (statusNode) statusNode.textContent = response?.error || 'MIDI clock не удалось отправить.';
+    return false;
+  }
+  midiClockRunning = true;
+  midiClockLastBeat = Number.isFinite(beat) ? beat : 0;
+  midiClockLastRawBeat = midiClockLastBeat;
+  midiClockLoopOffsetBeat = 0;
+  return true;
+}
+async function stopMidiClockTransport() {
+  if (midiClockRunning && midiOutputConnected) {
+    await window.sonoraNative.sendMidiRealtime(0xFC, 1).catch(() => {});
+  }
+  midiClockRunning = false;
+  midiClockLastBeat = null;
+  midiClockLastRawBeat = null;
+  midiClockLoopOffsetBeat = 0;
 }
 function startMidiOutputScheduler() {
-  if (midiOutputPollTimer || !midiOutputConnected || !midiOutputPlaybackEnabled || !state.playing) return;
-  midiOutputLastBeat = getRecordingStartBeat() - 1e-6;
+  if (midiOutputPollTimer || !midiOutputConnected || (!midiOutputPlaybackEnabled && !midiClockSyncEnabled) || !state.playing) return;
+  midiOutputLastBeat = getRecordingStartBeat();
   midiOutputScheduleRevision = -1;
   const tick = async () => {
     midiOutputPollTimer = 0;
-    if (!midiOutputConnected || !midiOutputPlaybackEnabled || !state.playing) { stopMidiOutputScheduler(); return; }
-    if (midiOutputScheduleRevision !== nativeGraphRevision) {
+    if (!midiOutputConnected || (!midiOutputPlaybackEnabled && !midiClockSyncEnabled) || !state.playing) { await stopMidiOutputScheduler(); return; }
+    const currentBeat = getRecordingStartBeat();
+    if (midiOutputPlaybackEnabled && midiOutputScheduleRevision !== nativeGraphRevision) {
       midiOutputEvents = buildMidiPlaybackEvents(state.tracks);
       midiOutputScheduleRevision = nativeGraphRevision;
     }
-    const currentBeat = getRecordingStartBeat();
-    let crossed = [];
-    if (Number.isFinite(currentBeat) && Number.isFinite(midiOutputLastBeat)) {
+    if (midiOutputPlaybackEnabled && Number.isFinite(currentBeat) && Number.isFinite(midiOutputLastBeat)) {
+      let crossed = [];
       if (currentBeat >= midiOutputLastBeat) crossed = midiEventsCrossed(midiOutputEvents, midiOutputLastBeat, currentBeat);
       else if (state.loop && state.loopEndBeat > state.loopStartBeat) {
         crossed = midiEventsCrossed(midiOutputEvents, midiOutputLastBeat, state.loopEndBeat);
         await stopExternalMidiNotes();
         crossed.push(...midiEventsCrossed(midiOutputEvents, state.loopStartBeat - 1e-6, currentBeat));
       }
-    }
-    for (const event of crossed) {
-      if (!midiOutputConnected || !state.playing) break;
-      const key = `0:${event.pitch}`;
-      if (event.type === 'noteon') {
-        const count = midiOutputActiveNotes.get(key) || 0;
-        midiOutputActiveNotes.set(key, count + 1);
-        if (count === 0) {
-          const result = await window.sonoraNative.sendMidiNote(0, event.pitch, event.velocity, true).catch(error => ({ ok: false, error: error.message }));
-          if (!result?.ok) { midiOutputConnected = false; stopMidiOutputScheduler(); const status = $('#midiInputStatus'); if (status) status.textContent = result?.error || 'MIDI-выход отключился.'; break; }
+      for (const event of crossed) {
+        if (!midiOutputConnected || !state.playing || !midiOutputPlaybackEnabled) break;
+        const key = `0:${event.pitch}`;
+        if (event.type === 'noteon') {
+          const count = midiOutputActiveNotes.get(key) || 0;
+          midiOutputActiveNotes.set(key, count + 1);
+          if (count === 0) {
+            const result = await window.sonoraNative.sendMidiNote(0, event.pitch, event.velocity, true).catch(error => ({ ok: false, error: error.message }));
+            if (!result?.ok) { midiOutputConnected = false; stopMidiOutputScheduler(); const statusNode = $('#midiInputStatus'); if (statusNode) statusNode.textContent = result?.error || 'MIDI-выход отключился.'; break; }
+          }
+        } else {
+          const count = midiOutputActiveNotes.get(key) || 0;
+          if (count <= 1) {
+            midiOutputActiveNotes.delete(key);
+            if (count) await window.sonoraNative.sendMidiNote(0, event.pitch, 0, false).catch(() => {});
+          } else midiOutputActiveNotes.set(key, count - 1);
         }
-      } else {
-        const count = midiOutputActiveNotes.get(key) || 0;
-        if (count <= 1) {
-          midiOutputActiveNotes.delete(key);
-          if (count) await window.sonoraNative.sendMidiNote(0, event.pitch, 0, false).catch(() => {});
-        } else midiOutputActiveNotes.set(key, count - 1);
       }
     }
-    midiOutputLastBeat = currentBeat;
-    if (midiOutputConnected && midiOutputPlaybackEnabled && state.playing) midiOutputPollTimer = window.setTimeout(tick, 15);
+    if (midiClockSyncEnabled && Number.isFinite(currentBeat)) {
+      if (!midiClockRunning) await startMidiClockTransport(currentBeat);
+      if (midiClockRunning) {
+        if (midiClockLastRawBeat !== null && currentBeat < midiClockLastRawBeat && state.loop && state.loopEndBeat > state.loopStartBeat) {
+          midiClockLoopOffsetBeat += state.loopEndBeat - state.loopStartBeat;
+        } else if (midiClockLastRawBeat !== null && currentBeat < midiClockLastRawBeat) {
+          midiClockLoopOffsetBeat = 0;
+          midiClockLastBeat = currentBeat;
+        }
+        const clockBeat = currentBeat + midiClockLoopOffsetBeat;
+        const pulses = midiClockLastBeat === null ? 0 : countMidiClockPulses(midiClockLastBeat, clockBeat);
+        if (pulses > 0) {
+          const response = await window.sonoraNative.sendMidiRealtime(0xF8, pulses).catch(error => ({ ok: false, error: error.message }));
+          if (!response?.ok) {
+            midiOutputConnected = false;
+            const statusNode = $('#midiInputStatus');
+            if (statusNode) statusNode.textContent = response?.error || 'MIDI clock не удалось отправить.';
+            await stopMidiOutputScheduler();
+            return;
+          }
+        }
+        midiClockLastBeat = clockBeat;
+        midiClockLastRawBeat = currentBeat;
+      }
+    }
+    if (Number.isFinite(currentBeat)) midiOutputLastBeat = currentBeat;
+    if (midiOutputConnected && (midiOutputPlaybackEnabled || midiClockSyncEnabled) && state.playing) midiOutputPollTimer = window.setTimeout(tick, 15);
   };
   midiOutputPollTimer = window.setTimeout(tick, 0);
 }
@@ -2297,6 +2356,7 @@ async function stopMidiOutputScheduler() {
   if (midiOutputPollTimer) { clearTimeout(midiOutputPollTimer); midiOutputPollTimer = 0; }
   midiOutputLastBeat = null;
   await stopExternalMidiNotes();
+  await stopMidiClockTransport();
 }
 function scheduleProject(context, fromBeat = 0, destination = context.destination, includeMuted = false) {
   const now = context.currentTime, secondsPerBeat = beatSeconds();
@@ -3232,6 +3292,12 @@ async function nativeMidiSettings() {
   outputPlaybackInput.checked = midiOutputPlaybackEnabled; outputPlaybackInput.disabled = !midiOutputConnected;
   outputPlaybackRow.append(outputPlaybackLabel, outputPlaybackInput); panel.append(outputPlaybackRow);
 
+  const clockRow = document.createElement('label'); clockRow.className = 'device-row';
+  const clockLabel = document.createElement('span'); clockLabel.textContent = 'Отправлять MIDI clock и транспорт';
+  const clockInput = document.createElement('input'); clockInput.type = 'checkbox'; clockInput.id = 'midiClockSyncEnabled';
+  clockInput.checked = midiClockSyncEnabled; clockInput.disabled = !midiOutputConnected;
+  clockRow.append(clockLabel, clockInput); panel.append(clockRow);
+
   const controls = document.createElement('div'); controls.className = 'native-engine-actions';
   const inputButton = document.createElement('button'); inputButton.type = 'button'; inputButton.className = 'button quiet';
   inputButton.textContent = midiInputConnected ? 'Отключить MIDI-вход' : 'Подключить MIDI-вход'; inputButton.disabled = !inputs.length && !midiInputConnected;
@@ -3245,7 +3311,7 @@ async function nativeMidiSettings() {
   controls.append(inputButton, outputButton, testButton, midiRecordButton); panel.append(controls);
 
   const note = document.createElement('p'); note.className = 'native-engine-note';
-  note.textContent = 'Вход играет выбранный инструмент и записывает ноты в MIDI-клип. Включите отправку MIDI-клипов для внешнего воспроизведения. MIDI clock и синхронизация с внешним устройством пока не поддерживаются.';
+  note.textContent = 'Вход играет выбранный инструмент и записывает ноты в MIDI-клип. Внешний выход передаёт выбранные MIDI-клипы и MIDI clock через системный таймер приложения.';
   panel.append(note);
   const updateStatus = message => {
     const currentInput = midiInputConnected ? initial.inputName || inputs.find(device => device.index === midiInputDeviceIndex)?.name || 'подключён' : 'не подключён';
@@ -3259,6 +3325,14 @@ async function nativeMidiSettings() {
     try { localStorage.setItem('sonora-midi-output-playback', String(midiOutputPlaybackEnabled)); } catch {}
     syncMidiOutputPlayback();
     updateStatus(midiOutputPlaybackEnabled ? 'Воспроизведение MIDI-клипов включено.' : 'Воспроизведение MIDI-клипов выключено.');
+  };
+  clockInput.onchange = () => {
+    midiClockSyncEnabled = clockInput.checked;
+    try { localStorage.setItem('sonora-midi-clock-sync', String(midiClockSyncEnabled)); } catch {}
+    if (!midiClockSyncEnabled) void stopMidiClockTransport();
+    else if (midiOutputConnected && state.playing) void startMidiClockTransport(getRecordingStartBeat());
+    syncMidiOutputPlayback();
+    updateStatus(midiClockSyncEnabled ? 'MIDI clock и транспорт включены.' : 'MIDI clock и транспорт выключены.');
   };
   midiRecordButton.onclick = () => {
     if (midiRecordingArmed) {
@@ -3308,6 +3382,7 @@ async function nativeMidiSettings() {
     outputButton.textContent = midiOutputConnected ? 'Отключить MIDI-выход' : 'Подключить MIDI-выход';
     testButton.disabled = !midiOutputConnected || (midiOutputPlaybackEnabled && state.playing);
     outputPlaybackInput.disabled = !midiOutputConnected;
+    clockInput.disabled = !midiOutputConnected;
     syncMidiOutputPlayback();
     outputButton.disabled = !outputs.length && !midiOutputConnected;
   };
