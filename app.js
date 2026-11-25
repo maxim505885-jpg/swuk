@@ -5,7 +5,7 @@ import { normalizeTheme, readTheme, THEMES, THEME_KEY } from './theme-core.mjs';
 import { analyzeMeter, presentMeter } from './audio-meter.mjs?v=1';
 import { sampleWaveformPeaks } from './waveform-core.mjs?v=2';
 import { detectTransientFrames } from './transient-core.mjs?v=1';
-import { clampMidiPitch, midiOctaveStart, shiftMidiOctave } from './midi-edit-core.mjs?v=1';
+import { clampMidiPitch, generateChordPitches, midiOctaveStart, shiftMidiOctave } from './midi-edit-core.mjs?v=2';
 import { normalizeClipFades } from './clip-fade-core.mjs?v=1';
 import { CLIP_GAIN_ENVELOPE_MAX_POINTS, normalizeClipGainEnvelope, sampleClipGainEnvelope, scheduleClipGain, splitClipGainEnvelope } from './clip-envelope.mjs?v=1';
 import { EQ_BAND_FREQUENCIES, normalizeEqSettings } from './eq-core.mjs?v=2';
@@ -1837,12 +1837,28 @@ function renderPianoRoll(body, clip, track) {
 
   const controls = $('#pianoNoteControls', body);
   if (selectedNote) {
-    controls.innerHTML = `<label class="piano-velocity-label" for="pianoVelocity">СИЛА НОТЫ <output>${Math.round((selectedNote.velocity ?? .75) * 100)}%</output></label><input id="pianoVelocity" class="piano-velocity" type="range" min="0" max="1" step="0.01" value="${selectedNote.velocity ?? .75}" aria-label="Сила выбранной ноты"/><button id="deletePianoNote" class="button quiet compact">Удалить ноту</button>`;
+    controls.innerHTML = `<label class="piano-velocity-label" for="pianoVelocity">СИЛА НОТЫ <output>${Math.round((selectedNote.velocity ?? .75) * 100)}%</output></label><input id="pianoVelocity" class="piano-velocity" type="range" min="0" max="1" step="0.01" value="${selectedNote.velocity ?? .75}" aria-label="Сила выбранной ноты"/><button id="deletePianoNote" class="button quiet compact">Удалить ноту</button><div class="piano-chord-controls"><label for="pianoChordQuality">СОЗДАТЬ АККОРД НА ОСНОВЕ НОТЫ</label><select id="pianoChordQuality" aria-label="Тип аккорда"><option value="major">Мажор</option><option value="minor">Минор</option><option value="diminished">Уменьшённый</option><option value="augmented">Увеличенный</option><option value="sus2">sus2</option><option value="sus4">sus4</option><option value="major7">Мажорный септаккорд</option><option value="minor7">Минорный септаккорд</option><option value="dominant7">Доминантсептаккорд</option><option value="major9">Мажорный нонаккорд</option><option value="minor9">Минорный нонаккорд</option></select><button id="generatePianoChord" class="button quiet compact">＋ Добавить аккорд</button></div>`;
     const velocity = $('#pianoVelocity', controls), output = $('output', controls);
     velocity.addEventListener('focus', recordUndo);
     velocity.addEventListener('input', () => { selectedNote.velocity = Number(velocity.value); output.textContent = `${Math.round(selectedNote.velocity * 100)}%`; markProjectDirty(); });
     velocity.addEventListener('change', () => { if (state.playing) restartPlaybackIfActive(); });
     $('#deletePianoNote', controls).addEventListener('click', () => { recordUndo(); clip.notes.splice(selectedIndex, 1); selectedMidiNote = null; renderEditor(); renderTimeline(); });
+    $('#generatePianoChord', controls).addEventListener('click', () => {
+      const pitches = generateChordPitches(selectedNote.note, $('#pianoChordQuality', controls).value) || [];
+      const additionalPitches = pitches.filter(pitch => pitch !== selectedNote.note &&
+        !clip.notes.some(note => note.beat === selectedNote.beat && note.note === pitch));
+      if (pitches.length < 2) { showToast('Для этой ноты аккорд выходит за диапазон MIDI 0–127'); return; }
+      if (!additionalPitches.length) { showToast('Эти ноты аккорда уже добавлены'); return; }
+      if (clip.notes.length + additionalPitches.length > 8192 || !canAddEvents(additionalPitches.length)) {
+        showToast('В MIDI-партии достигнут лимит нот'); return;
+      }
+      recordUndo();
+      clip.notes.push(...additionalPitches.map(note => ({
+        beat: selectedNote.beat, length: selectedNote.length, note, velocity: selectedNote.velocity ?? .75,
+      })));
+      markProjectDirty(); restartProjectPlaybackIfActive(); renderEditor(); renderTimeline();
+      showToast(`Аккорд добавлен: ${additionalPitches.length} нот`);
+    });
   } else controls.textContent = 'Выберите ноту, чтобы настроить её силу.';
 }
 
