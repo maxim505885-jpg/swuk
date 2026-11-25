@@ -124,7 +124,7 @@ async function loadNativeProject(project) {
     return { ok: false, error: 'Структура native-проекта некорректна' };
   }
   for (const clip of project.clips) {
-    if (!validNativeAssetId(clip?.assetId) || !Number.isInteger(clip.trackIndex) || clip.trackIndex < 0 || clip.trackIndex >= project.tracks.length ||
+    if (!validNativeAssetId(clip?.assetId) || !Number.isInteger(clip.trackIndex) || clip.trackIndex < 0 || clip.trackIndex >= project.tracks.length || project.tracks[clip.trackIndex]?.isBus === true ||
         !Number.isSafeInteger(clip.startFrame) || clip.startFrame < 0 || !Number.isSafeInteger(clip.sourceOffsetFrame) || clip.sourceOffsetFrame < 0 ||
         !Number.isSafeInteger(clip.durationFrames) || clip.durationFrames < 1 || !isFiniteRange(clip.playbackRate, 0.01, 8) ||
         !isFiniteRange(clip.gain, 0, 4) || !isFiniteRange(clip.pan, -1, 1) ||
@@ -137,7 +137,13 @@ async function loadNativeProject(project) {
   let automationPointCount = 0;
   for (const track of project.tracks) {
     if (!isFiniteRange(track?.gain, 0, 4) || !isFiniteRange(track?.pan, -1, 1) || typeof track.mute !== 'boolean' || typeof track.solo !== 'boolean' ||
+        typeof track.isBus !== 'boolean' || !Number.isInteger(track.outputBusIndex) || track.outputBusIndex < -1 ||
         typeof track.reverb !== 'boolean' || typeof track.delay !== 'boolean' || typeof track.equalizer !== 'boolean' ||
+        typeof track.compressor !== 'boolean' || typeof track.limiter !== 'boolean' ||
+        !isFiniteRange(track.compressorThresholdDb, -60, 0) || !isFiniteRange(track.compressorRatio, 1, 20) ||
+        !isFiniteRange(track.compressorAttackMs, 0.1, 100) || !isFiniteRange(track.compressorReleaseMs, 10, 1000) ||
+        !isFiniteRange(track.compressorMakeupDb, 0, 24) ||
+        !isFiniteRange(track.limiterCeilingDb, -24, 0) || !isFiniteRange(track.limiterReleaseMs, 10, 500) ||
         !isFiniteRange(track.equalizerFrequencyHz, 20, 20_000) || !isFiniteRange(track.equalizerGainDb, -24, 24) || !isFiniteRange(track.equalizerQ, 0.1, 18) ||
         !Array.isArray(track.equalizerBands) || track.equalizerBands.length !== 21 || track.equalizerBands.some((value, index) =>
           !isFiniteRange(value, index % 3 === 0 ? 20 : index % 3 === 1 ? -24 : 0.1, index % 3 === 0 ? 20_000 : index % 3 === 1 ? 24 : 18))) {
@@ -162,6 +168,13 @@ async function loadNativeProject(project) {
     automationPointCount += gainPoints.length + panPoints.length;
     if (automationPointCount > 8192) return { ok: false, error: 'Количество точек автоматизации превышает лимит' };
   }
+  for (const [index, track] of project.tracks.entries()) {
+    if ((track.isBus && track.outputBusIndex !== -1) ||
+        (track.outputBusIndex !== -1 && (track.outputBusIndex >= project.tracks.length ||
+          !project.tracks[track.outputBusIndex]?.isBus || track.outputBusIndex === index))) {
+      return { ok: false, error: 'Маршрутизация native-проекта должна идти только с дорожки на шину' };
+    }
+  }
 
   let result = await requestAudioEngine('clear_project');
   if (!result.ok) return result;
@@ -170,7 +183,11 @@ async function loadNativeProject(project) {
   for (const [index, track] of project.tracks.entries()) {
     result = await requestAudioEngine('set_track', {
       index, gain: track.gain, pan: track.pan, mute: track.mute, solo: track.solo, reverb: track.reverb, delay: track.delay,
+      isBus: track.isBus, outputBusIndex: track.outputBusIndex,
       equalizer: track.equalizer, equalizerFrequencyHz: track.equalizerFrequencyHz, equalizerGainDb: track.equalizerGainDb, equalizerQ: track.equalizerQ,
+      compressor: track.compressor, compressorThresholdDb: track.compressorThresholdDb, compressorRatio: track.compressorRatio,
+      compressorAttackMs: track.compressorAttackMs, compressorReleaseMs: track.compressorReleaseMs, compressorMakeupDb: track.compressorMakeupDb,
+      limiter: track.limiter, limiterCeilingDb: track.limiterCeilingDb, limiterReleaseMs: track.limiterReleaseMs,
       equalizerBands: track.equalizerBands,
       gainAutomation: (track.gainAutomation ?? []).flatMap(point => [point.frame, point.value]),
       panAutomation: (track.panAutomation ?? []).flatMap(point => [point.frame, point.value]),
