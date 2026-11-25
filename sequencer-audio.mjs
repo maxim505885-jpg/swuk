@@ -1,6 +1,22 @@
 const WAVEFORMS = new Set(['preset', 'sine', 'triangle', 'sawtooth', 'square']);
 const clamp = (value, minimum, maximum) => Math.min(maximum, Math.max(minimum, value));
 
+export function normalizeDrumRowSettings(row = {}) {
+  return {
+    probability: Number.isFinite(row.probability) ? clamp(row.probability, 0, 1) : 1,
+    ratchets: Number.isFinite(row.ratchets) ? clamp(Math.round(row.ratchets), 1, 8) : 1,
+  };
+}
+
+export function drumHitOccurs(clipId, rowIndex, hit, probability = 1) {
+  if (!Number.isFinite(probability) || probability <= 0) return false;
+  if (probability >= 1) return true;
+  const seed = `${clipId || ''}:${rowIndex}:${hit}`;
+  let hash = 2166136261;
+  for (let index = 0; index < seed.length; index++) hash = Math.imul(hash ^ seed.charCodeAt(index), 16777619) >>> 0;
+  return hash / 0x100000000 < probability;
+}
+
 export function normalizeSynthSettings(value, instrument = 'soft-keys') {
   const settings = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
   const number = (candidate, fallback, minimum, maximum) => Number.isFinite(candidate) ? clamp(candidate, minimum, maximum) : fallback;
@@ -46,14 +62,21 @@ export function renderSequencedClip(clip, { instrument = 'soft-keys', synthSetti
     for (const row of clip.steps) {
       if (!Array.isArray(row.hits) || typeof row.kind !== 'string' || events.length + row.hits.length > 8192) return null;
       const velocity = row.velocity ?? .78;
-      if (!Number.isFinite(velocity) || velocity < 0 || velocity > 1) return null;
+      const { probability, ratchets } = normalizeDrumRowSettings(row);
+      if (!Number.isFinite(velocity) || velocity < 0 || velocity > 1 ||
+          (row.probability !== undefined && (!Number.isFinite(row.probability) || row.probability < 0 || row.probability > 1)) ||
+          (row.ratchets !== undefined && (!Number.isInteger(row.ratchets) || row.ratchets < 1 || row.ratchets > 8))) return null;
       const sample = createDrumSample(row.kind);
       if (!(sample instanceof Float32Array) || sample.length === 0) return null;
       for (const hit of row.hits) {
         if (!Number.isFinite(hit) || hit < 0 || hit > 4095) return null;
-        const start = hit / 4 * secondsPerBeat;
-        events.push({ kind: 'drum', start, sample, velocity });
-        duration = Math.max(duration, start + sample.length / sampleRate);
+        if (!drumHitOccurs(clip.id, clip.steps.indexOf(row), hit, probability)) continue;
+        const stepSeconds = secondsPerBeat / 4;
+        for (let ratchet = 0; ratchet < ratchets; ratchet++) {
+          const start = hit / 4 * secondsPerBeat + ratchet * stepSeconds / ratchets;
+          events.push({ kind: 'drum', start, sample, velocity });
+          duration = Math.max(duration, start + sample.length / sampleRate);
+        }
       }
     }
   } else {
