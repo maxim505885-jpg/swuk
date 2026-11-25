@@ -62,6 +62,21 @@ test('native engine decodes a project clip and advances WASAPI transport with di
     assert.match(captureUnavailable.error, /No WASAPI capture devices/);
   }
 
+  const midiDevices = await request({ version: 1, op: 'midi_devices' });
+  assert.equal(midiDevices.ok, true);
+  assert.ok(Array.isArray(midiDevices.devices.inputs));
+  assert.ok(Array.isArray(midiDevices.devices.outputs));
+  for (const port of [...midiDevices.devices.inputs, ...midiDevices.devices.outputs]) {
+    assert.equal(typeof port.name, 'string');
+    assert.ok(port.name.length > 0);
+  }
+  const midiEvents = await request({ version: 1, op: 'midi_read' });
+  assert.equal(midiEvents.ok, true);
+  assert.ok(Array.isArray(midiEvents.events));
+  assert.equal(typeof midiEvents.dropped, 'number');
+  const invalidMidiNote = await request({ version: 1, op: 'midi_send_note', channel: 16, pitch: 60, velocity: 100, on: true });
+  assert.equal(invalidMidiNote.ok, false);
+
   const status = await request({ version: 1, op: 'status' });
   assert.equal(status.status.backend, 'WASAPI shared');
   assert.equal(status.status.playing, false);
