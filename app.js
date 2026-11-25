@@ -635,18 +635,20 @@ function addAutomationPoint(clip) {
   markProjectDirty(); renderTimeline(); renderEditor(); restartProjectPlaybackIfActive();
 }
 
+function formatAutomationValue(target, value) { return target === 'pan' ? Number(value).toFixed(2) : `${Math.round(Number(value) * 100)}%`; }
 function renderAutomationEditor(body, clip, track) {
-  const svg = `<svg class="automation-graph" viewBox="0 0 620 100" role="img" aria-label="Кривая автоматизации громкости"><path class="automation-grid-line" d="M10 8H610M10 50H610M10 92H610"/><path class="automation-curve" d="${automationSvgPath(clip)}"/></svg>`;
-  body.innerHTML = `<div class="automation-editor"><div class="automation-summary"><strong>${escapeHtml(track.name)} · громкость</strong><span>Линейная кривая между точками; позиция указана в долях от начала клипа.</span></div>${svg}<div class="automation-point-list" id="automationPointList"></div><p class="field-help">Переместите курсор внутри клипа и добавьте точку. Кривая применяется к громкости дорожки при воспроизведении и экспорте.</p></div>`;
+  const label = automationLabel(clip.target), [minimum, maximum] = automationRange(clip.target);
+  const svg = `<svg class="automation-graph" viewBox="0 0 620 100" role="img" aria-label="Кривая автоматизации: ${label}"><path class="automation-grid-line" d="M10 8H610M10 50H610M10 92H610"/><path class="automation-curve" d="${automationSvgPath(clip)}"/></svg>`;
+  body.innerHTML = `<div class="automation-editor"><div class="automation-summary"><strong>${escapeHtml(track.name)} · ${label}</strong><span>Линейная кривая между точками; позиция указана в долях от начала клипа.</span></div>${svg}<div class="automation-point-list" id="automationPointList"></div><p class="field-help">Переместите курсор внутри клипа и добавьте точку. Кривая применяется к ${label} дорожки при воспроизведении и экспорте.</p></div>`;
   const list = $('#automationPointList', body);
   clip.points.forEach((point, index) => {
     const row = document.createElement('div'); row.className = 'automation-point-row';
-    row.innerHTML = '<label><span>Позиция, доли</span><input class="automation-beat" type="number" min="0" step="0.25" /></label><label><span>Громкость</span><input class="automation-value" type="range" min="0" max="1.2" step="0.01" /><output></output></label><button type="button" class="icon-button small automation-remove" aria-label="Удалить точку автоматизации">×</button>';
+    row.innerHTML = `<label><span>Позиция, доли</span><input class="automation-beat" type="number" min="0" step="0.25" /></label><label><span>${label}</span><input class="automation-value" type="range" min="${minimum}" max="${maximum}" step="0.01" /><output></output></label><button type="button" class="icon-button small automation-remove" aria-label="Удалить точку автоматизации">×</button>`;
     const beatInput = $('.automation-beat', row), valueInput = $('.automation-value', row), output = $('output', row);
     beatInput.value = String(point.beat); beatInput.max = String(clip.lengthBeats); beatInput.setAttribute('aria-label', `Позиция точки ${index + 1}, доли от начала клипа`);
-    valueInput.value = String(point.value); valueInput.setAttribute('aria-label', `Громкость точки ${index + 1}`); output.textContent = `${Math.round(point.value * 100)}%`;
+    valueInput.value = String(point.value); valueInput.setAttribute('aria-label', `${label} точки ${index + 1}`); output.textContent = formatAutomationValue(clip.target, point.value);
     for (const input of [beatInput, valueInput]) input.addEventListener('focus', recordUndo, { once: true });
-    valueInput.addEventListener('input', () => { point.value = Number(valueInput.value); output.textContent = `${Math.round(point.value * 100)}%`; markProjectDirty(); $('.automation-curve', body).setAttribute('d', automationSvgPath(clip)); renderTimeline(); });
+    valueInput.addEventListener('input', () => { point.value = Number(valueInput.value); output.textContent = formatAutomationValue(clip.target, point.value); markProjectDirty(); $('.automation-curve', body).setAttribute('d', automationSvgPath(clip)); renderTimeline(); });
     valueInput.addEventListener('change', restartProjectPlaybackIfActive);
     beatInput.addEventListener('change', () => {
       const nextBeat = clamp(snapBeat(Number(beatInput.value) || 0), 0, clip.lengthBeats);
@@ -1785,7 +1787,21 @@ function scheduleProject(context, fromBeat = 0, destination = context.destinatio
         trackGain.gain.linearRampToValueAtTime(trackVolumeAtBeat(track, beat), now + (beat - fromBeat) * secondsPerBeat);
       }
     }
-    if (context.createStereoPanner) { const pan = context.createStereoPanner(); pan.pan.value = track.pan || 0; node.connect(pan); node = pan; trackNodes.push(pan); if (context === audioContext) liveTrackPans.set(track.id, pan); }
+    if (context.createStereoPanner) {
+      const pan = context.createStereoPanner(); pan.pan.setValueAtTime(trackPanAtBeat(track, fromBeat), now);
+      const panClips = track.clips.filter(clip => clip.kind === 'automation' && clip.target === 'pan');
+      if (panClips.length) {
+        const eventBeats = new Set();
+        for (const clip of panClips) {
+          eventBeats.add(clip.startBeat); eventBeats.add(clip.startBeat + clip.lengthBeats);
+          for (const point of clip.points) eventBeats.add(clip.startBeat + point.beat);
+        }
+        for (const beat of [...eventBeats].filter(beat => beat > fromBeat).sort((a, b) => a - b)) {
+          pan.pan.linearRampToValueAtTime(trackPanAtBeat(track, beat), now + (beat - fromBeat) * secondsPerBeat);
+        }
+      }
+      node.connect(pan); node = pan; trackNodes.push(pan); if (context === audioContext) liveTrackPans.set(track.id, pan);
+    }
     node = applyTrackEffects(context, track, node, trackNodes);
     if (context === audioContext) { const analyser = context.createAnalyser(); analyser.fftSize = 256; node.connect(analyser); analyser.connect(destination); trackNodes.push(analyser); liveTrackGains.set(track.id, trackGain); liveTrackMeters.set(track.id, analyser); liveTrackMeterBuffers.set(track.id, new Float32Array(analyser.fftSize)); }
     else node.connect(destination);
@@ -2051,10 +2067,11 @@ function buildNativeProjectPlan() {
   if (nativeSynthCacheRevision !== nativeGraphRevision) { nativeSynthCache.clear(); nativeSynthCacheRevision = nativeGraphRevision; }
   const tracks = state.tracks.map(track => {
     const gainAutomation = flattenGainAutomation(track.clips.filter(clip => clip.kind === 'automation' && clip.target === 'volume'), track.volume ?? .8, state.tempo);
-    if (!gainAutomation) return null;
+    const panAutomation = flattenGainAutomation(track.clips.filter(clip => clip.kind === 'automation' && clip.target === 'pan'), track.pan || 0, state.tempo, 48_000, -1, 1);
+    if (!gainAutomation || !panAutomation) return null;
     return {
       gain: track.volume ?? 1, pan: track.pan || 0, mute: Boolean(track.mute), solo: Boolean(track.solo),
-      reverb: Boolean(track.effects?.reverb), delay: Boolean(track.effects?.delay), gainAutomation,
+      reverb: Boolean(track.effects?.reverb), delay: Boolean(track.effects?.delay), gainAutomation, panAutomation,
       equalizer: Boolean(track.effects?.equalizer), compressor: Boolean(track.effects?.compressor), limiter: Boolean(track.effects?.limiter),
       ...Object.fromEntries(Object.entries(normalizeCompressorSettings(track.compressorSettings)).map(([key, value]) => [
         ({ thresholdDb: 'compressorThresholdDb', ratio: 'compressorRatio', attackMs: 'compressorAttackMs', releaseMs: 'compressorReleaseMs', makeupDb: 'compressorMakeupDb' })[key], value,
