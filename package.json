@@ -85,6 +85,10 @@
         "to": "engine/sonora-clap-offline.exe"
       },
       {
+        "from": "native/build/vst3-sdk/Release/sonora-vst3-host.exe",
+        "to": "engine/sonora-vst3-host.exe"
+      },
+      {
         "from": "native/vendor/miniaudio/LICENSE",
         "to": "licenses/miniaudio/LICENSE"
       },
