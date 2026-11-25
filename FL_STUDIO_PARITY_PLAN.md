@@ -12,7 +12,7 @@
 | Step Sequencer / Channel Rack | 16 шагов, паттерны ударных, velocity | Развитые channel instruments, step probability/ratchets, полная UI-аудио регрессия, удобная работа с несколькими паттернами |
 | Piano Roll | Редактирование MIDI нот, velocity, клавиатурная навигация по диапазону 0–127 | Выразительные инструменты редактирования/квантизации, масштабирование и полный сценарный acceptance; внешний MIDI input/output |
 | Audio Browser / Editor | Локальные категории, импорт, preview, waveform, запись, ручное разделение и локальная RMS-нарезка клипа по транзиентам; pitch shift, autotune и tempo-aware Signalsmith stretch | Полноценный waveform editor, warp markers, denoise/repair; оценка детектора на реальных исходниках, ручное прослушивание stretch, длинные рендеры и память |
-| Микшер | Уровень, панорама, mute/solo, meters, volume automation, reverb/delay, семиполосный peaking EQ, компрессор и ограничитель пиков, 24-полосный спектральный анализатор в браузерном/WASAPI тракте | Sends/buses, routing matrix, slot-based effect chain, parameter automation |
+| Микшер | Уровень, панорама, mute/solo, meters, automation громкости и панорамы в browser/WAV/WASAPI, reverb/delay, семиполосный peaking EQ, компрессор, лимитер и 24-полосный спектральный анализатор | Sends/buses, routing matrix, slot-based effect chain, автоматизация параметров эффектов |
 | Встроенные инструменты | Базовый синтезатор с waveform/filter/envelope/detune, presets и drum synthesis | Полноценный sampler/SF2/SFZ workflow, многослойные/многотембральные инструменты, modulation, широкая библиотека и preset browser |
 | Эффекты | Reverb/delay; track compressor/limiter в playback/export/WASAPI; CLAP effect только offline-render | Realtime plugin/effect graph, VST3/CLAP host, plugin UI/state/scan, saturation/distortion, chorus/flanger/phaser, transient shaping, stereo tools, frequency splitting |
 | MIDI / hardware | Редактирование внутренних MIDI-клипов | Устройства MIDI input, запись, MIDI Out, CC mapping, clock/sync, hot-plug и проверка hardware round-trip |
@@ -25,7 +25,7 @@
 1. **Довести основную сессию до приёмки:** безопасный проект save/open, Undo/Redo, import/export, markers, selection, браузерные сценарии Arrangement/Step Sequencer/Piano Roll; детерминированные WAV assertions.
 2. **Аудиомонтаж:** waveform editor, slicing/transient workflow; Signalsmith stretch уже проверен на Windows в скрытом Electron smoke (36 000 → 45 000 кадров, 440.38 Гц), остаются прослушивание реального вокала/транзиентов, длинные рендеры и оценка памяти.
 3. **Инструменты и MIDI:** sampler/SoundFont пресеты, MIDI input/output и mapping; проверка аппаратных устройств.
-4. **Mixer:** добавить spectrum view и parameter automation; затем компрессор/лимитер, distortion, modulation и send/bus routing.
+4. **Mixer:** добавить sends/buses и routing matrix, затем slot-based effect chain и автоматизацию параметров встроенных эффектов; расширять realtime DSP.
 5. **Плагины:** сначала настоящий realtime CLAP host в отдельном процессе, затем VST3 после закрепления конкретного SDK commit и лицензий. Plugin crash должен оставаться за границей процесса audio engine.
 6. **Дополнительные креативные блоки:** chord/loop tools, audio logger и stem separation; решать по локальным вычислительным бюджетам и лицензиям.
 7. **Выпуск:** чистая Windows 11 сборка, установщик, WASAPI input/output, DPI/resolution, performance, crash/recovery, soak и документация сторонних лицензий.
