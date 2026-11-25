@@ -449,7 +449,7 @@ void serveRealtimePlugin(const std::string& pluginPath, const std::wstring_view 
                     }
                     std::fill_n(leftOutput.data(), block.frameCount, 0.0F);
                     std::fill_n(rightOutput.data(), block.frameCount, 0.0F);
-                    const auto steadyTime = static_cast<std::int64_t>(block.sequence * sonora::plugin::kPluginAudioBlockFrames);
+                    const auto steadyTime = static_cast<std::int64_t>(block.projectFrame);
                     if (!plugin.process(leftInput.data(), rightInput.data(), leftOutput.data(), rightOutput.data(),
                             block.frameCount, steadyTime, &kEmptyInputEvents)) {
                         throw std::runtime_error("CLAP effect returned a real-time processing error");
@@ -620,3 +620,4 @@ int main() {
         return 1;
     }
 }
+
