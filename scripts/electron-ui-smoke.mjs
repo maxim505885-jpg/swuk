@@ -457,6 +457,7 @@ try {
   await evaluate("(() => { const previous=window.confirm; window.confirm=()=>true; document.querySelector('#newProjectBtn').click(); window.confirm=previous; })()");
   await waitUntil(() => evaluate("document.querySelectorAll('.track-lane .clip').length"), count => count === 0, 'empty Arrangement before loading step sequencer session');
   await evaluate(`(() => { const file=new File([${JSON.stringify(drumProjectText)}],'qa-step-sequencer.sonora',{type:'application/json'}),transfer=new DataTransfer();transfer.items.add(file);const input=document.querySelector('#projectFile');input.files=transfer.files;input.dispatchEvent(new Event('change',{bubbles:true}));return true; })()`);
+  await waitUntil(() => evaluate("Boolean(document.querySelector('[data-track=\\\"qa-drum-track\\\"]'))"), Boolean, 'loaded QA drum track');
   await waitUntil(() => evaluate("document.querySelector('#inspectorOpenEditorBtn')?.textContent"), text => text?.includes('редактор'), 'step sequencer track inspector');
   await evaluate("document.querySelector('#inspectorOpenEditorBtn').click()");
   await waitUntil(() => evaluate("Boolean(document.querySelector('.step-probability') && document.querySelector('.step-ratchets'))"), Boolean, 'probability and ratchet controls');
