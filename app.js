@@ -1226,7 +1226,7 @@ ${track.effects?.compressor ? `<div class="inspector-eq-controls inspector-compr
   }
 
   if (track.effects?.limiter) {
-    for (const control of $('[data-limiter]', host)) {
+    for (const control of $$('[data-limiter]', host)) {
       const key = control.dataset.limiter, output = control.parentElement.querySelector('output');
       const format = value => key === 'ceilingDb' ? `${Number(value).toFixed(1)} dB` : `${Number(value).toFixed(0)} ms`;
       output.textContent = format(limiterSettings[key]);
@@ -1242,7 +1242,7 @@ ${track.effects?.compressor ? `<div class="inspector-eq-controls inspector-compr
   }
 
   if (track.effects?.equalizer) {
-    for (const control of $('[data-eq]', host)) {
+    for (const control of $$('[data-eq]', host)) {
       const key = control.dataset.eq;
       const bandIndex = control.dataset.eqBand === undefined ? null : Number(control.dataset.eqBand);
       const output = control.parentElement.querySelector('output') || $('#inspectorEqQValue', host);
