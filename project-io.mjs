@@ -80,6 +80,9 @@ export function validateProjectDocument(data, limits = PROJECT_LIMITS) {
           (track.compressorSettings.attackMs !== undefined && !finiteBetween(track.compressorSettings.attackMs, 0.1, 100)) ||
           (track.compressorSettings.releaseMs !== undefined && !finiteBetween(track.compressorSettings.releaseMs, 10, 1000)) ||
           (track.compressorSettings.makeupDb !== undefined && !finiteBetween(track.compressorSettings.makeupDb, 0, 24)))) ||
+        (track.limiterSettings !== undefined && (!plainObject(track.limiterSettings) ||
+          (track.limiterSettings.ceilingDb !== undefined && !finiteBetween(track.limiterSettings.ceilingDb, -24, 0)) ||
+          (track.limiterSettings.releaseMs !== undefined && !finiteBetween(track.limiterSettings.releaseMs, 10, 500)))) ||
         (track.eqSettings !== undefined && (!plainObject(track.eqSettings) || !finiteBetween(track.eqSettings.frequencyHz, 20, 20_000) ||
           !finiteBetween(track.eqSettings.gainDb, -24, 24) || !finiteBetween(track.eqSettings.q, 0.1, 18) ||
           (track.eqSettings.bands !== undefined && (!Array.isArray(track.eqSettings.bands) || track.eqSettings.bands.length !== 7 ||
