@@ -74,6 +74,26 @@ export function flattenGainAutomation(automationClips, fallbackGain, bpm, sample
   return [...events.values()].sort((left, right) => left.frame - right.frame);
 }
 
+export function splitAudioClip(clip, splitBeat, bpm) {
+  const rate = clip?.rate === undefined ? 1 : clip.rate;
+  if (!clip || !Number.isFinite(clip.startBeat) || clip.startBeat < 0 ||
+      !Number.isFinite(clip.lengthBeats) || clip.lengthBeats <= 0 ||
+      !Number.isFinite(splitBeat) || splitBeat <= clip.startBeat || splitBeat >= clip.startBeat + clip.lengthBeats ||
+      !Number.isFinite(bpm) || bpm < 40 || bpm > 240 ||
+      !Number.isFinite(rate) || rate <= 0 || rate > 8 ||
+      (clip.offsetSec !== undefined && (!Number.isFinite(clip.offsetSec) || clip.offsetSec < 0))) return null;
+  const leftLength = splitBeat - clip.startBeat;
+  const rightOffset = (clip.offsetSec || 0) + leftLength * 60 / bpm * rate;
+  if (!Number.isFinite(rightOffset)) return null;
+  return {
+    left: { ...clip, lengthBeats: leftLength, trimEndSec: 0, fadeOutSec: 0 },
+    right: {
+      ...clip, startBeat: splitBeat, lengthBeats: clip.lengthBeats - leftLength,
+      offsetSec: rightOffset, fadeInSec: 0,
+    },
+  };
+}
+
 export function splitSequencerEvents(clip, splitBeat) {
   if (!clip || !Number.isFinite(clip.lengthBeats) || clip.lengthBeats <= 0 || !Number.isFinite(splitBeat) ||
       splitBeat <= 0 || splitBeat >= clip.lengthBeats) return null;
