@@ -65,4 +65,4 @@ The helper also serves one real-time stereo master insert over the versioned sha
 The pinned Steinberg VST3 SDK is initialized in CI with only its required hosting dependencies
 (`base`, `cmake`, `pluginterfaces`, and `public.sdk`). The Windows release build compiles
 the SDK's `sdk_hosting` target with plugin examples, hosting examples, and VSTGUI disabled.
-The isolated helper now loads a local stereo VST3 effect inside a child process and processes fixed audio blocks through the shared transport. The engine callback and mixer UI are not connected to this helper yet, so this milestone does not make VST3 effects selectable or audible in the application.
+The native engine can load one stereo master VST3 effect through that isolated helper. The WASAPI callback exchanges fixed 128-frame blocks over lock-free shared queues and falls back to dry audio on a missed block or helper failure. The Mixer exposes local .vst3 bundle selection, load/unload, readiness, and dry-bypass status. VST3 selection is session-only; per-track slots, saved plugin state, realtime parameter automation, and plugin editor windows remain unimplemented.
