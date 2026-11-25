@@ -338,8 +338,11 @@ void testTrackCompressorReducesSignalAboveThreshold() {
     require(sonora::audio::renderMixBlock(first.data(), 1, 48'000.0, 0, project, &state), "compressor processes audio");
     std::vector<float> settled(4096 * 2);
     require(sonora::audio::renderMixBlock(settled.data(), 4096, 48'000.0, 4096, project, &state), "compressor reduction persists across blocks");
-    const float gain = std::pow(10.0F, (-12.0F + (-1.9382F + 12.0F) / 4.0F) / 20.0F);
-    const float expected = 0.8F * gain * std::pow(10.0F, 3.0F / 20.0F);
+    const float inputLevelDb = 6.020599913F * std::log2(0.8F);
+    const float overThresholdDb = inputLevelDb - track.compressorThresholdDb;
+    const float reductionDb = overThresholdDb / track.compressorRatio - overThresholdDb;
+    const float gain = std::pow(10.0F, reductionDb / 20.0F);
+    const float expected = 0.8F * gain * std::pow(10.0F, track.compressorMakeupDb / 20.0F);
     require(settled[2048 * 2] < 0.8F && std::abs(settled[2048 * 2] - expected) < 0.015F,
         "threshold and ratio produce the expected settled gain reduction");
     track.compressorRatio = 0.0F;
