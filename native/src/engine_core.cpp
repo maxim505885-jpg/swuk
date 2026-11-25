@@ -176,26 +176,6 @@ bool renderMixBlock(
             const auto& settings = project.tracks[trackIndex];
             renderAutomation(settings.gainAutomation, state->tracks[trackIndex].gainAutomationValues, settings.gain);
             renderAutomation(settings.panAutomation, state->tracks[trackIndex].panAutomationValues, settings.pan);
-            auto nextPoint = std::upper_bound(points.begin(), points.end(), firstProjectFrame,
-                [](const std::uint64_t frame, const AutomationPoint& point) { return frame < point.frame; });
-            std::size_t currentIndex = nextPoint == points.begin() ? points.size() : static_cast<std::size_t>(nextPoint - points.begin() - 1);
-            for (std::size_t frame = 0; frame < frameCount; ++frame) {
-                const auto projectFrame = firstProjectFrame + frame;
-                while (nextPoint != points.end() && nextPoint->frame <= projectFrame) {
-                    currentIndex = static_cast<std::size_t>(nextPoint - points.begin());
-                    ++nextPoint;
-                }
-                if (currentIndex == points.size()) {
-                    values[frame] = project.tracks[trackIndex].gain;
-                } else if (nextPoint == points.end()) {
-                    values[frame] = points[currentIndex].value;
-                } else {
-                    const auto& start = points[currentIndex];
-                    const auto& end = *nextPoint;
-                    const float amount = static_cast<float>(projectFrame - start.frame) / static_cast<float>(end.frame - start.frame);
-                    values[frame] = start.value + (end.value - start.value) * amount;
-                }
-            }
         }
     }
 
