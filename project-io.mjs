@@ -110,6 +110,8 @@ export function validateProjectDocument(data, limits = PROJECT_LIMITS) {
         (track.limiterSettings !== undefined && (!plainObject(track.limiterSettings) ||
           (track.limiterSettings.ceilingDb !== undefined && !finiteBetween(track.limiterSettings.ceilingDb, -24, 0)) ||
           (track.limiterSettings.releaseMs !== undefined && !finiteBetween(track.limiterSettings.releaseMs, 10, 500)))) ||
+        (track.samplerAssetId !== undefined && track.samplerAssetId !== null && (!idValue(track.samplerAssetId) || !assetIds.has(track.samplerAssetId))) ||
+        (track.samplerRootNote !== undefined && (!Number.isInteger(track.samplerRootNote) || track.samplerRootNote < 0 || track.samplerRootNote > 127)) ||
         (track.eqSettings !== undefined && (!plainObject(track.eqSettings) || !finiteBetween(track.eqSettings.frequencyHz, 20, 20_000) ||
           !finiteBetween(track.eqSettings.gainDb, -24, 24) || !finiteBetween(track.eqSettings.q, 0.1, 18) ||
           (track.eqSettings.bands !== undefined && (!Array.isArray(track.eqSettings.bands) || track.eqSettings.bands.length !== 7 ||
