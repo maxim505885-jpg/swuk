@@ -159,15 +159,15 @@ template <typename Number>
     return std::nullopt;
 }
 
-[[nodiscard]] std::optional<std::vector<sonora::audio::AutomationPoint>> parseGainAutomation(const std::vector<double>& values) {
+[[nodiscard]] std::optional<std::vector<sonora::audio::AutomationPoint>> parseGainAutomation(const std::vector<double>& values, const std::size_t maximumValues = 16'384, const double maximumGain = 4.0) {
     constexpr double kMaxSafeFrame = 9'007'199'254'740'991.0;
-    if (values.size() % 2 != 0 || values.size() > 16'384) return std::nullopt;
+    if (values.size() % 2 != 0 || values.size() > maximumValues) return std::nullopt;
     std::vector<sonora::audio::AutomationPoint> points;
     points.reserve(values.size() / 2);
     for (std::size_t index = 0; index < values.size(); index += 2) {
         const double frame = values[index];
         const double value = values[index + 1];
-        if (frame < 0.0 || frame > kMaxSafeFrame || std::trunc(frame) != frame || value < 0.0 || value > 4.0 ||
+        if (frame < 0.0 || frame > kMaxSafeFrame || std::trunc(frame) != frame || value < 0.0 || value > maximumGain ||
             (!points.empty() && frame <= static_cast<double>(points.back().frame))) return std::nullopt;
         points.push_back({static_cast<std::uint64_t>(frame), static_cast<float>(value)});
     }
@@ -367,7 +367,8 @@ public:
         const float gain,
         const float pan,
         const std::uint64_t fadeInFrames,
-        const std::uint64_t fadeOutFrames) {
+        const std::uint64_t fadeOutFrames,
+        std::vector<sonora::audio::AutomationPoint> gainEnvelope) {
         if (builderClips_.size() >= kMaxProjectClips) return errorJson("Project exceeds the native clip limit");
         if (trackIndex >= builderTracks_.size()) return errorJson("Clip references an unknown track");
         if (builderTracks_[trackIndex].isBus) return errorJson("Audio clips cannot be assigned directly to a mixer bus");
@@ -376,7 +377,13 @@ public:
         if (fadeInFrames > durationFrames || fadeOutFrames > durationFrames || fadeInFrames > durationFrames - fadeOutFrames) {
             return errorJson("Clip fades exceed its duration");
         }
-        builderClips_.push_back({&asset->second->view, trackIndex, startFrame, sourceOffsetFrame, durationFrames, playbackRate, gain, pan, fadeInFrames, fadeOutFrames});
+        if (!gainEnvelope.empty() && (gainEnvelope.size() < 2 || gainEnvelope.size() > 1024 ||
+            gainEnvelope.front().frame != 0 || gainEnvelope.back().frame != durationFrames)) {
+            return errorJson("Clip gain envelope must cover its full duration");
+        }
+        sonora::audio::AudioClipView clip{&asset->second->view, trackIndex, startFrame, sourceOffsetFrame, durationFrames, playbackRate, gain, pan, fadeInFrames, fadeOutFrames};
+        clip.gainEnvelope = std::move(gainEnvelope);
+        builderClips_.push_back(std::move(clip));
         return "{\"version\":1,\"ok\":true}";
     }
 
@@ -889,10 +896,20 @@ private:
         const auto pan = numberField<float>(line, "pan");
         const auto fadeInFrames = numberField<std::uint64_t>(line, "fadeInFrames").value_or(0);
         const auto fadeOutFrames = numberField<std::uint64_t>(line, "fadeOutFrames").value_or(0);
+        std::vector<sonora::audio::AutomationPoint> gainEnvelope;
+        if (line.find("\\"gainAutomation\\"") != std::string::npos) {
+            const auto values = numberArrayField(line, "gainAutomation", 2048);
+            const auto parsed = values ? parseGainAutomation(*values, 2048, 1.5) : std::nullopt;
+            if (!parsed) return errorJson("Clip gain envelope is malformed");
+            gainEnvelope = *parsed;
+            if (!gainEnvelope.empty() && (gainEnvelope.size() < 2 || gainEnvelope.front().frame != 0 || gainEnvelope.back().frame != durationFrames.value_or(0))) {
+                return errorJson("Clip gain envelope must cover its full duration");
+            }
+        }
         if (!assetId || !trackIndex || !startFrame || !sourceOffsetFrame || !durationFrames || !playbackRate || !gain || !pan) {
             return errorJson("add_clip requires assetId, trackIndex, startFrame, sourceOffsetFrame, durationFrames, playbackRate, gain and pan");
         }
-        return host.addProjectClip(*assetId, *trackIndex, *startFrame, *sourceOffsetFrame, *durationFrames, *playbackRate, *gain, *pan, fadeInFrames, fadeOutFrames);
+        return host.addProjectClip(*assetId, *trackIndex, *startFrame, *sourceOffsetFrame, *durationFrames, *playbackRate, *gain, *pan, fadeInFrames, fadeOutFrames, std::move(gainEnvelope));
     }
     if (*operation == "commit_project") return host.commitProject();
     if (*operation == "play_project") {
