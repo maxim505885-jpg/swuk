@@ -10,7 +10,7 @@
 #include "realtime_clap_insert.hpp"
 #include "realtime_vst3_insert.hpp"
 #include "realtime_track_plugin_rack.hpp"
-#include "realtime_track_plugin_rack.hpp"
+
 
 #include <algorithm>
 #include <array>
@@ -361,62 +361,6 @@ public:
             ",\"outputOverruns\":" + std::to_string(status.outputOverruns) + "}}";
     }
 
-    [[nodiscard]] std::string loadTrackClapEffect(const std::uint32_t trackIndex, const std::string& utf8Path) {
-        const auto* const project = activeProject_.load(std::memory_order_acquire);
-        if (project == nullptr || trackIndex >= project->view.trackCount || trackIndex >= sonora::plugin::RealtimeTrackPluginRack::kMaxTracks)
-            return errorJson("Track index is outside the loaded project");
-        if (project->tracks[trackIndex].channelId.empty()) return errorJson("Track has no stable channel id");
-        if (projectPlaying_.load(std::memory_order_acquire)) return errorJson("Stop playback before changing a track plug-in");
-        if (deviceInitialized_ && deviceStarted_) {
-            const ma_result stopResult = ma_device_stop(&device_);
-            if (stopResult != MA_SUCCESS) return errorJson("Could not pause WASAPI before loading the track CLAP effect");
-            deviceStarted_ = false;
-        }
-        std::string error;
-        if (!trackPluginRack_.loadClap(trackIndex, std::filesystem::u8path(utf8Path), error)) return errorJson(error);
-        return trackPluginStatusJson(trackIndex);
-    }
-
-    [[nodiscard]] std::string loadTrackVst3Effect(const std::uint32_t trackIndex, const std::string& utf8Path) {
-        const auto* const project = activeProject_.load(std::memory_order_acquire);
-        if (project == nullptr || trackIndex >= project->view.trackCount || trackIndex >= sonora::plugin::RealtimeTrackPluginRack::kMaxTracks)
-            return errorJson("Track index is outside the loaded project");
-        if (project->tracks[trackIndex].channelId.empty()) return errorJson("Track has no stable channel id");
-        if (projectPlaying_.load(std::memory_order_acquire)) return errorJson("Stop playback before changing a track plug-in");
-        if (deviceInitialized_ && deviceStarted_) {
-            const ma_result stopResult = ma_device_stop(&device_);
-            if (stopResult != MA_SUCCESS) return errorJson("Could not pause WASAPI before loading the track VST3 effect");
-            deviceStarted_ = false;
-        }
-        std::string error;
-        if (!trackPluginRack_.loadVst3(trackIndex, std::filesystem::u8path(utf8Path), error)) return errorJson(error);
-        return trackPluginStatusJson(trackIndex);
-    }
-
-    [[nodiscard]] std::string unloadTrackPlugin(const std::uint32_t trackIndex) {
-        const auto* const project = activeProject_.load(std::memory_order_acquire);
-        if (project == nullptr || trackIndex >= project->view.trackCount || trackIndex >= sonora::plugin::RealtimeTrackPluginRack::kMaxTracks)
-            return errorJson("Track index is outside the loaded project");
-        if (projectPlaying_.load(std::memory_order_acquire)) return errorJson("Stop playback before unloading a track plug-in");
-        if (deviceInitialized_ && deviceStarted_) {
-            const ma_result stopResult = ma_device_stop(&device_);
-            if (stopResult != MA_SUCCESS) return errorJson("Could not pause WASAPI before unloading the track plug-in");
-            deviceStarted_ = false;
-        }
-        trackPluginRack_.unload(trackIndex);
-        return trackPluginStatusJson(trackIndex);
-    }
-
-    [[nodiscard]] std::string trackPluginStatusJson(const std::uint32_t trackIndex) const {
-        const auto status = trackPluginRack_.status(trackIndex);
-        return std::string("{\"version\":1,\"ok\":true,\"trackIndex\":") + std::to_string(trackIndex) +
-            ",\"plugin\":{\"format\":\"" + status.format + "\",\"active\":" +
-            (status.active ? "true" : "false") + ",\"ready\":" + (status.ready ? "true" : "false") +
-            ",\"inputOverruns\":" + std::to_string(status.inputOverruns) +
-            ",\"outputUnderruns\":" + std::to_string(status.outputUnderruns) +
-            ",\"outputOverruns\":" + std::to_string(status.outputOverruns) + "}}";
-    }
-
     [[nodiscard]] std::string unloadVst3Effect() {
         if (projectPlaying_.load(std::memory_order_acquire)) return errorJson("Stop playback before unloading the master plug-in");
         if (deviceInitialized_ && deviceStarted_) {
@@ -682,10 +626,6 @@ public:
             if (stopResult != MA_SUCCESS) return errorJson(std::string("Could not pause WASAPI while committing project: ") + ma_result_description(stopResult));
             deviceStarted_ = false;
         }
-        std::vector<std::string> stableTrackIds;
-        stableTrackIds.reserve(snapshot->tracks.size());
-        for (const auto& track : snapshot->tracks) stableTrackIds.push_back(track.channelId);
-        trackPluginRack_.reconcileTrackIds(stableTrackIds);
         std::vector<std::string> stableTrackIds;
         stableTrackIds.reserve(snapshot->tracks.size());
         for (const auto& track : snapshot->tracks) stableTrackIds.push_back(track.channelId);
@@ -1065,7 +1005,6 @@ private:
     sonora::plugin::RealtimeClapInsert clapInsert_;
     sonora::plugin::RealtimeVst3Insert vst3Insert_;
     sonora::plugin::RealtimeTrackPluginRack trackPluginRack_;
-    sonora::plugin::RealtimeTrackPluginRack trackPluginRack_;
     std::vector<sonora::audio::TrackMixSettings> builderTracks_;
     std::vector<sonora::audio::AudioClipView> builderClips_;
     std::atomic<const ProjectSnapshot*> activeProject_{nullptr};
@@ -1128,19 +1067,6 @@ private:
         const auto path = stringField(line, "path");
         if (!path || path->empty()) return errorJson("load_vst3 requires a local .vst3 bundle path");
         return host.loadVst3Effect(*path);
-    }
-    if (*operation == "load_track_clap" || *operation == "load_track_vst3") {
-        const auto trackIndex = numberField<std::uint32_t>(line, "trackIndex");
-        const auto path = stringField(line, "path");
-        if (!trackIndex || !path || path->empty()) return errorJson("track plug-in load requires trackIndex and local path");
-        return *operation == "load_track_clap" ? host.loadTrackClapEffect(*trackIndex, *path) :
-            host.loadTrackVst3Effect(*trackIndex, *path);
-    }
-    if (*operation == "unload_track_plugin" || *operation == "track_plugin_status") {
-        const auto trackIndex = numberField<std::uint32_t>(line, "trackIndex");
-        if (!trackIndex) return errorJson("track plug-in operation requires trackIndex");
-        return *operation == "unload_track_plugin" ? host.unloadTrackPlugin(*trackIndex) :
-            host.trackPluginStatusJson(*trackIndex);
     }
     if (*operation == "load_track_clap" || *operation == "load_track_vst3") {
         const auto trackIndex = numberField<std::uint32_t>(line, "trackIndex");
