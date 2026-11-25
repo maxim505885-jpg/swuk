@@ -1097,16 +1097,17 @@ function renderEditor() {
     eyebrow.textContent = 'СЕКВЕНСОР'; title.textContent = 'Шаговый секвенсор'; actions.innerHTML = '<button class="button quiet compact" id="createPatternBtn">＋ Ритм-партия</button><button class="button quiet compact" id="createNotesBtn">＋ MIDI-партия</button>'; bindEditorActions();
     const clip = selected.clip?.kind === 'drums' ? selected.clip : track?.clips.find(item => item.kind === 'drums');
     if (!clip) { body.innerHTML = '<div class="empty-editor"><div class="empty-editor-copy"><strong>Соберите ритм по шагам</strong><p>Каждая ячейка — шестнадцатая доля. Готовый ритм можно услышать и изменить на шкале.</p></div><button class="quick-chip" id="emptyPatternBtn">Создать ритм-партию</button></div>'; $('#emptyPatternBtn')?.addEventListener('click', createDrumPattern); return; }
-    body.innerHTML = '<div class="step-editor-controls"><strong id="stepEditorTitle">ШАГ 1</strong><label>ДОРОЖКА<select id="stepEditRow" aria-label="Дорожка шага"></select></label><label>ШАНС<select id="stepEditProbability" aria-label="Вероятность выбранного шага"><option value="">Как в дорожке</option></select></label><label>ПОВТОРЫ<select id="stepEditRatchets" aria-label="Повторы выбранного шага"><option value="">Как в дорожке</option></select></label></div><div class="step-grid" id="stepGrid"></div>'; const grid = $('#stepGrid');
-    const stepRowSelect = $('#stepEditRow'), stepNumber = $('#stepEditorTitle'), stepProbability = $('#stepEditProbability'), stepRatchets = $('#stepEditRatchets');
+    body.innerHTML = '<div class="step-editor-controls"><label>ШАГ<select id="stepEditStep" aria-label="Выбранный шаг"></select></label><label>ДОРОЖКА<select id="stepEditRow" aria-label="Дорожка шага"></select></label><label>ШАНС<select id="stepEditProbability" aria-label="Вероятность выбранного шага"><option value="">Как в дорожке</option></select></label><label>ПОВТОРЫ<select id="stepEditRatchets" aria-label="Повторы выбранного шага"><option value="">Как в дорожке</option></select></label></div><div class="step-grid" id="stepGrid"></div>'; const grid = $('#stepGrid');
+    const stepRowSelect = $('#stepEditRow'), stepNumber = $('#stepEditStep'), stepProbability = $('#stepEditProbability'), stepRatchets = $('#stepEditRatchets');
     for (const [index, row] of clip.steps.entries()) stepRowSelect.append(new Option(row.name, String(index)));
+    for (let index = 0; index < 16; index++) stepNumber.append(new Option(String(index + 1), String(index + 1)));
     stepProbability.insertAdjacentHTML('beforeend', Array.from({ length: 21 }, (_, index) => { const value = index / 20; return '<option value="' + value.toFixed(2) + '">' + (index * 5) + '%</option>'; }).join(''));
     stepRatchets.insertAdjacentHTML('beforeend', Array.from({ length: 8 }, (_, index) => '<option value="' + (index + 1) + '">' + (index + 1) + '×</option>').join(''));
     let selectedRowIndex = 0, selectedStep = clip.steps[0]?.hits[0] ?? 0;
     const updateStepControls = () => {
       const row = clip.steps[selectedRowIndex]; if (!row) return;
       const override = row.stepOverrides?.[String(selectedStep)] || {};
-      stepRowSelect.value = String(selectedRowIndex); stepNumber.textContent = 'ШАГ ' + (selectedStep + 1);
+      stepRowSelect.value = String(selectedRowIndex); stepNumber.value = String(selectedStep + 1);
       stepProbability.value = override.probability === undefined ? '' : String(override.probability);
       stepRatchets.value = override.ratchets === undefined ? '' : String(override.ratchets);
     };
@@ -1121,6 +1122,7 @@ function renderEditor() {
       markProjectDirty(); restartProjectPlaybackIfActive(); renderTimeline();
     };
     stepRowSelect.addEventListener('change', () => { selectedRowIndex = Number(stepRowSelect.value); updateStepControls(); });
+    stepNumber.addEventListener('change', () => { selectedStep = Number(stepNumber.value) - 1; grid.querySelectorAll('.selected-step').forEach(selected => selected.classList.remove('selected-step')); const selectedCell = grid.querySelectorAll('.step-cell')[selectedStep]; selectedCell?.classList.add('selected-step'); updateStepControls(); });
     stepProbability.addEventListener('focus', recordUndo, { once: true });
     stepProbability.addEventListener('change', () => updateStepOverride('probability', stepProbability.value));
     stepRatchets.addEventListener('focus', recordUndo, { once: true });
