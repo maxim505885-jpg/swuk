@@ -81,6 +81,11 @@ try {
   assert.equal(await evaluate('document.title'), 'SONORA — музыкальная студия');
   assert.deepEqual(await evaluate("(()=>({canvas:document.querySelector('#spectrumCanvas')?.getAttribute('role'),label:document.querySelector('#spectrumCanvas')?.getAttribute('aria-label'),summary:document.querySelector('#spectrumSummary')?.textContent}))()"),{canvas:'img',label:'Спектральный анализатор мастер-выхода',summary:'Нет сигнала'},'accessible spectrum analyzer widget');
   assert.equal(await evaluate("Boolean(document.querySelector('[data-inspector-effect=equalizer]'))"), true);
+  await evaluate("document.querySelector('#addPanAutomationBtn').click()");
+  assert.deepEqual(await evaluate("(()=>({label:document.querySelector('.automation-summary strong')?.textContent,min:document.querySelector('.automation-value')?.min,max:document.querySelector('.automation-value')?.max,points:document.querySelectorAll('.automation-value').length}))()"),{label:'Audio 1 · панорама',min:'-1',max:'1',points:2},'pan automation lane and bounded controls');
+  await evaluate("document.querySelector('#undoBtn').click()");
+  await waitUntil(()=>evaluate("document.querySelector('.automation-summary')===null"),Boolean,'pan automation undo');
+
 
   await evaluate("document.querySelector('[data-inspector-effect=equalizer]').click()");
   const initialBands = await waitUntil(
