@@ -595,28 +595,33 @@ function createMidiPattern() {
   track.clips.push(clip); state.selectedClipId = clip.id; state.view = 'piano'; renderAll(); showToast('MIDI-партия создана');
 }
 
-function createAutomationClip() {
+function automationRange(target) { return target === 'pan' ? [-1, 1] : [0, 1.2]; }
+function automationLabel(target) { return target === 'pan' ? 'панорама' : 'громкость'; }
+function automationValueAtBeat(track, target, beat, fallback) {
+  const active = track.clips.filter(clip => clip.kind === 'automation' && clip.target === target && beat >= clip.startBeat)
+    .sort((left, right) => left.startBeat - right.startBeat).at(-1);
+  return active ? sampleAutomation(active.points, clamp(beat - active.startBeat, 0, active.lengthBeats), fallback) : fallback;
+}
+function createAutomationClip(target = 'volume') {
   const track = getTrack(state.selectedTrackId);
   if (!track || !canAddClip() || !canAddEvents(2)) return;
-  const startBeat = snapBeat(state.playheadBeat), lengthBeats = 16, value = clamp(Number(track.volume ?? .8), 0, 1.2);
+  const [minimum, maximum] = automationRange(target);
+  const base = target === 'pan' ? Number(track.pan || 0) : Number(track.volume ?? .8);
+  const value = clamp(base, minimum, maximum), startBeat = snapBeat(state.playheadBeat), lengthBeats = 16;
   recordUndo();
-  const clip = { id: uid('clip'), name: 'Громкость · автоматизация', kind: 'automation', target: 'volume', startBeat, lengthBeats,
+  const label = automationLabel(target);
+  const clip = { id: uid('clip'), name: `${label} · автоматизация`, kind: 'automation', target, startBeat, lengthBeats,
     points: [{ beat: 0, value }, { beat: lengthBeats, value }], color: track.color };
   track.clips.push(clip); state.selectedClipId = clip.id; state.view = 'automation';
-  renderAll(); restartProjectPlaybackIfActive(); showToast('Клип автоматизации громкости создан');
+  renderAll(); restartProjectPlaybackIfActive(); showToast(`Клип автоматизации ${label} создан`);
 }
-
-function trackVolumeAtBeat(track, beat) {
-  const active = track.clips.filter(clip => clip.kind === 'automation' && clip.target === 'volume' && beat >= clip.startBeat)
-    .sort((left, right) => left.startBeat - right.startBeat).at(-1);
-  return active ? sampleAutomation(active.points, clamp(beat - active.startBeat, 0, active.lengthBeats), track.volume ?? .8) : track.volume ?? .8;
-}
-
+function trackVolumeAtBeat(track, beat) { return automationValueAtBeat(track, 'volume', beat, track.volume ?? .8); }
+function trackPanAtBeat(track, beat) { return automationValueAtBeat(track, 'pan', beat, track.pan || 0); }
 function automationSvgPath(clip) {
-  const width = 620, height = 100, insetX = 10, insetY = 8;
+  const width = 620, height = 100, insetX = 10, insetY = 8, [minimum, maximum] = automationRange(clip.target);
   return (clip.points || []).map((point, index) => {
     const x = insetX + (point.beat / clip.lengthBeats) * (width - insetX * 2);
-    const y = height - insetY - (clamp(point.value, 0, 1.2) / 1.2) * (height - insetY * 2);
+    const y = height - insetY - ((clamp(point.value, minimum, maximum) - minimum) / (maximum - minimum)) * (height - insetY * 2);
     return `${index ? 'L' : 'M'} ${x.toFixed(2)} ${y.toFixed(2)}`;
   }).join(' ');
 }
@@ -2711,7 +2716,8 @@ function setupEvents() {
   $$('.browser-tab').forEach(button => { button.onclick = () => { if (state.browserTab !== button.dataset.tab) clearBrowserSelection(); state.browserTab = button.dataset.tab; renderBrowser(); }; button.addEventListener('keydown', event => moveRovingTab(event, '.browser-tab')); });
   $$('.view-tab').forEach(button => { button.onclick = () => { state.view = button.dataset.view; renderEditor(); }; button.addEventListener('keydown', event => moveRovingTab(event, '.view-tab')); });
   $('#addTrackBtn').onclick = () => { const track = addTrack('audio'); if (track) showToast(`${track.name} добавлена`); };
-  $('#addAutomationBtn').onclick = createAutomationClip;
+  $('#addAutomationBtn').onclick = () => createAutomationClip('volume');
+  $('#addPanAutomationBtn').onclick = () => createAutomationClip('pan');
   $('#trackMenuBtn').onclick = () => { const choice = prompt('Тип дорожки: 1 — аудио, 2 — ритм, 3 — инструмент', '1'); addTrack(choice === '2' ? 'drums' : choice === '3' ? 'instrument' : 'audio'); };
   $('#zoomInput').oninput = event => { state.zoom = Number(event.target.value); renderTimeline(); };
   $('#followPlayheadBtn').onclick = event => { followPlayhead = !followPlayhead; event.currentTarget.classList.toggle('selected', followPlayhead); event.currentTarget.setAttribute('aria-pressed', String(followPlayhead)); };
