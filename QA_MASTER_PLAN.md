@@ -6,7 +6,7 @@
 
 **Частичная готовность, не 100%.** Автоматический Windows release gate проходит; ручная установка/приёмка Windows 11 и аппаратный звук не подтверждены. Неизвестные проверки остаются `NOT TESTED`, а не `PASS`.
 
-Текущее main-дерево commit `aba4f0fc04a14070a97d1951cf459505e51cb364` совпадает с проверенным деревом `1c50a2e`; полный Windows release gate прошёл в [run #45643005661](https://github.com/maxim505885-jpg/swuk/actions/runs/45643005661). Native benchmark впервые отдельно измерен в [run #45629167866](https://github.com/maxim505885-jpg/swuk/actions/runs/45629167866). Сводка и границы — в [матрице покрытия](TEST_COVERAGE_MATRIX.md).
+Текущее main-дерево commit `85902df63fb20c1bddde585a02ffcdb86cb24be4` (tree `900850f8f135a1e58e1c0e3ad378dd5577985a2d`) совпадает с проверенным деревом PR #34; полный Windows release gate прошёл в [run #45648141896](https://github.com/maxim505885-jpg/swuk/actions/runs/45648141896). Native benchmark впервые отдельно измерен в [run #45629167866](https://github.com/maxim505885-jpg/swuk/actions/runs/45629167866). Сводка и границы — в [матрице покрытия](TEST_COVERAGE_MATRIX.md).
 
 ## Приоритеты перед выпуском
 
@@ -20,10 +20,10 @@
 
 | Gate | Сейчас |
 |---|---|
-| Windows CI build, tests and x64 package | PASS, exact main commit/run above |
+| Windows CI build, tests and x64 package | PASS, exact main tree/run above |
 | Deterministic project validation, DSP and renderer tests | PASS in automated suite |
 | Electron smoke for representative user flows | PASS; scope listed in `TEST_COVERAGE_MATRIX.md` |
-| Native mixer synthetic load benchmark | PASS; release gate #45630452982 includes it; benchmark metrics from #45629167866; native core only |
+| Native mixer synthetic load benchmark | PASS; latest release gate #45648141896 includes it; benchmark metrics from #45629167866; native core only |
 | Physical Windows 11 install and audible WASAPI output | NOT TESTED |
 | Physical microphone/input recording | NOT TESTED |
 | Full visual/accessibility audit at every target viewport/theme | NOT TESTED |
