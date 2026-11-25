@@ -253,6 +253,14 @@ function registerAudioHandlers() {
     }
     return requestAudioEngine('midi_send_note', { channel, pitch, velocity, on });
   });
+  ipcMain.handle('native-midi:send-realtime', (event, status, count) => {
+    if (!trustedRenderer(event)) return { ok: false, error: 'Запрос отклонён' };
+    if (![0xF8, 0xFA, 0xFB, 0xFC].includes(status) || !Number.isInteger(count) ||
+        count < 1 || count > (status === 0xF8 ? 96 : 1)) {
+      return { ok: false, error: 'Параметры MIDI clock некорректны' };
+    }
+    return requestAudioEngine('midi_send_realtime', { status, count });
+  });
   ipcMain.handle('native-audio:status', event => trustedRenderer(event)
     ? requestAudioEngine('status')
     : { ok: false, error: 'Запрос отклонён' });
