@@ -1721,7 +1721,7 @@ function renderPianoRoll(body, clip, track) {
 function createMixerBus() {
   if (state.tracks.length + state.buses.length >= PROJECT_LIMITS.tracks) { showToast(`Достигнут общий лимит каналов (${PROJECT_LIMITS.tracks})`); return; }
   const index = state.buses.length + 1, palette = themePalette();
-  const bus = { id: uid('bus'), name: `Шина ${index}`, color: palette[(state.tracks.length + index - 1) % palette.length], volume: .8, pan: 0, mute: false, solo: false, effects: { reverb: false, delay: false, equalizer: false }, compressor: false, limiter: false };
+  const bus = { id: uid('bus'), name: `Шина ${index}`, color: palette[(state.tracks.length + index - 1) % palette.length], volume: .8, pan: 0, mute: false, solo: false, effects: { reverb: false, delay: false, equalizer: false, compressor: false, limiter: false } };
   recordUndo(); state.buses.push(bus); renderAll(); restartProjectPlaybackIfActive(); showToast(`${bus.name} создана`);
 }
 function renderMixer() {
@@ -1795,9 +1795,12 @@ function scheduleProject(context, fromBeat = 0, destination = context.destinatio
     const busGain = context.createGain(); busGain.gain.setValueAtTime((bus.mute && !audibleSoloTrack) || (hasSolo && !bus.solo && !audibleSoloTrack) ? 0 : bus.volume, now);
     busNode.connect(busGain); busNode = busGain; nodes.push(busGain);
     if (context.createStereoPanner) { const panner = context.createStereoPanner(); panner.pan.setValueAtTime(bus.pan, now); busNode.connect(panner); busNode = panner; nodes.push(panner); if (context === audioContext) liveTrackPans.set(bus.id, panner); }
-    busNode.connect(destination); busInputs.set(bus.id, input);
-    if (context === audioContext) liveTrackGains.set(bus.id, busGain);
-    scheduledNodes.push({ stop: () => { nodes.forEach(node => { try { node.disconnect(); } catch {} }); liveTrackGains.delete(bus.id); liveTrackPans.delete(bus.id); } });
+    if (context === audioContext) {
+      const analyser = context.createAnalyser(); analyser.fftSize = 256; busNode.connect(analyser); analyser.connect(destination); nodes.push(analyser);
+      liveTrackGains.set(bus.id, busGain); liveTrackMeters.set(bus.id, analyser); liveTrackMeterBuffers.set(bus.id, new Float32Array(analyser.fftSize));
+    } else busNode.connect(destination);
+    busInputs.set(bus.id, input);
+    scheduledNodes.push({ stop: () => { nodes.forEach(node => { try { node.disconnect(); } catch {} }); liveTrackGains.delete(bus.id); liveTrackPans.delete(bus.id); liveTrackEqualizers.delete(bus.id); liveTrackCompressors.delete(bus.id); liveTrackLimiters.delete(bus.id); liveTrackMeters.delete(bus.id); liveTrackMeterBuffers.delete(bus.id); } });
   }
   for (const track of state.tracks) {
     const routedBus = state.buses.find(bus => bus.id === track.outputBusId);

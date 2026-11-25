@@ -171,15 +171,3 @@
 @media(max-width:420px){.inspector-eq-band{grid-template-columns:100px minmax(110px,1fr);gap:6px}.inspector-eq-controls{padding:8px}}
 
 .spectrum-widget{width:188px;min-width:150px;flex:0 1 188px;padding:9px 10px 7px;display:flex;flex-direction:column;justify-content:center;gap:4px;border-right:1px solid var(--line);background:#17131b}.spectrum-heading,.spectrum-scale{display:flex;justify-content:space-between;align-items:center;gap:5px}.spectrum-heading{font-size:8px;font-weight:700;letter-spacing:.12em;color:#efc7df}.spectrum-heading output{font-size:8px;letter-spacing:0;font-weight:400;color:var(--muted)}#spectrumCanvas{display:block;width:100%;height:72px;border-radius:4px;background:#15111a}.spectrum-scale{font-size:7px;color:var(--muted)}.mixer-panel.collapsed .spectrum-widget{display:none}@media(max-width:760px){.spectrum-widget{display:none}}
-
-
-/* Mixer bus routing controls */
-.route-control, .routing-row select { width:100%; min-width:0; padding:5px 6px; border:1px solid var(--line); border-radius:5px; background:var(--input-bg); color:var(--input-text); font:10px "Segoe UI",Arial,sans-serif; }
-.route-control:focus-visible, .routing-row select:focus-visible, .bus-remove:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
-.mixer-bus-strip { border-top:2px solid var(--accent); }
-.bus-remove { padding:5px 4px; border:1px solid var(--line); border-radius:5px; background:var(--surface-2); color:var(--muted); font:9px "Segoe UI",Arial,sans-serif; cursor:pointer; }
-.bus-remove:hover { border-color:var(--record); color:var(--record); }
-.routing-list { display:grid; gap:8px; margin:14px 0; max-height:55vh; overflow:auto; }
-.routing-row { display:grid; grid-template-columns:minmax(100px,1fr) minmax(130px,1fr); align-items:center; gap:12px; padding:9px; border:1px solid var(--line); border-radius:6px; color:var(--text); }
-.modal-description { color:var(--muted); font-size:11px; line-height:1.5; }
-@media (max-width:560px) { .routing-row { grid-template-columns:1fr; gap:6px; } }
