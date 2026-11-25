@@ -5,6 +5,7 @@
 #include <array>
 #include <optional>
 #include <utility>
+#include <memory>
 #include <vector>
 
 namespace sonora::audio {
@@ -88,6 +89,8 @@ struct TrackMixSettings {
     float equalizerGainDb{};
     float equalizerQ{1.0F};
     std::array<EqualizerBandSettings, kEqualizerBandCount> equalizerBands = kDefaultEqualizerBands;
+    bool isBus{};
+    std::int32_t outputBusIndex{-1};
 };
 
 struct AudioClipView {
@@ -113,6 +116,20 @@ struct ProjectMixView {
 
 // Mutable, preallocated DSP state owned by the audio callback. Configure this
 // on the control thread before publishing the project graph.
+struct ProjectMixState;
+struct RoutedChannelState {
+    TrackMixSettings settings;
+    std::vector<AudioClipView> clips;
+    std::vector<float> outputScratch;
+    std::vector<float> busInputScratch;
+    PcmSourceView busInputView{};
+    AudioClipView busInputClip{};
+    std::vector<float> silenceScratch;
+    PcmSourceView silenceView{};
+    AudioClipView silenceClip{};
+    std::unique_ptr<ProjectMixState> runtime;
+};
+
 struct ProjectMixState {
     struct TrackState {
         std::vector<float> delayBuffer;
@@ -138,6 +155,8 @@ struct ProjectMixState {
     std::vector<int> effectSlots;
     std::vector<float> trackScratch;
     std::vector<float> meterScratch;
+    std::vector<RoutedChannelState> routedChannels;
+    bool usesRouting{};
     std::size_t maxBlockFrames{};
 };
 

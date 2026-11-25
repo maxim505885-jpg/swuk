@@ -10,11 +10,33 @@ export function createProjectDocument(state, assets, savedAt = new Date().toISOS
   return {
     format: 'sonora-project', version: 1, savedAt, name: state.name, tempo: state.tempo, key: state.key,
     masterVolume: state.masterVolume, loop: state.loop, loopStartBeat: state.loopStartBeat, loopEndBeat: state.loopEndBeat,
-    selectedTrackId: state.selectedTrackId, tracks: state.tracks, markers: state.markers, assets,
+    selectedTrackId: state.selectedTrackId, tracks: state.tracks, buses: state.buses || [], markers: state.markers, assets,
   };
 }
 
 const plainObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+const validMixerChannel = channel =>
+  (channel.name === undefined || (typeof channel.name === 'string' && channel.name.length <= 256)) &&
+  (channel.color === undefined || (typeof channel.color === 'string' && /^#[\da-f]{6}$/i.test(channel.color))) &&
+  (channel.volume === undefined || finiteBetween(channel.volume, 0, 1.5)) &&
+  (channel.pan === undefined || finiteBetween(channel.pan, -1, 1)) &&
+  (channel.mute === undefined || typeof channel.mute === 'boolean') &&
+  (channel.solo === undefined || typeof channel.solo === 'boolean') &&
+  (channel.effects === undefined || (plainObject(channel.effects) && Object.values(channel.effects).every(value => typeof value === 'boolean'))) &&
+  (channel.compressorSettings === undefined || (plainObject(channel.compressorSettings) &&
+    (channel.compressorSettings.thresholdDb === undefined || finiteBetween(channel.compressorSettings.thresholdDb, -60, 0)) &&
+    (channel.compressorSettings.ratio === undefined || finiteBetween(channel.compressorSettings.ratio, 1, 20)) &&
+    (channel.compressorSettings.attackMs === undefined || finiteBetween(channel.compressorSettings.attackMs, .1, 100)) &&
+    (channel.compressorSettings.releaseMs === undefined || finiteBetween(channel.compressorSettings.releaseMs, 10, 1000)) &&
+    (channel.compressorSettings.makeupDb === undefined || finiteBetween(channel.compressorSettings.makeupDb, 0, 24)))) &&
+  (channel.limiterSettings === undefined || (plainObject(channel.limiterSettings) &&
+    (channel.limiterSettings.ceilingDb === undefined || finiteBetween(channel.limiterSettings.ceilingDb, -24, 0)) &&
+    (channel.limiterSettings.releaseMs === undefined || finiteBetween(channel.limiterSettings.releaseMs, 10, 500)))) &&
+  (channel.eqSettings === undefined || (plainObject(channel.eqSettings) && finiteBetween(channel.eqSettings.frequencyHz, 20, 20_000) &&
+    finiteBetween(channel.eqSettings.gainDb, -24, 24) && finiteBetween(channel.eqSettings.q, .1, 18) &&
+    (channel.eqSettings.bands === undefined || (Array.isArray(channel.eqSettings.bands) && channel.eqSettings.bands.length === 7 &&
+      channel.eqSettings.bands.every(band => plainObject(band) && finiteBetween(band.frequencyHz, 20, 20_000) &&
+        finiteBetween(band.gainDb, -24, 24) && finiteBetween(band.q, .1, 18))))));
 const finiteBetween = (value, minimum, maximum) => Number.isFinite(value) && value >= minimum && value <= maximum;
 const idValue = value => typeof value === 'string' && value.length > 0 && value.length <= 128;
 const BASE64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
@@ -49,7 +71,9 @@ export function validateProjectDocument(data, limits = PROJECT_LIMITS) {
       (data.masterVolume !== undefined && !finiteBetween(data.masterVolume, 0, 1.5)) ||
       (data.key !== undefined && (typeof data.key !== 'string' || data.key.length > 64)) ||
       (data.selectedTrackId !== undefined && !idValue(data.selectedTrackId))) return { ok: false, code: 'invalid' };
-  if (data.tracks.length === 0 || data.tracks.length > limits.tracks) return { ok: false, code: 'too-many-tracks' };
+  const buses = data.buses ?? [];
+  if (!Array.isArray(buses) || data.tracks.length + buses.length > limits.tracks) return { ok: false, code: 'too-many-tracks' };
+  if (data.tracks.length === 0) return { ok: false, code: 'too-many-tracks' };
   const assets = data.assets ?? [];
   if (!Array.isArray(assets) || assets.length > limits.assets) return { ok: false, code: 'too-many-assets' };
 
@@ -72,6 +96,7 @@ export function validateProjectDocument(data, limits = PROJECT_LIMITS) {
         (track.name !== undefined && (typeof track.name !== 'string' || track.name.length > 256)) ||
         (track.volume !== undefined && !finiteBetween(track.volume, 0, 1.5)) ||
         (track.pan !== undefined && !finiteBetween(track.pan, -1, 1)) ||
+        (track.outputBusId !== undefined && track.outputBusId !== null && !idValue(track.outputBusId)) ||
         (track.mute !== undefined && typeof track.mute !== 'boolean') || (track.solo !== undefined && typeof track.solo !== 'boolean') ||
         (track.effects !== undefined && (!plainObject(track.effects) || Object.values(track.effects).some(value => typeof value !== 'boolean'))) ||
         (track.compressorSettings !== undefined && (!plainObject(track.compressorSettings) ||
@@ -158,6 +183,14 @@ export function validateProjectDocument(data, limits = PROJECT_LIMITS) {
       if (eventCount > limits.events) return { ok: false, code: 'too-many-events' };
     }
   }
+
+  const busIds = new Set();
+  for (const bus of buses) {
+    if (!plainObject(bus) || !idValue(bus.id) || trackIds.has(bus.id) || busIds.has(bus.id) || !validMixerChannel(bus) ||
+        Object.hasOwn(bus, 'clips') || (bus.outputBusId !== undefined && bus.outputBusId !== null)) return { ok: false, code: 'invalid-routing' };
+    busIds.add(bus.id);
+  }
+  if (data.tracks.some(track => track.outputBusId != null && !busIds.has(track.outputBusId))) return { ok: false, code: 'invalid-routing' };
 
   if (data.selectedTrackId !== undefined && !trackIds.has(data.selectedTrackId)) return { ok: false, code: 'invalid-selection' };
 

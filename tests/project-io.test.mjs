@@ -207,6 +207,30 @@ test('project validator persists bounded tempo-stretch metadata only with its re
   assert.equal(validateProjectDocument(missingRender).code, 'invalid-clips');
 });
 
+test('project schema persists bounded mixer buses and validates output routes', () => {
+  const bus = { id: 'bus-1', name: 'Drum Bus', color: '#d35c9f', volume: .8, pan: 0, mute: false, solo: false, effects: { reverb: false, delay: false } };
+  const tracks = [{ id: 'track-1', type: 'audio', outputBusId: 'bus-1', clips: [] }];
+  const value = project({ tracks, buses: [bus] });
+  assert.equal(validateProjectDocument(value).ok, true);
+  const document = createProjectDocument({ name: 'QA', tracks, buses: [bus], markers: [] }, []);
+  assert.deepEqual(document.buses, [bus]);
+  assert.equal(validateProjectDocument(document).ok, true);
+
+  assert.equal(validateProjectDocument(project({ tracks, buses: [] })).code, 'invalid-routing');
+  assert.equal(validateProjectDocument(project({ tracks, buses: [{ ...bus, id: 'track-1' }] })).code, 'invalid-routing');
+  assert.equal(validateProjectDocument(project({ tracks, buses: [{ ...bus, outputBusId: 'bus-1' }] })).code, 'invalid-routing');
+  assert.equal(validateProjectDocument(project({ tracks, buses: [{ ...bus, clips: [] }] })).code, 'invalid-routing');
+  assert.equal(validateProjectDocument(value, { ...PROJECT_LIMITS, tracks: 1 }).code, 'too-many-tracks');
+});
+
+test('legacy projects without mixer buses remain valid and serialize with an empty bus list', () => {
+  const legacy = project();
+  assert.equal(validateProjectDocument(legacy).ok, true);
+  const document = createProjectDocument({ name: 'Legacy', tracks: legacy.tracks, markers: [] }, []);
+  assert.deepEqual(document.buses, []);
+  assert.equal(validateProjectDocument(document).ok, true);
+});
+
 test('project validator persists pan automation and rejects values outside the pan range', () => {
   const valid = project({ tracks: [{ id: 'track-1', type: 'audio', clips: [{
     id: 'clip-pan-auto', kind: 'automation', target: 'pan', startBeat: 0, lengthBeats: 4,
