@@ -1,15 +1,15 @@
 # TEST_COVERAGE_MATRIX
 
-Полный Windows release gate для PR #37 прошёл в [run #45658946297](https://github.com/maxim505885-jpg/swuk/actions/runs/45658946297). Проверки выполнены на Windows `windows-latest`; они не заменяют ручную приёмку на Windows 11.
+Полный Windows release gate для PR #38 прошёл в [run #45662325867](https://github.com/maxim505885-jpg/swuk/actions/runs/45662325867). Проверки выполнены на Windows `windows-latest`; они не заменяют ручную приёмку на Windows 11.
 
 | Область | Проверка в pipeline | Результат | Граница доказательства |
 |---|---|---|---|
-| JavaScript / проект / DSP | `npm test` | PASS — 130/130 | Набор модульных и регрессионных тестов; не проверяет все сценарии мышью, клавиатурой и устройствами. |
+| JavaScript / проект / DSP | `npm test` | PASS — 133/133 | Набор модульных и регрессионных тестов; не проверяет все сценарии мышью, клавиатурой и устройствами. |
 | Нативный C++ аудиомикшер | `npm run native:test` | PASS — 28 тестов | Проверяет core, маршруты, эффекты и метры в тестовом процессе. |
 | CLAP offline helper | `npm run native:clap:test` | PASS — 2/2 | Стерео render и отказ для неверного бинарного файла; realtime plugin host отсутствует. |
 | WASAPI/native transport smoke | `npm run native:smoke` | PASS — 1/1 | Проверяет запуск, transport и цифровую тишину. Не доказывает слышимый выход или работу физического входа. |
 | Signalsmith stretch | `npm run qa:signalsmith` | PASS — 36 000 → 45 000 кадров; 440.38 Hz, RMS 0.494 | Синтетический сигнал в Electron; вокал и сложный реальный материал не оценены на слух. |
-| Electron UI smoke | `npm run qa:ui-smoke` | PASS — Windows run #45658946297 | Покрыты Piano Roll, sampler, drum probability/ratchets, многотактовый sequencer и recovery старого паттерна, Arrangement, split/slicing, crop waveform с Undo/Redo и audition выделения, EQ, compressor/limiter, project round-trip, WAV export, loop и доступность MIDI recording control. Отдельные unit-тесты проверяют note-on/off, velocity, длительность и расширение MIDI-клипа. Это не полный обход всех элементов UI inventory и не подтверждение слышимого hardware output. |
+| Electron UI smoke | `npm run qa:ui-smoke` | PASS — Windows run #45662325867 | Покрыты Piano Roll, sampler, drum probability/ratchets, многотактовый sequencer и recovery старого паттерна, Arrangement, split/slicing, crop waveform с Undo/Redo и audition выделения, EQ, compressor/limiter, project round-trip, WAV export, loop и доступность MIDI recording control. Отдельные unit-тесты проверяют note-on/off запись, velocity, длительность, расширение MIDI-клипа, schedule MIDI output, mute/solo и пересечение временного диапазона. Это не полный обход всех элементов UI inventory и не подтверждение слышимого hardware output. |
 | Windows x64 installer | `npm run build:win` | PASS — NSIS installer собран и опубликован как CI artifact | CI-сборка не подписана сертификатом издателя и не была установлена вручную на этом компьютере. |
 | UI responsive/accessibility | Визуальный/клавиатурный аудит всех тем, размеров и состояний | NOT TESTED как полный критерий | См. точечные статусы и доказательства в `UI_INVENTORY.json`; автоснимки не прикреплены к этому gate. |
 | Нативная нагрузка ядра | `npm run qa:load` | PASS — run #45629167866: p95 340.8 мкс (128 клипов), 426.7 мкс (128 клипов + meters), 61.6 мкс (8 дорожек + reverb/delay) | Синтетический C++ mixer benchmark на `windows-latest`; порог не задан, Electron/UI/underruns не измеряются. |
