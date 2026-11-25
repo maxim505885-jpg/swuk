@@ -34,14 +34,14 @@ if (($major -lt 3) -or (($major -eq 3) -and ($minor -lt 25))) {
     throw "VST3 hosting SDK requires CMake 3.25 or newer; found $versionText."
 }
 
-& $cmake.Source -S $sdkRoot -B $buildDirectory -A x64 -DSMTG_ENABLE_VST3_PLUGIN_EXAMPLES=OFF -DSMTG_ENABLE_VST3_HOSTING_EXAMPLES=OFF -DSMTG_ENABLE_VSTGUI_SUPPORT=OFF
+& $cmake.Source -S (Join-Path $PSScriptRoot 'vst3-host') -B $buildDirectory -A x64 "-DSONORA_VST3_SDK_ROOT=$sdkRoot"
 if ($LASTEXITCODE -ne 0) {
-    throw "VST3 SDK CMake configure failed with exit code $LASTEXITCODE"
+    throw "VST3 helper CMake configure failed with exit code $LASTEXITCODE"
 }
 
-& $cmake.Source --build $buildDirectory --config Release --target sdk_hosting
+& $cmake.Source --build $buildDirectory --config Release --target sonora-vst3-host
 if ($LASTEXITCODE -ne 0) {
-    throw "VST3 SDK hosting target build failed with exit code $LASTEXITCODE"
+    throw "VST3 helper build failed with exit code $LASTEXITCODE"
 }
 
-Write-Output "Built the pinned VST3 SDK hosting target at $buildDirectory"
+Write-Output "Built the isolated VST3 host helper at $buildDirectory"
