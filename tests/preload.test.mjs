@@ -72,6 +72,19 @@ test('preload exposes real-time CLAP controls only for validated selection token
   ]);
 });
 
+test('preload exposes VST3 realtime controls only for validated selection tokens', async () => {
+  const { calls, api } = loadPreload();
+
+  await api.inspectVst3Effect();
+  assert.equal((await api.loadRealtimeVst3Effect('bad-token')).ok, false);
+  await api.loadRealtimeVst3Effect('12345678-1234-1234-1234-123456789abc');
+  await api.unloadRealtimeVst3Effect();
+  await api.realtimeVst3Status();
+  assert.deepEqual(calls.map(call => call[0]), [
+    'native-vst3:inspect', 'native-vst3:load-realtime', 'native-vst3:unload-realtime', 'native-vst3:realtime-status',
+  ]);
+});
+
 test('preload rejects unsafe WAV assets and playback arguments before IPC', async () => {
   const { calls, api } = loadPreload();
 
