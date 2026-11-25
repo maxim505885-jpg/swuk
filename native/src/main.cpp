@@ -897,7 +897,7 @@ private:
         const auto fadeInFrames = numberField<std::uint64_t>(line, "fadeInFrames").value_or(0);
         const auto fadeOutFrames = numberField<std::uint64_t>(line, "fadeOutFrames").value_or(0);
         std::vector<sonora::audio::AutomationPoint> gainEnvelope;
-        if (line.find("\\"gainAutomation\\"") != std::string::npos) {
+        if (line.find("\"gainAutomation\"") != std::string::npos) {
             const auto values = numberArrayField(line, "gainAutomation", 2048);
             const auto parsed = values ? parseGainAutomation(*values, 2048, 1.5) : std::nullopt;
             if (!parsed) return errorJson("Clip gain envelope is malformed");
