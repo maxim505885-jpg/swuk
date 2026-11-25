@@ -1015,7 +1015,7 @@ function bindClipGainEnvelopeEditor(clip) {
     recordUndo(); points.push({ position, gain: sampleClipGainEnvelope(points, position) }); points.sort((a, b) => a.position - b.position);
     clip.gainEnvelope = points; renderAll();
   });
-  $('[data-clip-gain-position]').forEach(input => {
+  $$('[data-clip-gain-position]').forEach(input => {
     input.addEventListener('focus', recordUndo, { once: true });
     input.addEventListener('change', () => {
       const index = Number(input.dataset.clipGainPosition), points = normalizeClipGainEnvelope(clip.gainEnvelope);
@@ -1025,19 +1025,19 @@ function bindClipGainEnvelopeEditor(clip) {
       clip.gainEnvelope = points; markProjectDirty(); renderAll(); restartPlaybackIfActive();
     });
   });
-  $('[data-clip-gain-value]').forEach(input => {
+  $$('[data-clip-gain-value]').forEach(input => {
     const index = Number(input.dataset.clipGainValue), output = input.parentElement.querySelector('output');
     input.addEventListener('focus', recordUndo, { once: true });
     input.addEventListener('input', () => {
       const points = normalizeClipGainEnvelope(clip.gainEnvelope);
       points[index].gain = clamp(Number(input.value), 0, 1.5); clip.gainEnvelope = points;
       output.textContent = `${points[index].gain.toFixed(2)}×`; markProjectDirty();
-      const element = $('.clip').find(item => item.dataset.clip === clip.id);
+      const element = $$('.clip').find(item => item.dataset.clip === clip.id);
       $('.clip-gain-envelope-curve path', element)?.setAttribute('d', clipGainEnvelopeSvgPath(clip));
     });
     input.addEventListener('change', restartPlaybackIfActive);
   });
-  $('[data-clip-gain-remove]').forEach(button => button.addEventListener('click', () => {
+  $$('[data-clip-gain-remove]').forEach(button => button.addEventListener('click', () => {
     const points = normalizeClipGainEnvelope(clip.gainEnvelope), index = Number(button.dataset.clipGainRemove);
     if (points.length <= 2 || index <= 0 || index >= points.length - 1) return;
     recordUndo(); points.splice(index, 1); clip.gainEnvelope = points; renderAll(); restartPlaybackIfActive();
