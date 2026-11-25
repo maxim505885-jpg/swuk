@@ -85,6 +85,29 @@ test('preload exposes VST3 realtime controls only for validated selection tokens
   ]);
 });
 
+test('preload validates per-track plugin format, index, and selection token before IPC', async () => {
+  const { calls, api } = loadPreload();
+  const token = '12345678-1234-1234-1234-123456789abc';
+
+  assert.equal((await api.loadTrackPlugin('audio', 0, token)).ok, false);
+  assert.equal((await api.loadTrackPlugin('clap', 128, token)).ok, false);
+  assert.equal((await api.loadTrackPlugin('vst3', 0, 'bad-token')).ok, false);
+  assert.equal((await api.unloadTrackPlugin(-1)).ok, false);
+  assert.equal((await api.trackPluginStatus(128)).ok, false);
+  assert.equal(calls.length, 0);
+
+  await api.loadTrackPlugin('clap', 2, token);
+  await api.loadTrackPlugin('vst3', 127, token);
+  await api.unloadTrackPlugin(2);
+  await api.trackPluginStatus(127);
+  assert.deepEqual(calls, [
+    ['native-track-plugin:load', 'clap', 2, token],
+    ['native-track-plugin:load', 'vst3', 127, token],
+    ['native-track-plugin:unload', 2],
+    ['native-track-plugin:status', 127],
+  ]);
+});
+
 test('preload rejects unsafe WAV assets and playback arguments before IPC', async () => {
   const { calls, api } = loadPreload();
 
