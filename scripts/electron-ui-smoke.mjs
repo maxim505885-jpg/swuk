@@ -425,7 +425,27 @@ try {
   await evaluate("document.querySelector('[data-clip=\\\"qa-large-127\\\"]').click()");
   assert.equal(await waitUntil(() => evaluate("document.querySelector('[data-clip=\\\"qa-large-127\\\"]')?.classList.contains('selected')"), Boolean, 'select a clip at the end of a large Arrangement'), true);
   assert.deepEqual(exceptions, [], 'large Arrangement rendering, zoom, scroll and selection must not throw renderer exceptions');
-  console.log(`Electron UI smoke passed: 128-clip Arrangement, zoom, spectrum analyzer, EQ, compressor, limiter, split/slicing, undo/redo, project round-trip, WAV export and loop selection`);
+  const samplerProject = structuredClone(largeProject);
+  const samplerAsset = samplerProject.assets.find(asset => asset.wav);
+  assert.ok(samplerAsset, 'sampler smoke fixture has an imported WAV asset');
+  samplerProject.tracks.push({
+    id: 'qa-sampler-track', name: 'QA sampler', type: 'instrument', instrument: 'sampler',
+    samplerAssetId: samplerAsset.id, samplerRootNote: 60, volume: .8, pan: 0, mute: false, solo: false,
+    clips: [{ id: 'qa-sampler-midi', name: 'Sampler MIDI', kind: 'midi', startBeat: 0, lengthBeats: 4,
+      notes: [{ beat: 0, length: 1, note: 60, velocity: .8 }, { beat: 1, length: 1, note: 72, velocity: .8 }] }],
+  });
+  samplerProject.selectedTrackId = 'qa-sampler-track';
+  const samplerProjectText = JSON.stringify(samplerProject);
+  await evaluate("(() => { const previous=window.confirm; window.confirm=()=>true; document.querySelector('#newProjectBtn').click(); window.confirm=previous; })()");
+  await waitUntil(() => evaluate("document.querySelectorAll('.track-lane .clip').length"), count => count === 0, 'empty Arrangement before loading sampler session');
+  await evaluate(`(() => { const file=new File([${JSON.stringify(samplerProjectText)}],'qa-sampler.sonora',{type:'application/json'}),transfer=new DataTransfer();transfer.items.add(file);const input=document.querySelector('#projectFile');input.files=transfer.files;input.dispatchEvent(new Event('change',{bubbles:true}));return true; })()`);
+  await waitUntil(() => evaluate("document.querySelector('#inspectorSynthInstrument')?.value"), value => value === 'sampler', 'sampler project selection');
+  await evaluate("document.querySelector('#inspectorOpenEditorBtn').click()");
+  const samplerEditor = await waitUntil(() => evaluate("(()=>({asset:document.querySelector('#samplerAsset')?.value,root:document.querySelector('#samplerRootNote')?.value,option:document.querySelector('#samplerAsset option:checked')?.textContent}))()"), value => value.asset === samplerAsset.id, 'sampler sample controls');
+  assert.equal(samplerEditor.root, '60', 'sampler editor restores its MIDI root key');
+  assert.ok(samplerEditor.option.length > 0, 'sampler editor shows the imported WAV name');
+  assert.deepEqual(exceptions, [], 'sampler project load and editor must not throw renderer exceptions');
+  console.log(`Electron UI smoke passed: sampler WAV/root-note editor, 128-clip Arrangement, zoom, spectrum analyzer, EQ, compressor, limiter, split/slicing, undo/redo, project round-trip, WAV export and loop selection`);
 } finally {
   if (socket && socket.readyState < WebSocket.CLOSING) socket.close();
   if (child.exitCode === null) {
