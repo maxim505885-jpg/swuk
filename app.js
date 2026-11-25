@@ -6,7 +6,7 @@ import { analyzeMeter, presentMeter } from './audio-meter.mjs?v=1';
 import { sampleWaveformPeaks } from './waveform-core.mjs?v=1';
 import { clampMidiPitch, midiOctaveStart, shiftMidiOctave } from './midi-edit-core.mjs?v=1';
 import { normalizeClipFades, scheduleClipFade } from './clip-fade-core.mjs?v=1';
-import { normalizeEqSettings } from './eq-core.mjs?v=1';
+import { EQ_BAND_FREQUENCIES, normalizeEqSettings } from './eq-core.mjs?v=2';
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -1009,6 +1009,7 @@ function renderInspector() {
   const typeLabel = track.type === 'audio' ? 'Аудио' : track.type === 'drums' ? 'Шаговый секвенсор' : 'Встроенный инструмент';
   const selected = getClip(state.selectedClipId);
   const clip = selected.track?.id === track.id ? selected.clip : null;
+  const eqSettings = track.eqSettings = normalizeEqSettings(track.eqSettings);
   const synthSettings = track.type === 'instrument' ? (track.synthSettings = normalizeSynthSettings(track.synthSettings, track.instrument)) : null;
   const instrumentOptions = track.type === 'instrument' ? INSTRUMENTS.map(item => `<option value="${item.id}"${item.id === track.instrument ? ' selected' : ''}>${escapeHtml(item.name)}</option>`).join('') : '';
   const panText = value => Math.abs(value) < 0.005 ? 'Центр' : `${Math.round(Math.abs(value) * 100)}% ${value < 0 ? 'L' : 'R'}`;
@@ -1023,10 +1024,14 @@ function renderInspector() {
       <div class="inspector-button-row"><button type="button" class="inspector-effect" data-inspector-effect="reverb">Реверберация</button><button type="button" class="inspector-effect" data-inspector-effect="delay">Задержка</button></div>
       <div class="inspector-button-row"><button type="button" class="inspector-effect" data-inspector-effect="equalizer">Параметрический EQ</button></div>
       ${track.effects?.equalizer ? `<div class="inspector-eq-controls">
-        <label class="inspector-field inspector-range" for="inspectorEqFrequency"><span>Частота <output id="inspectorEqFrequencyValue"></output></span><input id="inspectorEqFrequency" data-eq="frequencyHz" type="range" min="20" max="20000" step="10" aria-label="Центральная частота EQ" /></label>
-        <label class="inspector-field inspector-range" for="inspectorEqGain"><span>Усиление <output id="inspectorEqGainValue"></output></span><input id="inspectorEqGain" data-eq="gainDb" type="range" min="-24" max="24" step="0.1" aria-label="Усиление EQ в децибелах" /></label>
-        <label class="inspector-field inspector-range" for="inspectorEqQ"><span>Добротность Q <output id="inspectorEqQValue"></output></span><input id="inspectorEqQ" data-eq="q" type="range" min="0.1" max="18" step="0.1" aria-label="Добротность параметрического EQ" /></label>
-        <p class="field-help">Одна стереополоса peaking EQ. Параметры действуют на эту дорожку и сохраняются в проекте.</p>
+        <p class="field-help">Семиполосный стерео EQ. Меняйте частоту и усиление каждой полосы; настройки сохраняются в проекте.</p>
+        <div class="inspector-eq-bands" role="group" aria-label="Семь полос эквалайзера">
+          ${eqSettings.bands.map((band, index) => `<div class="inspector-eq-band" role="group" aria-label="Полоса ${index + 1}">
+            <label class="inspector-eq-frequency"><span>${String(index + 1).padStart(2, '0')} · ${EQ_BAND_FREQUENCIES[index]} Гц</span><input data-eq="frequencyHz" data-eq-band="${index}" type="number" min="20" max="20000" step="1" value="${band.frequencyHz}" aria-label="Частота полосы ${index + 1} в герцах" /></label>
+            <label class="inspector-eq-gain"><span class="sr-only">Усиление полосы ${index + 1}</span><input data-eq="gainDb" data-eq-band="${index}" type="range" min="-24" max="24" step="0.1" value="${band.gainDb}" aria-label="Усиление полосы ${index + 1} в децибелах" /><output aria-live="polite">${band.gainDb.toFixed(1)} dB</output></label>
+          </div>`).join('')}
+        </div>
+        <label class="inspector-field inspector-range" for="inspectorEqQ"><span>Добротность всех полос <output id="inspectorEqQValue">${eqSettings.q.toFixed(1)}</output></span><input id="inspectorEqQ" data-eq="q" type="range" min="0.1" max="18" step="0.1" value="${eqSettings.q}" aria-label="Добротность всех полос параметрического EQ" /></label>
       </div>` : ''}
       <button type="button" class="button quiet compact inspector-open-editor" id="inspectorOpenEditorBtn">Открыть редактор</button>
     </section>
@@ -1105,24 +1110,34 @@ function renderInspector() {
   }
 
   if (track.effects?.equalizer) {
-    track.eqSettings = normalizeEqSettings(track.eqSettings);
     for (const control of $$('[data-eq]', host)) {
-      const key = control.dataset.eq, output = $(`#inspectorEq${key === 'frequencyHz' ? 'Frequency' : key === 'gainDb' ? 'Gain' : 'Q'}Value`, host);
-      control.value = String(track.eqSettings[key]);
-      const updateOutput = () => { output.textContent = key === 'frequencyHz' ? `${Math.round(track.eqSettings[key])} Hz` : key === 'gainDb' ? `${track.eqSettings[key].toFixed(1)} dB` : track.eqSettings[key].toFixed(1); };
-      updateOutput(); control.addEventListener('focus', recordUndo, { once: true });
-      control.addEventListener('input', event => {
-        track.eqSettings = normalizeEqSettings({ ...track.eqSettings, [key]: Number(event.target.value) });
-        event.target.value = String(track.eqSettings[key]); updateOutput(); markProjectDirty();
-        const filter = liveTrackEqualizers.get(track.id), now = getAudioContext().currentTime;
-        if (filter && key === 'frequencyHz') filter.frequency.setTargetAtTime(track.eqSettings.frequencyHz, now, .02);
-        if (filter && key === 'gainDb') filter.gain.setTargetAtTime(track.eqSettings.gainDb, now, .02);
-        if (filter && key === 'q') filter.Q.setTargetAtTime(track.eqSettings.q, now, .02);
-      });
+      const key = control.dataset.eq;
+      const bandIndex = control.dataset.eqBand === undefined ? null : Number(control.dataset.eqBand);
+      const output = control.parentElement.querySelector('output') || $('#inspectorEqQValue', host);
+      const valueForControl = () => bandIndex === null ? track.eqSettings.q : track.eqSettings.bands[bandIndex][key];
+      const formatValue = value => key === 'frequencyHz' ? `${Math.round(value)} Hz` : key === 'gainDb' ? `${value.toFixed(1)} dB` : value.toFixed(1);
+      const updateValue = () => { if (control.type !== 'number') control.value = String(valueForControl()); if (output) output.textContent = formatValue(valueForControl()); };
+      updateValue(); control.addEventListener('focus', recordUndo, { once: true });
+      const updateBand = event => {
+        const nextValue = Number(event.target.value);
+        const nextBands = track.eqSettings.bands.map((band, index) =>
+          bandIndex === null || bandIndex === index ? { ...band, [key]: nextValue } : band);
+        track.eqSettings = normalizeEqSettings({ ...track.eqSettings, bands: nextBands });
+        updateValue(); markProjectDirty();
+        const filters = liveTrackEqualizers.get(track.id), now = getAudioContext().currentTime;
+        const apply = (filter, band) => {
+          if (!filter || !band) return;
+          if (key === 'frequencyHz') filter.frequency.setTargetAtTime(band.frequencyHz, now, .02);
+          if (key === 'gainDb') filter.gain.setTargetAtTime(band.gainDb, now, .02);
+          if (key === 'q') filter.Q.setTargetAtTime(band.q, now, .02);
+        };
+        if (bandIndex === null) track.eqSettings.bands.forEach((band, index) => apply(filters?.[index], band));
+        else apply(filters?.[bandIndex], track.eqSettings.bands[bandIndex]);
+      };
+      control.addEventListener(control.type === 'number' ? 'change' : 'input', updateBand);
       control.addEventListener('change', () => { restartProjectPlaybackIfActive(); });
     }
   }
-
   if (track.type === 'instrument') {
     const instrument = $('#inspectorSynthInstrument', host), waveform = $('#inspectorSynthWaveform', host);
     instrument.addEventListener('change', event => {
@@ -1682,10 +1697,13 @@ function applyTrackEffects(context, track, input, nodes) {
     nodes.push(dry, wet, delay, feedback, mix); output = mix;
   }
   if (effects.equalizer) {
-    const settings = normalizeEqSettings(track.eqSettings), filter = context.createBiquadFilter();
-    filter.type = 'peaking'; filter.frequency.value = settings.frequencyHz; filter.gain.value = settings.gainDb; filter.Q.value = settings.q;
-    output.connect(filter); nodes.push(filter); output = filter;
-    if (context === audioContext) liveTrackEqualizers.set(track.id, filter);
+    const settings = normalizeEqSettings(track.eqSettings), filters = [];
+    for (const band of settings.bands) {
+      const filter = context.createBiquadFilter();
+      filter.type = 'peaking'; filter.frequency.value = band.frequencyHz; filter.gain.value = band.gainDb; filter.Q.value = band.q;
+      output.connect(filter); nodes.push(filter); output = filter; filters.push(filter);
+    }
+    if (context === audioContext) liveTrackEqualizers.set(track.id, filters);
   }
   return output;
 }
@@ -1812,8 +1830,9 @@ function buildNativeProjectPlan() {
     return {
       gain: track.volume ?? 1, pan: track.pan || 0, mute: Boolean(track.mute), solo: Boolean(track.solo),
       reverb: Boolean(track.effects?.reverb), delay: Boolean(track.effects?.delay), gainAutomation,
-      equalizer: Boolean(track.effects?.equalizer), equalizerFrequencyHz: Number(track.eqSettings?.frequencyHz ?? 1000),
-      equalizerGainDb: Number(track.eqSettings?.gainDb ?? 0), equalizerQ: Number(track.eqSettings?.q ?? 1),
+      equalizer: Boolean(track.effects?.equalizer),
+      equalizerFrequencyHz: Number(track.eqSettings?.frequencyHz ?? 1000), equalizerGainDb: Number(track.eqSettings?.gainDb ?? 0), equalizerQ: Number(track.eqSettings?.q ?? 1),
+      equalizerBands: normalizeEqSettings(track.eqSettings).bands.flatMap(({ frequencyHz, gainDb, q }) => [frequencyHz, gainDb, q]),
     };
   });
   if (tracks.some(track => track === null)) return null;
