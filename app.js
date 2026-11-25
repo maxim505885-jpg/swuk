@@ -1965,13 +1965,14 @@ function scheduleProject(context, fromBeat = 0, destination = context.destinatio
           const { probability, ratchets } = normalizeDrumRowSettings(row);
           for (const hit of row.hits) {
             if (!drumHitOccurs(clip.id, rowIndex, hit, probability)) continue;
-            const beat = clip.startBeat + hit / 4; if (beat + secondsPerBeat / 4 / secondsPerBeat < fromBeat) continue;
-            const sourceBuffer = createSampleBuffer(row.kind, context);
+            const beat = clip.startBeat + hit / 4, sourceBuffer = createSampleBuffer(row.kind, context);
             for (let ratchet = 0; ratchet < ratchets; ratchet++) {
+              const ratchetBeat = beat + ratchet / (4 * ratchets);
+              if (ratchetBeat < fromBeat) continue;
               const source = context.createBufferSource(), gain = context.createGain();
               source.buffer = sourceBuffer; gain.gain.value = clamp(Number(row.velocity ?? .78), 0, 1);
               source.connect(gain); gain.connect(trackGain);
-              source.start(now + (beat - fromBeat + ratchet / (4 * ratchets)) * secondsPerBeat);
+              source.start(now + (ratchetBeat - fromBeat) * secondsPerBeat);
               scheduledNodes.push(source);
             }
           }
