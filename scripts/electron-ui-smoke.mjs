@@ -86,7 +86,7 @@ try {
   await evaluate("document.querySelector('#undoBtn').click()");
   await waitUntil(()=>evaluate("document.querySelector('.automation-summary')===null"),Boolean,'pan automation undo');
   await evaluate("document.querySelector('#tab-view-arrangement').click()");
-  await waitUntil(()=>evaluate("document.querySelector('#tab-view-arrangement')?.classList.contains('selected') && document.querySelector('.automation-summary')===null"),Boolean,'return to Arrangement after automation undo');
+  await waitUntil(()=>evaluate("document.querySelector('#tab-view-arrangement')?.getAttribute('aria-selected')==='true' && document.querySelector('.automation-summary')===null"),Boolean,'return to Arrangement after automation undo');
 
 
   await evaluate("document.querySelector('[data-inspector-effect=equalizer]').click()");
