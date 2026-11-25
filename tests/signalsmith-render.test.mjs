@@ -24,9 +24,9 @@ function harness(outputLength = 60000) {
     const factory = async (context, options) => {
       calls.options = options; calls.moduleUrl = factory.moduleUrl;
       return {
-        async addBuffers(channels) { calls.buffers = channels; },
+        async addBuffers(channels, buffers) { calls.buffers = channels; calls.transfers = buffers; },
         connect(destination) { calls.destination = destination; },
-        async start(...args) { calls.start = args; },
+        async schedule(...args) { calls.schedule = args; },
       };
     };
     return factory;
@@ -41,7 +41,9 @@ test('Signalsmith renderer schedules stretch ratio and preserves source channel 
   assert.equal(h.calls.context.length, 60000);
   assert.deepEqual(h.calls.options, { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2] });
   assert.match(h.calls.moduleUrl, /native\/vendor\/signalsmith-stretch\/web\/release\/SignalsmithStretch\.mjs$/);
-  assert.deepEqual(h.calls.start, [0, 0, 1.25, .8, 0]);
+  assert.deepEqual(h.calls.schedule, [{ active: true, input: 0, output: 0, rate: .8, semitones: 0 }]);
+  assert.equal(h.calls.transfers.length, 2);
+  assert.equal(h.calls.transfers[0], h.calls.buffers[0].buffer);
   assert.equal(h.calls.buffers.length, 2);
   assert.notEqual(h.calls.buffers[0].buffer, input.data[0].buffer);
   assert.equal(output.length, 60000);
