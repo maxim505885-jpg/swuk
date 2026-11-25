@@ -80,6 +80,15 @@ test('per-step drum probability and ratchets override row defaults in determinis
   assert.equal(rendered.reduce((count, frame) => count + Number(frame > 0), 0), 4, 'step zero retriggers three times and step one once');
 });
 
+test('multi-bar drum patterns render events after the first bar', () => {
+  const clip = { id: 'two-bars', kind: 'drums', lengthBeats: 8, steps: [{ kind: 'kick', velocity: 1, hits: [0, 16] }] };
+  const rendered = renderSequencedClip(clip, { bpm: 120, sampleRate: 8000, createDrumSample: () => new Float32Array([1]) });
+  assert.ok(rendered instanceof Float32Array);
+  assert.equal(rendered.length, 32_000);
+  assert.equal(rendered[0], 1);
+  assert.equal(rendered[16_000], 1, 'step 17 begins at the start of bar two');
+});
+
 test('drum probability is deterministic and ratchets retrigger within one step', () => {
   assert.deepEqual(normalizeDrumRowSettings({ probability: 1.5, ratchets: 3.2 }), { probability: 1, ratchets: 3 });
   assert.equal(drumHitOccurs('pattern-a', 1, 4, 0), false);

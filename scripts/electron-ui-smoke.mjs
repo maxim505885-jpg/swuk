@@ -452,8 +452,8 @@ try {
     clips: [
       { id: 'qa-drum-pattern', name: 'QA pattern A', kind: 'drums', startBeat: 0, lengthBeats: 4,
         steps: [{ name: 'Kick', kind: 'kick', velocity: .8, probability: 1, ratchets: 1, hits: [0, 4, 8, 12] }] },
-      { id: 'qa-drum-pattern-b', name: 'QA pattern B', kind: 'drums', startBeat: 4, lengthBeats: 4,
-        steps: [{ name: 'Kick', kind: 'kick', velocity: .8, probability: 1, ratchets: 1, hits: [2, 6, 10, 14] }] },
+      { id: 'qa-drum-pattern-b', name: 'QA pattern B', kind: 'drums', startBeat: 4, lengthBeats: 8,
+        steps: [{ name: 'Kick', kind: 'kick', velocity: .8, probability: 1, ratchets: 1, hits: [2, 6, 10, 14, 16, 20, 24, 28] }] },
     ],
   });
   drumProject.selectedTrackId = 'qa-drum-track';
@@ -471,7 +471,9 @@ try {
   const perStepControls = await evaluate("(() => { const cell=document.querySelector('.step-cell');cell.click();const step=document.querySelector('#stepEditStep'),chance=document.querySelector('#stepEditProbability'),repeat=document.querySelector('#stepEditRatchets');chance.value='0.25';chance.dispatchEvent(new Event('change',{bubbles:true}));repeat.value='3';repeat.dispatchEvent(new Event('change',{bubbles:true}));return {step:step.value,chance:chance.value,repeat:repeat.value}; })()");
   assert.deepEqual(perStepControls, { step: '1', chance: '0.25', repeat: '3' }, 'selected step probability and ratchets can override row defaults');
   const patternSwitch = await evaluate("(() => { const picker=document.querySelector('#rackPatternSelect');picker.value='qa-drum-pattern-b';picker.dispatchEvent(new Event('change',{bubbles:true}));return {count:picker.options.length,selected:document.querySelector('#rackPatternSelect').value,firstHit:document.querySelector('.step-cell.active')?.getAttribute('aria-label')}; })()");
-  assert.deepEqual(patternSwitch, { count: 2, selected: 'qa-drum-pattern-b', firstHit: 'Kick, шаг 3' }, 'pattern picker loads the selected clip into the step grid');
+  assert.deepEqual(patternSwitch, { count: 2, selected: 'qa-drum-pattern-b', firstHit: 'Kick, шаг 3, такт 1' }, 'pattern picker loads the selected clip into the step grid');
+  const secondBar = await evaluate("(() => { const bar=document.querySelector('#stepBarSelect');bar.value='2';bar.dispatchEvent(new Event('change',{bubbles:true}));return {length:document.querySelector('#stepLengthSelect').value,bar:bar.value,step:document.querySelector('#stepEditStep').value,firstHit:document.querySelector('.step-cell.active')?.getAttribute('aria-label')}; })()");
+  assert.deepEqual(secondBar, { length: '2', bar: '2', step: '1', firstHit: 'Kick, шаг 1, такт 2' }, 'bar navigation displays and edits steps from the second bar');
   await evaluate("document.querySelector('#createPatternBtn').click()");
   const createdPattern = await waitUntil(() => evaluate("(() => { const picker=document.querySelector('#rackPatternSelect');return picker?{count:picker.options.length,selected:picker.value,name:picker.options[picker.selectedIndex]?.textContent}:null; })()"), value => value?.count === 3, 'new sequencer pattern added');
   assert.match(createdPattern.name, /Ритм 3/, 'new pattern receives a distinct name and becomes active');
