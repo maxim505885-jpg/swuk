@@ -323,6 +323,32 @@ void testSevenParametricEqualizerBandsShapeTheirOwnFrequencies() {
     require(upperBandRatio > 1.9 && upperBandRatio < 2.1, "2.4 kHz band delivers an independent six-decibel boost");
 }
 
+void testTrackCompressorReducesSignalAboveThreshold() {
+    constexpr std::size_t frameCount = 48'000;
+    std::vector<float> samples(frameCount, 0.8F);
+    const sonora::audio::PcmSourceView source{samples.data(), frameCount, 1, 48'000.0};
+    sonora::audio::TrackMixSettings track{1.0F, 0.0F, false, false};
+    track.compressor = true; track.compressorThresholdDb = -12.0F; track.compressorRatio = 4.0F;
+    track.compressorAttackMs = 10.0F; track.compressorReleaseMs = 120.0F; track.compressorMakeupDb = 3.0F;
+    const sonora::audio::AudioClipView clip{&source, 0, 0, 0, frameCount, 1.0, 1.0F, 0.0F};
+    const sonora::audio::ProjectMixView project{&track, 1, &clip, 1, 1.0F};
+    sonora::audio::ProjectMixState state;
+    require(sonora::audio::configureProjectMixState(state, project), "compressor runtime is prepared before audio rendering");
+    std::array<float, 2> first{};
+    require(sonora::audio::renderMixBlock(first.data(), 1, 48'000.0, 0, project, &state), "compressor processes audio");
+    std::vector<float> settled(4096 * 2);
+    require(sonora::audio::renderMixBlock(settled.data(), 4096, 48'000.0, 4096, project, &state), "compressor reduction persists across blocks");
+    const float gain = std::pow(10.0F, (-12.0F + (-1.9382F + 12.0F) / 4.0F) / 20.0F);
+    const float expected = 0.8F * 0.70710678F * gain * std::pow(10.0F, 3.0F / 20.0F);
+    require(settled[2048 * 2] < 0.8F && std::abs(settled[2048 * 2] - expected) < 0.015F,
+        "threshold and ratio produce the expected settled gain reduction");
+    track.compressorRatio = 0.0F;
+    std::array<float, 2> untouched{0.25F, -0.5F};
+    require(!sonora::audio::renderMixBlock(untouched.data(), 1, 48'000.0, 0, project, &state),
+        "invalid compressor settings are rejected before mixing");
+    require(untouched[0] == 0.25F && untouched[1] == -0.5F, "invalid compressor settings leave output untouched");
+}
+
 void testEffectsRequirePreallocatedRuntimeBeforeWriting() {
     const float impulse[]{1.0F};
     const sonora::audio::PcmSourceView source{impulse, 1, 1, 48'000.0};
@@ -407,10 +433,11 @@ int main() {
     testTrackReverbProducesRoomTail();
     testParametricEqualizerBoostsCenterFrequencyAndRejectsInvalidSettings();
     testSevenParametricEqualizerBandsShapeTheirOwnFrequencies();
+    testTrackCompressorReducesSignalAboveThreshold();
     testEffectsRequirePreallocatedRuntimeBeforeWriting();
     testCaptureRingChannelModes();
     testCaptureRingReportsBackpressureAndHonorsFrameLimit();
     testCaptureRecorderWritesFinalizedPcmWave();
-    std::cout << "21 native audio core tests passed\n";
+    std::cout << "22 native audio core tests passed\n";
     return EXIT_SUCCESS;
 }

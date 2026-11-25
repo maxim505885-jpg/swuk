@@ -11,6 +11,11 @@ import { EQ_BAND_FREQUENCIES, normalizeEqSettings } from './eq-core.mjs?v=2';
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
+function normalizeCompressorSettings(settings) {
+  const bounded = (key, fallback, min, max) => clamp(Number.isFinite(settings?.[key]) ? settings[key] : fallback, min, max);
+  return { thresholdDb: bounded('thresholdDb', -18, -60, 0), ratio: bounded('ratio', 4, 1, 20),
+    attackMs: bounded('attackMs', 10, .1, 100), releaseMs: bounded('releaseMs', 120, 10, 1000), makeupDb: bounded('makeupDb', 0, 0, 24) };
+}
 let selectedTheme = readTheme({ getItem: key => { try { return localStorage.getItem(key); } catch { return null; } } });
 const COLORS = THEMES.find(theme => theme.id === selectedTheme)?.trackPalette || THEMES[0].trackPalette;
 const themePalette = () => THEMES.find(theme => theme.id === selectedTheme)?.trackPalette || THEMES[0].trackPalette;
@@ -103,6 +108,7 @@ let liveMasterGain;
 const liveTrackGains = new Map();
 const liveTrackPans = new Map();
 const liveTrackEqualizers = new Map();
+const liveTrackCompressors = new Map();
 const liveTrackMeters = new Map();
 const liveTrackMeterBuffers = new Map();
 const liveClipGains = new Map();
@@ -1083,6 +1089,7 @@ function renderInspector() {
   const selected = getClip(state.selectedClipId);
   const clip = selected.track?.id === track.id ? selected.clip : null;
   const eqSettings = track.eqSettings = normalizeEqSettings(track.eqSettings);
+  const compressorSettings = normalizeCompressorSettings(track.compressorSettings);
   const synthSettings = track.type === 'instrument' ? (track.synthSettings = normalizeSynthSettings(track.synthSettings, track.instrument)) : null;
   const instrumentOptions = track.type === 'instrument' ? INSTRUMENTS.map(item => `<option value="${item.id}"${item.id === track.instrument ? ' selected' : ''}>${escapeHtml(item.name)}</option>`).join('') : '';
   const panText = value => Math.abs(value) < 0.005 ? 'Центр' : `${Math.round(Math.abs(value) * 100)}% ${value < 0 ? 'L' : 'R'}`;
@@ -1095,7 +1102,7 @@ function renderInspector() {
       <div class="inspector-button-row"><button type="button" class="inspector-mode" data-inspector-mode="mute">Заглушить</button><button type="button" class="inspector-mode" data-inspector-mode="solo">Соло</button></div>
       <div class="inspector-subheading"><span class="eyebrow">ОБРАБОТКА ДОРОЖКИ</span></div>
       <div class="inspector-button-row"><button type="button" class="inspector-effect" data-inspector-effect="reverb">Реверберация</button><button type="button" class="inspector-effect" data-inspector-effect="delay">Задержка</button></div>
-      <div class="inspector-button-row"><button type="button" class="inspector-effect" data-inspector-effect="equalizer">Параметрический EQ</button></div>
+      <div class="inspector-button-row"><button type="button" class="inspector-effect" data-inspector-effect="equalizer">Параметрический EQ</button><button type="button" class="inspector-effect" data-inspector-effect="compressor">Компрессор</button></div>
       ${track.effects?.equalizer ? `<div class="inspector-eq-controls">
         <p class="field-help">Семиполосный стерео EQ. Меняйте частоту и усиление каждой полосы; настройки сохраняются в проекте.</p>
         <div class="inspector-eq-bands" role="group" aria-label="Семь полос эквалайзера">
@@ -1105,6 +1112,14 @@ function renderInspector() {
           </div>`).join('')}
         </div>
         <label class="inspector-field inspector-range" for="inspectorEqQ"><span>Добротность всех полос <output id="inspectorEqQValue">${eqSettings.q.toFixed(1)}</output></span><input id="inspectorEqQ" data-eq="q" type="range" min="0.1" max="18" step="0.1" value="${eqSettings.q}" aria-label="Добротность всех полос параметрического EQ" /></label>
+      </div>` : ''}
+${track.effects?.compressor ? `<div class="inspector-eq-controls inspector-compressor-controls">
+        <p class="field-help">Мягкая стереокомпрессия действует на воспроизведение, WASAPI и экспорт WAV.</p>
+        <label class="inspector-field inspector-range" for="compressorThreshold"><span>Порог <output>${compressorSettings.thresholdDb.toFixed(1)} dB</output></span><input id="compressorThreshold" data-compressor="thresholdDb" type="range" min="-60" max="0" step="0.5" value="${compressorSettings.thresholdDb}" aria-label="Порог компрессора в децибелах" /></label>
+        <label class="inspector-field inspector-range" for="compressorRatio"><span>Соотношение <output>${compressorSettings.ratio.toFixed(1)}:1</output></span><input id="compressorRatio" data-compressor="ratio" type="range" min="1" max="20" step="0.1" value="${compressorSettings.ratio}" aria-label="Соотношение компрессии" /></label>
+        <label class="inspector-field inspector-range" for="compressorAttack"><span>Атака <output>${compressorSettings.attackMs.toFixed(1)} ms</output></span><input id="compressorAttack" data-compressor="attackMs" type="range" min="0.1" max="100" step="0.1" value="${compressorSettings.attackMs}" aria-label="Время атаки компрессора" /></label>
+        <label class="inspector-field inspector-range" for="compressorRelease"><span>Восстановление <output>${compressorSettings.releaseMs.toFixed(0)} ms</output></span><input id="compressorRelease" data-compressor="releaseMs" type="range" min="10" max="1000" step="1" value="${compressorSettings.releaseMs}" aria-label="Время восстановления компрессора" /></label>
+        <label class="inspector-field inspector-range" for="compressorMakeup"><span>Компенсация <output>${compressorSettings.makeupDb.toFixed(1)} dB</output></span><input id="compressorMakeup" data-compressor="makeupDb" type="range" min="0" max="24" step="0.1" value="${compressorSettings.makeupDb}" aria-label="Компенсация уровня после компрессии" /></label>
       </div>` : ''}
       <button type="button" class="button quiet compact inspector-open-editor" id="inspectorOpenEditorBtn">Открыть редактор</button>
     </section>
@@ -1176,10 +1191,27 @@ function renderInspector() {
       $(`[data-inspector-mode="${mode}"]`, $('#inspectorContent'))?.focus();
     });
   }
-  for (const effect of ['reverb', 'delay', 'equalizer']) {
+  for (const effect of ['reverb', 'delay', 'equalizer', 'compressor']) {
     const button = $(`[data-inspector-effect="${effect}"]`, host);
     button.classList.toggle('active', Boolean(track.effects?.[effect])); button.setAttribute('aria-pressed', String(Boolean(track.effects?.[effect])));
     button.addEventListener('click', () => { toggleTrackEffect(track.id, effect); $(`[data-inspector-effect="${effect}"]`, $('#inspectorContent'))?.focus(); });
+  }
+
+  if (track.effects?.compressor) {
+    for (const control of $$('[data-compressor]', host)) {
+      const key = control.dataset.compressor, output = control.parentElement.querySelector('output');
+      const format = value => key === 'thresholdDb' || key === 'makeupDb' ? `${Number(value).toFixed(1)} dB` :
+        key === 'ratio' ? `${Number(value).toFixed(1)}:1` : `${Number(value).toFixed(key === 'releaseMs' ? 0 : 1)} ms`;
+      output.textContent = format(compressorSettings[key]);
+      control.addEventListener('focus', recordUndo, { once: true });
+      control.addEventListener('input', event => {
+        track.compressorSettings = normalizeCompressorSettings({ ...compressorSettings, [key]: Number(event.target.value) });
+        output.textContent = format(track.compressorSettings[key]); markProjectDirty();
+        const nodes = liveTrackCompressors.get(track.id);
+        if (nodes) applyCompressorSettings(nodes, track.compressorSettings);
+      });
+      control.addEventListener('change', restartProjectPlaybackIfActive);
+    }
   }
 
   if (track.effects?.equalizer) {
@@ -1674,9 +1706,13 @@ function renderMixer() {
 function toggleTrackEffect(trackId, effect) {
   const track = getTrack(trackId); if (!track) return;
   const restart = state.playing, beat = state.playheadBeat;
-  recordUndo(); track.effects ||= {}; track.effects[effect] = !track.effects[effect]; if (effect === 'equalizer' && track.effects[effect]) track.eqSettings = normalizeEqSettings(track.eqSettings); markProjectDirty();
+  recordUndo(); track.effects ||= {}; track.effects[effect] = !track.effects[effect];
+  if (effect === 'equalizer' && track.effects[effect]) track.eqSettings = normalizeEqSettings(track.eqSettings);
+  if (effect === 'compressor' && track.effects[effect]) track.compressorSettings = normalizeCompressorSettings(track.compressorSettings);
+  markProjectDirty();
   if (restart) { stopPlayback(false); state.playheadBeat = beat; play(); }
-  renderMixer(); renderInspector(); showToast(`${effect === 'reverb' ? 'Реверберация' : effect === 'delay' ? 'Задержка' : 'Параметрический EQ'} ${track.effects[effect] ? 'включён' : 'выключен'}`);
+  const label = ({ reverb: 'Реверберация', delay: 'Задержка', equalizer: 'Параметрический EQ', compressor: 'Компрессор' })[effect];
+  renderMixer(); renderInspector(); showToast(`${label} ${track.effects[effect] ? 'включён' : 'выключен'}`);
 }
 
 function updateLiveTrackMix() {
@@ -1755,9 +1791,18 @@ function scheduleProject(context, fromBeat = 0, destination = context.destinatio
         scheduledNodes.push(source);
       }
     }
-    scheduledNodes.push({ stop: () => { trackNodes.forEach(item => { try { item.disconnect(); } catch {} }); for (const clip of track.clips) { liveClipGains.delete(clip.id); liveClipPans.delete(clip.id); liveClipSources.delete(clip.id); } } });
+    scheduledNodes.push({ stop: () => { trackNodes.forEach(item => { try { item.disconnect(); } catch {} }); liveTrackCompressors.delete(track.id); for (const clip of track.clips) { liveClipGains.delete(clip.id); liveClipPans.delete(clip.id); liveClipSources.delete(clip.id); } } });
   }
   return now;
+}
+
+function applyCompressorSettings(nodes, rawSettings) {
+  const settings = normalizeCompressorSettings(rawSettings), now = audioContext?.currentTime || 0;
+  nodes.compressor.threshold.setTargetAtTime(settings.thresholdDb, now, .02);
+  nodes.compressor.ratio.setTargetAtTime(settings.ratio, now, .02);
+  nodes.compressor.attack.setTargetAtTime(settings.attackMs / 1000, now, .02);
+  nodes.compressor.release.setTargetAtTime(settings.releaseMs / 1000, now, .02);
+  nodes.makeup.gain.setTargetAtTime(10 ** (settings.makeupDb / 20), now, .02);
 }
 
 function applyTrackEffects(context, track, input, nodes) {
@@ -1783,6 +1828,15 @@ function applyTrackEffects(context, track, input, nodes) {
       output.connect(filter); nodes.push(filter); output = filter; filters.push(filter);
     }
     if (context === audioContext) liveTrackEqualizers.set(track.id, filters);
+  }
+  if (effects.compressor) {
+    const settings = normalizeCompressorSettings(track.compressorSettings);
+    const compressor = context.createDynamicsCompressor(), makeup = context.createGain();
+    compressor.threshold.value = settings.thresholdDb; compressor.knee.value = 6; compressor.ratio.value = settings.ratio;
+    compressor.attack.value = settings.attackMs / 1000; compressor.release.value = settings.releaseMs / 1000;
+    makeup.gain.value = 10 ** (settings.makeupDb / 20);
+    output.connect(compressor); compressor.connect(makeup); nodes.push(compressor, makeup); output = makeup;
+    if (context === audioContext) liveTrackCompressors.set(track.id, { compressor, makeup });
   }
   return output;
 }
@@ -1909,7 +1963,10 @@ function buildNativeProjectPlan() {
     return {
       gain: track.volume ?? 1, pan: track.pan || 0, mute: Boolean(track.mute), solo: Boolean(track.solo),
       reverb: Boolean(track.effects?.reverb), delay: Boolean(track.effects?.delay), gainAutomation,
-      equalizer: Boolean(track.effects?.equalizer),
+      equalizer: Boolean(track.effects?.equalizer), compressor: Boolean(track.effects?.compressor),
+      ...Object.fromEntries(Object.entries(normalizeCompressorSettings(track.compressorSettings)).map(([key, value]) => [
+        ({ thresholdDb: 'compressorThresholdDb', ratio: 'compressorRatio', attackMs: 'compressorAttackMs', releaseMs: 'compressorReleaseMs', makeupDb: 'compressorMakeupDb' })[key], value,
+      ])),
       equalizerFrequencyHz: Number(track.eqSettings?.frequencyHz ?? 1000), equalizerGainDb: Number(track.eqSettings?.gainDb ?? 0), equalizerQ: Number(track.eqSettings?.q ?? 1),
       equalizerBands: normalizeEqSettings(track.eqSettings).bands.flatMap(({ frequencyHz, gainDb, q }) => [frequencyHz, gainDb, q]),
     };
@@ -2490,8 +2547,8 @@ async function loadProject(file) {
       const instrument = INSTRUMENTS.some(item => item.id === track.instrument) ? track.instrument : 'soft-keys';
       return { ...track, name: track.name || `Дорожка ${index + 1}`, color: /^#[\da-f]{6}$/i.test(track.color || '') ? track.color : palette[index % palette.length],
         volume: Number.isFinite(track.volume) ? clamp(track.volume, 0, 1.5) : .8, pan: Number.isFinite(track.pan) ? clamp(track.pan, -1, 1) : 0,
-        mute: Boolean(track.mute), solo: Boolean(track.solo), effects: { reverb: Boolean(track.effects?.reverb), delay: Boolean(track.effects?.delay), equalizer: Boolean(track.effects?.equalizer) },
-        eqSettings: normalizeEqSettings(track.eqSettings),
+        mute: Boolean(track.mute), solo: Boolean(track.solo), effects: { reverb: Boolean(track.effects?.reverb), delay: Boolean(track.effects?.delay), equalizer: Boolean(track.effects?.equalizer), compressor: Boolean(track.effects?.compressor) },
+        compressorSettings: normalizeCompressorSettings(track.compressorSettings), eqSettings: normalizeEqSettings(track.eqSettings),
         ...(track.type === 'instrument' ? { instrument, synthSettings: normalizeSynthSettings(track.synthSettings, instrument) } : {}) };
     });
     state.markers = data.markers || []; state.loop = Boolean(data.loop); const loopRange = normalizeLoopRange(data.loopStartBeat ?? 0, data.loopEndBeat ?? 16); state.loopStartBeat = loopRange?.startBeat ?? 0; state.loopEndBeat = loopRange?.endBeat ?? 16; state.selectedClipId = null; state.playheadBeat = 0; state.recordings = [...assets.values()].filter(asset => asset.source === 'recording').map(asset => asset.id); state.undoStack = []; state.redoStack = []; state.selectedTrackId = state.tracks.find(track => track.id === data.selectedTrackId)?.id || state.tracks[0]?.id || null; markProjectDirty(); renderAll(); $('#saveState').textContent = '● Сохранено'; showToast('Проект открыт');

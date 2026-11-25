@@ -322,7 +322,9 @@ public:
         const float equalizerFrequencyHz = 1000.0F,
         const float equalizerGainDb = 0.0F,
         const float equalizerQ = 1.0F,
-        const std::array<sonora::audio::EqualizerBandSettings, sonora::audio::kEqualizerBandCount> equalizerBands = sonora::audio::kDefaultEqualizerBands) {
+        const std::array<sonora::audio::EqualizerBandSettings, sonora::audio::kEqualizerBandCount> equalizerBands = sonora::audio::kDefaultEqualizerBands,
+        const bool compressor = false, const float compressorThresholdDb = -18.0F, const float compressorRatio = 4.0F,
+        const float compressorAttackMs = 10.0F, const float compressorReleaseMs = 120.0F, const float compressorMakeupDb = 0.0F) {
         if (index >= kMaxProjectTracks) return errorJson("Track index exceeds the project limit");
         if (!std::isfinite(gain) || gain < 0.0F || gain > 4.0F || !std::isfinite(pan) || pan < -1.0F || pan > 1.0F) {
             return errorJson("Track mix values are outside the supported range");
@@ -330,6 +332,12 @@ public:
         if (builderTracks_.size() <= index) builderTracks_.resize(static_cast<std::size_t>(index) + 1);
         builderTracks_[index] = {gain, pan, mute, solo, reverb, delay, std::move(gainAutomation), equalizer, equalizerFrequencyHz, equalizerGainDb, equalizerQ};
         builderTracks_[index].equalizerBands = equalizerBands;
+        builderTracks_[index].compressor = compressor;
+        builderTracks_[index].compressorThresholdDb = compressorThresholdDb;
+        builderTracks_[index].compressorRatio = compressorRatio;
+        builderTracks_[index].compressorAttackMs = compressorAttackMs;
+        builderTracks_[index].compressorReleaseMs = compressorReleaseMs;
+        builderTracks_[index].compressorMakeupDb = compressorMakeupDb;
         return "{\"version\":1,\"ok\":true}";
     }
 
@@ -779,6 +787,12 @@ private:
         const auto reverb = booleanField(line, "reverb");
         const auto delay = booleanField(line, "delay");
         const auto equalizer = booleanField(line, "equalizer");
+        const auto compressor = booleanField(line, "compressor");
+        const auto compressorThresholdDb = numberField<float>(line, "compressorThresholdDb").value_or(-18.0F);
+        const auto compressorRatio = numberField<float>(line, "compressorRatio").value_or(4.0F);
+        const auto compressorAttackMs = numberField<float>(line, "compressorAttackMs").value_or(10.0F);
+        const auto compressorReleaseMs = numberField<float>(line, "compressorReleaseMs").value_or(120.0F);
+        const auto compressorMakeupDb = numberField<float>(line, "compressorMakeupDb").value_or(0.0F);
         const auto equalizerFrequencyHz = numberField<float>(line, "equalizerFrequencyHz").value_or(1000.0F);
         const auto equalizerGainDb = numberField<float>(line, "equalizerGainDb").value_or(0.0F);
         const auto equalizerQ = numberField<float>(line, "equalizerQ").value_or(1.0F);
@@ -806,7 +820,8 @@ private:
         }
         if (!index || !gain || !pan || !mute || !solo) return errorJson("set_track requires index, gain, pan, mute and solo");
         return host.setTrackMix(*index, *gain, *pan, *mute, *solo, reverb.value_or(false), delay.value_or(false), std::move(gainAutomation),
-            equalizer.value_or(false), equalizerFrequencyHz, equalizerGainDb, equalizerQ, equalizerBands);
+            equalizer.value_or(false), equalizerFrequencyHz, equalizerGainDb, equalizerQ, equalizerBands,
+            compressor.value_or(false), compressorThresholdDb, compressorRatio, compressorAttackMs, compressorReleaseMs, compressorMakeupDb);
     }
     if (*operation == "add_clip") {
         const auto assetId = stringField(line, "assetId");
