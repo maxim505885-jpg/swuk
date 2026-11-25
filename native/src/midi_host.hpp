@@ -47,6 +47,7 @@ public:
     }
 
     [[nodiscard]] bool openInput(const unsigned int index, std::string& error) {
+        error.clear();
         closeInput();
         try {
             auto input = std::make_unique<rt::midi::RtMidiIn>();
@@ -80,6 +81,7 @@ public:
     }
 
     [[nodiscard]] bool openOutput(const unsigned int index, std::string& error) {
+        error.clear();
         closeOutput();
         try {
             auto output = std::make_unique<rt::midi::RtMidiOut>();
@@ -113,7 +115,8 @@ public:
         const unsigned int pitch,
         const unsigned int velocity,
         const bool noteOn,
-        std::string& error) noexcept {
+        std::string& error) {
+        error.clear();
         if (channel > 15 || pitch > 127 || velocity > 127) {
             error = "MIDI channel, pitch or velocity is outside its valid range";
             return false;
@@ -141,7 +144,7 @@ public:
         }
     }
 
-    [[nodiscard]] std::vector<Event> readEvents(const std::size_t maximum = kMaxBatch) noexcept {
+    [[nodiscard]] std::vector<Event> readEvents(const std::size_t maximum = kMaxBatch) {
         std::vector<Event> events;
         events.reserve(maximum < kMaxBatch ? maximum : kMaxBatch);
         const auto limit = maximum < kMaxBatch ? maximum : kMaxBatch;
