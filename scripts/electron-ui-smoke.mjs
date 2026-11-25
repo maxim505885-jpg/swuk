@@ -496,9 +496,12 @@ try {
   for (const pitch of [60, 64, 67]) assert.ok(chordSnapshot.notes.some(label => label.includes(`MIDI ${pitch}`)), `Piano Roll displays generated MIDI pitch ${pitch}`);
   const addedOffGridNote = await evaluate("(() => { const cell=[...document.querySelectorAll('.piano-cell')].find(item => item.getAttribute('aria-label')?.startsWith('Добавить ноту C4') && item.getAttribute('aria-label')?.includes('доля 2')); if (!cell) return false; cell.click(); return true; })()");
   assert.equal(addedOffGridNote, true, 'Piano Roll smoke fixture adds a note between quantization grid lines');
+  const offGridLabels = await evaluate("[...document.querySelectorAll('.piano-note')].map(note=>note.getAttribute('aria-label'))");
+  assert.ok(offGridLabels.some(label=>label.includes('позиция 0.25 долей')), 'Piano Roll fixture creates an off-grid MIDI note');
   await evaluate("document.querySelector('#pianoQuantizeGrid').value='0.5'");
   await evaluate("document.querySelector('#quantizePianoNotes').click()");
   const quantizeResult = await evaluate("(() => ({toast:document.querySelector('#toast')?.textContent, notes:[...document.querySelectorAll('.piano-note')].map(note=>note.getAttribute('aria-label'))}))()");
+  console.log('Piano Roll quantize smoke:', JSON.stringify(quantizeResult));
   assert.ok(quantizeResult.toast?.includes('квантизированы'), 'Piano Roll reports successful MIDI quantization');
   assert.ok(quantizeResult.notes.some(label => label.includes('позиция 0.5 долей')), 'Piano Roll moves the off-grid note to the selected grid');
   await evaluate("document.querySelector('#pianoNextBar').click()");
