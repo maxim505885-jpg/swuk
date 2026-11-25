@@ -55,6 +55,7 @@
       "midi-edit-core.mjs",
       "midi-recording-core.mjs",
       "midi-playback-core.mjs",
+      "midi-clock-core.mjs",
       "midi-message-core.mjs",
       "clip-fade-core.mjs",
       "clip-envelope.mjs",
