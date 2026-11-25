@@ -470,7 +470,7 @@ try {
   assert.ok(instrumentTrack, 'Piano Roll smoke fixture includes an instrument track');
   instrumentTrack.clips.push({
     id: 'qa-piano-midi', name: 'QA melody', kind: 'midi', startBeat: 0, lengthBeats: 4,
-    notes: [{ beat: 0, length: 1, note: 60, velocity: .75 }],
+    notes: [{ beat: 0, length: 1, note: 48, velocity: .75 }],
   });
   pianoProject.selectedTrackId = instrumentTrack.id;
   const pianoProjectText = JSON.stringify(pianoProject);
@@ -481,12 +481,13 @@ try {
   await evaluate("document.querySelector('[data-clip=\\\"qa-piano-midi\\\"]').click()");
   await evaluate("document.querySelector('#inspectorOpenEditorBtn').click()");
   await waitUntil(() => evaluate("Boolean(document.querySelector('.piano-wrap'))"), Boolean, 'Piano Roll editor');
-  await evaluate("document.querySelector('.piano-cell:not(:disabled)').click()");
+  await evaluate("document.querySelector('.piano-cell[aria-label^=\\\"Добавить ноту C4\\\"]')?.click()");
   await waitUntil(() => evaluate("Boolean(document.querySelector('#generatePianoChord'))"), Boolean, 'Piano Roll chord control');
   await evaluate("document.querySelector('#generatePianoChord').click()");
   const chordSnapshot = await evaluate("(() => ({notes:[...document.querySelectorAll('.piano-note')].map(note=>note.getAttribute('aria-label')),toast:document.querySelector('#toast')?.textContent}))()");
   console.log('Piano Roll chord smoke:', JSON.stringify(chordSnapshot));
-  assert.equal(chordSnapshot.notes.length, 4, 'major chord adds the two missing pitches alongside its selected root');
+  assert.equal(chordSnapshot.notes.length, 3, 'major chord displays its root, third, and fifth together in one octave');
+  for (const pitch of [60, 64, 67]) assert.ok(chordSnapshot.notes.some(label => label.includes(`MIDI ${pitch}`)), `Piano Roll displays generated MIDI pitch ${pitch}`);
   assert.deepEqual(exceptions, [], 'Piano Roll chord generation must not throw renderer exceptions');
   console.log(`Electron UI smoke passed: Piano Roll chord generator, sampler editor, probability/ratchet controls, 128-clip Arrangement, zoom, spectrum analyzer, EQ, compressor, limiter, split/slicing, undo/redo, project round-trip, WAV export and loop selection`);
 } finally {
