@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { isValidClipGainEnvelope } from '../clip-envelope.mjs';
 import test from 'node:test';
 import { beatFromRulerPointer, flattenGainAutomation, normalizeLoopRange, normalizeTrackName, projectRenderDurationSeconds, sampleAutomation, splitSequencerEvents, wrapLoopBeat } from '../arrangement-core.mjs';
 
@@ -127,4 +128,15 @@ test('WAV render duration reserves an effect tail only for tracks containing cli
 test('WAV render duration rejects invalid tempo and clip boundaries', () => {
   assert.equal(projectRenderDurationSeconds([], 0), null);
   assert.equal(projectRenderDurationSeconds([{ clips: [{ startBeat: 0, lengthBeats: 0 }] }], 120), null);
+});
+
+
+test('splitAudioClip partitions gain envelope continuously at the edit point', () => {
+  const clip = { id: 'audio', startBeat: 0, lengthBeats: 8, offsetSec: 0, gainEnvelope: [{ position: 0, gain: 1 }, { position: .25, gain: .4 }, { position: 1, gain: 0 }] };
+  const split = splitAudioClip(clip, 2, 120);
+  assert.ok(split);
+  assert.equal(isValidClipGainEnvelope(split.left.gainEnvelope), true);
+  assert.equal(isValidClipGainEnvelope(split.right.gainEnvelope), true);
+  assert.equal(split.left.gainEnvelope.at(-1).gain, .4);
+  assert.equal(split.right.gainEnvelope[0].gain, .4);
 });
